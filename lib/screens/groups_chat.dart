@@ -60,7 +60,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
                 ),
               );
             }),
-          const SizedBox(height: 100),
+          const SizedBox(height: 24),
         ],
       ),
     );
@@ -245,10 +245,12 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             ),
           ),
         ),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: c.cream2, border: Border(top: BorderSide(color: c.dustSoft))),
-          child: Column(
+        SafeArea(
+          top: false,
+          child: Container(
+            padding: EdgeInsets.fromLTRB(12, 12, 12, 12 + MediaQuery.of(context).viewInsets.bottom),
+            decoration: BoxDecoration(color: c.cream2, border: Border(top: BorderSide(color: c.dustSoft))),
+            child: Column(
             children: [
               if (replyTo != null)
                 Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(12), border: Border(left: BorderSide(color: c.teal, width: 4))), child: Row(children: [Expanded(child: Text('${replyTo!.from} · ${replyTo!.text.isEmpty ? replyTo!.file ?? '' : replyTo!.text}', style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)), GestureDetector(onTap: () => setState(() => replyTo = null), child: const Icon(Icons.close, size: 16))])),
@@ -291,6 +293,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 ],
               ),
             ],
+          ),
           ),
         ),
       ],

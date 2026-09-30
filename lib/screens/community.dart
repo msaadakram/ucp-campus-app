@@ -133,7 +133,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
           const SizedBox(height: 12),
           for (final p in shown) _postCard(c, p, onOpen: () => setState(() => openId = p.id)),
           if (shown.isEmpty) Center(child: Padding(padding: const EdgeInsets.all(40), child: Text('No posts with this flair yet.', style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.5))))),
-          const SizedBox(height: 100),
+          const SizedBox(height: 24),
           if (composing) _composer(c),
         ],
       ),
@@ -224,40 +224,43 @@ class _CommunityScreenState extends State<CommunityScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 100),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: c.cream2, border: Border(top: BorderSide(color: c.dustSoft))),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    onChanged: (v) => draft = v,
-                    decoration: InputDecoration(hintText: replyTo != null ? 'Write a reply…' : 'Add a comment…', filled: true, fillColor: c.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(horizontal: 16)),
+          SafeArea(
+            top: false,
+            child: Container(
+              padding: EdgeInsets.fromLTRB(12, 12, 12, 12 + MediaQuery.of(context).viewInsets.bottom),
+              decoration: BoxDecoration(color: c.cream2, border: Border(top: BorderSide(color: c.dustSoft))),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      onChanged: (v) => draft = v,
+                      decoration: InputDecoration(hintText: replyTo != null ? 'Write a reply…' : 'Add a comment…', filled: true, fillColor: c.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(horizontal: 16)),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () {
-                    if (draft.trim().isEmpty) return;
-                    setState(() {
-                      final nc = CComment(id: _uid++, author: 'ayaan.w', text: draft.trim(), time: 'now', score: 1);
-                      if (replyTo != null) {
-                        post.comments.toList();
-                        _insertReply(post.comments, replyTo!.id, nc);
-                      } else {
-                        post.comments.insert(0, nc);
-                      }
-                      draft = ''; replyTo = null;
-                    });
-                  },
-                  child: Container(width: 44, height: 44, decoration: BoxDecoration(color: c.teal, shape: BoxShape.circle), child: const Icon(Icons.send, color: Colors.white, size: 18)),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () {
+                      if (draft.trim().isEmpty) return;
+                      setState(() {
+                        final nc = CComment(id: _uid++, author: 'ayaan.w', text: draft.trim(), time: 'now', score: 1);
+                        if (replyTo != null) {
+                          post.comments.toList();
+                          _insertReply(post.comments, replyTo!.id, nc);
+                        } else {
+                          post.comments.insert(0, nc);
+                        }
+                        draft = ''; replyTo = null;
+                      });
+                    },
+                    child: Container(width: 44, height: 44, decoration: BoxDecoration(color: c.teal, shape: BoxShape.circle), child: const Icon(Icons.send, color: Colors.white, size: 18)),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

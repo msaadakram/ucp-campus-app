@@ -32,8 +32,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
     final hero = AppScope.paletteOf(context).heroAsset;
-    return Column(
-      children: [
+    return SingleChildScrollView(
+      child: Column(
+        children: [
         SizedBox(
           height: 256,
           child: Stack(
@@ -205,11 +206,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.logout, color: c.clay), Text(' Log out', style: display(c, size: 16, color: c.clay))]),
                 ),
               ),
-              const SizedBox(height: 100),
+              const SizedBox(height: 24),
             ],
           ),
         ),
       ],
+      ),
     );
   }
 }

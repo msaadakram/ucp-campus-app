@@ -131,7 +131,7 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
                 ],
               ),
             ),
-          const SizedBox(height: 100),
+          const SizedBox(height: 24),
         ],
       ),
     );
@@ -276,7 +276,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               );
             }),
           Center(child: Padding(padding: const EdgeInsets.all(16), child: Text('Updated weekly by ${sub.prof}', style: body(c, size: 12, color: c.tealInk.withValues(alpha: 0.5))))),
-          const SizedBox(height: 100),
+          const SizedBox(height: 24),
         ],
       ),
     );

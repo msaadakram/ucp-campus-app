@@ -205,7 +205,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                 ),
               );
             }),
-          const SizedBox(height: 100),
+          const SizedBox(height: 24),
         ],
       ),
     );
@@ -437,7 +437,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 );
               }),
           ],
-          const SizedBox(height: 100),
+          const SizedBox(height: 24),
         ],
       ),
     );

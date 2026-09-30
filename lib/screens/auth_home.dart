@@ -277,7 +277,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-          const SizedBox(height: 100),
+          const SizedBox(height: 24),
         ],
       ),
     );
@@ -292,8 +292,9 @@ class DetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
     final bg = toneBg(course.tone, c);
-    return Column(
-      children: [
+    return SingleChildScrollView(
+      child: Column(
+        children: [
         Container(
           padding: const EdgeInsets.fromLTRB(20, 48, 20, 32),
           decoration: BoxDecoration(color: bg, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32))),
@@ -350,6 +351,7 @@ class DetailScreen extends StatelessWidget {
           ),
         ),
       ],
+      ),
     );
   }
 }

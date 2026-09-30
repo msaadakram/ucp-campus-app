@@ -10,35 +10,14 @@ class UHead extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Container(
-          height: height,
-          decoration: const BoxDecoration(),
-        ),
-        Positioned.fill(
-          child: Column(
-            children: [
-              _Band(height: height),
-              Expanded(child: Container()),
-            ],
-          ),
-        ),
-        Padding(padding: padding, child: child),
-      ],
+    return SingleChildScrollView(
+      child: Stack(
+        children: [
+          _BandInner(height: height, fallback: null),
+          Padding(padding: padding, child: child),
+        ],
+      ),
     );
-  }
-}
-
-class _Band extends StatelessWidget {
-  final double height;
-  const _Band({required this.height});
-  @override
-  Widget build(BuildContext context) {
-    final c = (ModalRoute.of(context) == null)
-        ? AppColors.of(AppPalette.skater, false)
-        : null;
-    return _BandInner(height: height, fallback: c);
   }
 }
 

@@ -192,7 +192,7 @@ class _MaterialsScreenState extends State<MaterialsScreen> {
                 ),
               ),
           ],
-          const SizedBox(height: 100),
+          const SizedBox(height: 24),
         ],
       ),
     );
@@ -297,7 +297,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 100),
+          const SizedBox(height: 24),
         ],
       ),
     );
