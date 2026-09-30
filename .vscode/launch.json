@@ -1,0 +1,21 @@
+{
+  "configurations": [
+    {
+      "name": "ucp (debug)",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "ucp (profile)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "profile"
+    },
+    {
+      "name": "ucp (release)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "release"
+    }
+  ]
+}
