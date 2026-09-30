@@ -1,30 +1,27 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ucp/main.dart';
+import 'package:ucp/app.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('Campus app boots to login', (WidgetTester tester) async {
+    await tester.pumpWidget(const CampusApp());
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Hey, welcome back.'), findsOneWidget);
+    expect(find.text('Log in'), findsOneWidget);
+  });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+  testWidgets('Login navigates to home', (WidgetTester tester) async {
+    await tester.pumpWidget(const CampusApp());
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'ayaan.w@uni.edu');
+    await tester.enterText(find.byType(TextField).at(1), '1234');
     await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    final loginBtn = find.text('Log in');
+    await tester.ensureVisible(loginBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(loginBtn, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(find.text('My courses'), findsOneWidget);
   });
 }
