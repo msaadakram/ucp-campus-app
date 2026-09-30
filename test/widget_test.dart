@@ -14,7 +14,7 @@ void main() {
   testWidgets('Login navigates to home', (WidgetTester tester) async {
     await tester.pumpWidget(const CampusApp());
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).first, 'ayaan.w@uni.edu');
+    await tester.enterText(find.byType(TextField).first, 'ayaan.w@ucp.edu.pk');
     await tester.enterText(find.byType(TextField).at(1), '1234');
     await tester.pump();
     final loginBtn = find.text('Log in');

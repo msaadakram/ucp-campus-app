@@ -63,7 +63,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(24)),
                 child: Column(
                   children: [
-                    for (final kv in [['Student ID', '2024-CS-0719'], ['Email', 'ayaan.w@uni.edu'], ['Faculty', 'Engineering & Computing'], ['Advisor', 'Dr. Amina Qureshi'], ['Enrolled', 'Sep 2024']])
+                    for (final kv in [['Student ID', '2024-CS-0719'], ['Email', 'ayaan.w@ucp.edu.pk'], ['Faculty', 'Engineering & Computing'], ['Advisor', 'Dr. Amina Qureshi'], ['Enrolled', 'Sep 2024']])
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                         decoration: BoxDecoration(border: kv[0] == 'Enrolled' ? null : Border(bottom: BorderSide(color: c.dustSoft))),

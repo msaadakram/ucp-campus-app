@@ -14,7 +14,7 @@ class _LoginScreenState extends State<LoginScreen> {
   String email = '';
   String pw = '';
   bool show = false;
-  bool get ok => email.contains('@') && pw.length >= 4;
+  bool get ok => email.trim().toLowerCase().endsWith('@ucp.edu.pk') && pw.length >= 4;
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
@@ -42,7 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(color: c.cream, borderRadius: BorderRadius.circular(20)),
-                    child: Text('campus.', style: display(c, size: 14)),
+                    child: Text('UCP', style: display(c, size: 14)),
                   ),
                 ),
               ],
@@ -55,18 +55,23 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Text('UCP · The University of Central Punjab',
+                    style: body(c, size: 12, weight: FontWeight.w700, color: c.teal)),
+                const SizedBox(height: 6),
                 Text('Hey, welcome back.', style: display(c, size: 36)),
                 const SizedBox(height: 8),
-                Text('Sign in with your university email to see your semester.',
+                Text('Sign in with your @ucp.edu.pk email to see your semester.',
                     style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.6))),
                 const SizedBox(height: 16),
-                Text('EMAIL', style: body(c, size: 12, weight: FontWeight.w600, color: c.tealInk.withValues(alpha: 0.6))),
+                Text('UNIVERSITY EMAIL', style: body(c, size: 12, weight: FontWeight.w600, color: c.tealInk.withValues(alpha: 0.6))),
                 const SizedBox(height: 6),
                 TextField(
                   onChanged: (v) => setState(() => email = v),
                   keyboardType: TextInputType.emailAddress,
+                  autofillHints: const [AutofillHints.email],
                   decoration: InputDecoration(
-                    hintText: 'you@uni.edu',
+                    hintText: 'you@ucp.edu.pk',
+                    helperText: 'Use your email ending with @ucp.edu.pk',
                     filled: true, fillColor: c.white,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: c.dustSoft, width: 2)),
                     enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: c.dustSoft, width: 2)),
@@ -90,14 +95,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     suffixIcon: TextButton(onPressed: () => setState(() => show = !show), child: Text(show ? 'Hide' : 'Show', style: body(c, size: 14, weight: FontWeight.w600, color: c.teal))),
                   ),
                 ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(onPressed: () {}, child: Text('Forgot password?', style: body(c, size: 14, color: c.clay))),
-                ),
                 const SizedBox(height: 24),
                 ClayButton(label: 'Log in', colors: c, onPressed: ok ? widget.onLogin : null),
                 const SizedBox(height: 12),
-                Center(child: Text('Tip: any email + 4-char password works', style: body(c, size: 12, color: c.tealInk.withValues(alpha: 0.5)))),
+                Center(child: Text('Tip: any @ucp.edu.pk email + 4-char password works', style: body(c, size: 12, color: c.tealInk.withValues(alpha: 0.5)))),
                 const SizedBox(height: 40),
               ],
             ),
