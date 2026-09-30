@@ -101,12 +101,13 @@ class _CampusAppState extends State<CampusApp> {
                     children: [
                       Positioned.fill(
                         child: !authed
-                            ? SingleChildScrollView(child: LoginScreen(onLogin: () => setState(() => authed = true)))
-                            : screen,
+                            ? LoginScreen(onLogin: () => setState(() => authed = true))
+                            : SafeArea(top: true, bottom: false, child: screen),
                       ),
                       if (authed && picker) ...[
                         Positioned.fill(
                           child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
                             onTap: () => setState(() => picker = false),
                             child: Container(color: colors.tealInk.withValues(alpha: 0.4)),
                           ),
@@ -117,6 +118,7 @@ class _CampusAppState extends State<CampusApp> {
                             children: [
                               Expanded(
                                 child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
                                   onTap: () => go('community'),
                                   child: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: colors.teal, borderRadius: BorderRadius.circular(24)), child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(Icons.forum_outlined, color: Colors.white), SizedBox(height: 24), Text('Community', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)), Text('Campus feed & posts', style: TextStyle(color: Colors.white70, fontSize: 12))])),
                                 ),
@@ -124,6 +126,7 @@ class _CampusAppState extends State<CampusApp> {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
                                   onTap: () => go('groups'),
                                   child: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: colors.clay, borderRadius: BorderRadius.circular(24)), child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(Icons.group_outlined, color: Colors.white), SizedBox(height: 24), Text('Groups', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)), Text('Study circles & clubs', style: TextStyle(color: Colors.white70, fontSize: 12))])),
                                 ),
@@ -135,6 +138,7 @@ class _CampusAppState extends State<CampusApp> {
                       if (authed && menu) ...[
                         Positioned.fill(
                           child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
                             onTap: () => setState(() => menu = false),
                             child: Container(color: colors.tealInk.withValues(alpha: 0.4)),
                           ),
@@ -157,7 +161,7 @@ class _CampusAppState extends State<CampusApp> {
                                       CircleAvatar(radius: 28, backgroundImage: AssetImage(prefs.palette.heroAsset)),
                                       const SizedBox(width: 12),
                                       const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Ayaan Warraich', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17)), Text('BS Computer Science · Year 2', style: TextStyle(color: Colors.white70, fontSize: 12))])),
-                                      GestureDetector(onTap: () => setState(() => menu = false), child: Container(width: 40, height: 40, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle), child: const Icon(Icons.close, color: Colors.white))),
+                                      GestureDetector(onTap: () => setState(() => menu = false), child: Container(alignment: Alignment.center, width: 40, height: 40, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle), child: const Icon(Icons.close, color: Colors.white))),
                                     ],
                                   ),
                                 ),
@@ -167,6 +171,7 @@ class _CampusAppState extends State<CampusApp> {
                                     children: [
                                       for (final it in [['home', 'Home', Icons.home_outlined], ['timetable', 'Timetable', Icons.calendar_month_outlined], ['material', 'Course material', Icons.book_outlined], ['gpa', 'GPA calculator', Icons.calculate_outlined], ['fee', 'Fee challan', Icons.receipt_outlined], ['community', 'Community', Icons.forum_outlined], ['groups', 'Groups & chats', Icons.group_outlined], ['web', 'Web view', Icons.language_outlined], ['profile', 'Profile & settings', Icons.person_outline]])
                                         GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
                                           onTap: () => go(it[0] as String),
                                           child: Container(
                                             margin: const EdgeInsets.only(bottom: 4),
@@ -174,7 +179,7 @@ class _CampusAppState extends State<CampusApp> {
                                             decoration: BoxDecoration(color: tab == it[0] && course == null ? colors.teal : Colors.transparent, borderRadius: BorderRadius.circular(16)),
                                             child: Row(
                                               children: [
-                                                Container(width: 36, height: 36, decoration: BoxDecoration(color: tab == it[0] && course == null ? Colors.white.withValues(alpha: 0.2) : colors.dustSoft, borderRadius: BorderRadius.circular(12)), child: Icon(it[2] as IconData, size: 18, color: tab == it[0] && course == null ? Colors.white : colors.tealInk)),
+                                                Container(alignment: Alignment.center, width: 36, height: 36, decoration: BoxDecoration(color: tab == it[0] && course == null ? Colors.white.withValues(alpha: 0.2) : colors.dustSoft, borderRadius: BorderRadius.circular(12)), child: Icon(it[2] as IconData, size: 18, color: tab == it[0] && course == null ? Colors.white : colors.tealInk)),
                                                 const SizedBox(width: 12),
                                                 Expanded(child: Text(it[1] as String, style: TextStyle(fontWeight: FontWeight.w600, color: tab == it[0] && course == null ? Colors.white : colors.tealInk))),
                                                 Icon(Icons.chevron_right, size: 17, color: (tab == it[0] && course == null ? Colors.white : colors.tealInk).withValues(alpha: 0.5)),
@@ -188,6 +193,7 @@ class _CampusAppState extends State<CampusApp> {
                                 Padding(
                                   padding: const EdgeInsets.all(12),
                                   child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
                                     onTap: () => setState(() { menu = false; authed = false; tab = 'home'; }),
                                     child: Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: colors.dustSoft, borderRadius: BorderRadius.circular(16)), child: Row(children: [Icon(Icons.logout, color: colors.clay), Text(' Log out', style: TextStyle(fontWeight: FontWeight.w600, color: colors.clay))])),
                                   ),
@@ -202,41 +208,48 @@ class _CampusAppState extends State<CampusApp> {
                 ),
               ),
               bottomNavigationBar: showNav
-                  ? Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 430),
-                        child: Container(
-                          padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
-                          decoration: BoxDecoration(color: colors.white, border: Border(top: BorderSide(color: colors.dustSoft))),
-                          child: SafeArea(
-                            top: false,
-                            child: Row(
-                              children: [
-                                _navItem(ctx, colors, 'material', 'Material', Icons.book_outlined),
-                                _navItem(ctx, colors, 'community', tab == 'groups' ? 'Groups' : 'Community', Icons.group_outlined, isCommunity: true),
-                                Expanded(
-                                  child: GestureDetector(
-                                    onTap: () => go('home'),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Container(
-                                          transform: Matrix4.translationValues(0, -20, 0),
-                                          width: 60, height: 60,
-                                          decoration: BoxDecoration(color: (tab == 'home' && course == null) ? colors.teal : colors.tealInk, shape: BoxShape.circle, border: Border.all(color: colors.cream2, width: 4), boxShadow: [BoxShadow(color: colors.clay, offset: const Offset(0, 6))]),
-                                          child: const Icon(Icons.home_outlined, color: Colors.white, size: 26),
+                  ? SafeArea(
+                      top: false,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Flexible(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 430),
+                              child: Container(
+                                padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+                                decoration: BoxDecoration(color: colors.white, border: Border(top: BorderSide(color: colors.dustSoft))),
+                                child: Row(
+                                  children: [
+                                    _navItem(ctx, colors, 'material', 'Material', Icons.book_outlined),
+                                    _navItem(ctx, colors, 'community', tab == 'groups' ? 'Groups' : 'Community', Icons.group_outlined, isCommunity: true),
+                                    Expanded(
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: () => go('home'),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(
+                                              alignment: Alignment.center,
+                                              transform: Matrix4.translationValues(0, -20, 0),
+                                              width: 60, height: 60,
+                                              decoration: BoxDecoration(color: (tab == 'home' && course == null) ? colors.teal : colors.tealInk, shape: BoxShape.circle, border: Border.all(color: colors.cream2, width: 4), boxShadow: [BoxShadow(color: colors.clay, offset: const Offset(0, 6))]),
+                                              child: const Icon(Icons.home_outlined, color: Colors.white, size: 26),
+                                            ),
+                                            Text('Home', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: (tab == 'home' && course == null) ? colors.tealInk : colors.tealInk.withValues(alpha: 0.55))),
+                                          ],
                                         ),
-                                        Text('Home', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: (tab == 'home' && course == null) ? colors.tealInk : colors.tealInk.withValues(alpha: 0.55))),
-                                      ],
+                                      ),
                                     ),
-                                  ),
+                                    _navItem(ctx, colors, 'web', 'Web', Icons.language_outlined),
+                                    _navItem(ctx, colors, 'profile', 'Profile', Icons.person_outline),
+                                  ],
                                 ),
-                                _navItem(ctx, colors, 'web', 'Web', Icons.language_outlined),
-                                _navItem(ctx, colors, 'profile', 'Profile', Icons.person_outline),
-                              ],
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
                     )
                   : null,
@@ -251,6 +264,7 @@ class _CampusAppState extends State<CampusApp> {
     final on = (tab == key || (isCommunity && tab == 'groups')) && course == null && chat == null;
     return Expanded(
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: () => isCommunity ? setState(() => picker = !picker) : go(key),
         child: Column(
           mainAxisSize: MainAxisSize.min,

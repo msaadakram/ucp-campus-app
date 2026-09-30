@@ -11,6 +11,7 @@ class UHead extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
+      primary: false,
       child: Stack(
         children: [
           _BandInner(height: height, fallback: null),
@@ -31,6 +32,7 @@ class _BandInner extends StatelessWidget {
     final c = app?.colors ?? fallback ?? AppColors.of(AppPalette.skater, false);
     return Container(
       height: height,
+      width: double.infinity,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topRight,
@@ -102,6 +104,7 @@ class AppToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => onChanged(!value),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),

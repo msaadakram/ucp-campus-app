@@ -33,6 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final c = AppScope.colorsOf(context);
     final hero = AppScope.paletteOf(context).heroAsset;
     return SingleChildScrollView(
+      primary: false,
       child: Column(
         children: [
         SizedBox(
@@ -67,7 +68,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                         decoration: BoxDecoration(border: kv[0] == 'Enrolled' ? null : Border(bottom: BorderSide(color: c.dustSoft))),
-                        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(kv[0], style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.55))), Text(kv[1], style: body(c, size: 14, weight: FontWeight.w600))]),
+                        child: Row(
+                          children: [
+                            Text(kv[0], style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.55))),
+                            const SizedBox(width: 12),
+                            Expanded(child: Text(kv[1], textAlign: TextAlign.right, overflow: TextOverflow.ellipsis, style: body(c, size: 14, weight: FontWeight.w600))),
+                          ],
+                        ),
                       ),
                   ],
                 ),
@@ -99,6 +106,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             child: Padding(
                               padding: const EdgeInsets.all(4),
                               child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
                                 onTap: () => _set(ProfilePrefs(theme: t.$1, palette: widget.prefs.palette, big: widget.prefs.big, motion: widget.prefs.motion)),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(vertical: 12),
@@ -117,6 +125,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         for (final p in AppPalette.values)
                           GestureDetector(
+                            behavior: HitTestBehavior.opaque,
                             onTap: () => _set(ProfilePrefs(theme: widget.prefs.theme, palette: p, big: widget.prefs.big, motion: widget.prefs.motion)),
                             child: Container(
                               decoration: BoxDecoration(border: Border.all(color: widget.prefs.palette == p ? c.teal : Colors.transparent, width: 2), borderRadius: BorderRadius.circular(16)),
@@ -199,6 +208,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 16),
               GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: widget.logout,
                 child: Container(
                   height: 56,
@@ -206,7 +216,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.logout, color: c.clay), Text(' Log out', style: display(c, size: 16, color: c.clay))]),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 96),
             ],
           ),
         ),

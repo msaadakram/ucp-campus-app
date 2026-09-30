@@ -36,6 +36,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
                         onTap: on ? () => widget.onChat(g) : null,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -49,6 +50,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
                     if (on && g.unread > 0) Container(width: 24, height: 24, decoration: BoxDecoration(color: c.clay, shape: BoxShape.circle), child: Center(child: Text('${g.unread}', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)))),
                     const SizedBox(width: 8),
                     GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () => on ? widget.onChat(g) : setState(() => joined.add(g.name)),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -60,7 +62,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
                 ),
               );
             }),
-          const SizedBox(height: 24),
+          const SizedBox(height: 96),
         ],
       ),
     );
@@ -142,7 +144,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     return Column(
       children: [
         Container(
-          padding: const EdgeInsets.fromLTRB(12, 48, 12, 12),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
           decoration: BoxDecoration(color: c.cream2, border: Border(bottom: BorderSide(color: c.dustSoft))),
           child: Row(
             children: [
@@ -182,6 +184,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                       const SizedBox(width: 6),
                       Flexible(
                         child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
                           onTap: () => setState(() => picker = picker == m.id ? null : m.id),
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -191,7 +194,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                               children: [
                                 if (!mine && first) Text(m.from, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: c.teal)),
                                 if (m.reply != null) Container(margin: const EdgeInsets.only(bottom: 6), padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: mine ? Colors.white.withValues(alpha: 0.15) : c.dustSoft.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(8), border: Border(left: BorderSide(color: mine ? c.board : c.teal, width: 4))), child: Text(m.reply!, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
-                                if (m.file != null) Container(margin: const EdgeInsets.only(bottom: 6), padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: mine ? Colors.white.withValues(alpha: 0.15) : c.dustSoft.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(12)), child: Row(children: [Container(width: 36, height: 36, decoration: BoxDecoration(color: c.clay, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.description_outlined, color: Colors.white, size: 17)), const SizedBox(width: 8), Expanded(child: Text(m.file!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)))])),
+                                if (m.file != null) Container(alignment: Alignment.center, margin: const EdgeInsets.only(bottom: 6), padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: mine ? Colors.white.withValues(alpha: 0.15) : c.dustSoft.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(12)), child: Row(children: [Container(width: 36, height: 36, decoration: BoxDecoration(color: c.clay, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.description_outlined, color: Colors.white, size: 17)), const SizedBox(width: 8), Expanded(child: Text(m.file!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)))])),
                                 if (m.poll != null)
                                   Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -203,6 +206,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                                           final total = m.poll!.votes.fold(0, (a, b) => a + b);
                                           final sel = m.poll!.voted == k;
                                           return GestureDetector(
+                                            behavior: HitTestBehavior.opaque,
                                             onTap: () => setState(() {
                                               final p = m.poll!;
                                               if (p.voted == k) { p.votes[k]--; p.voted = null; } else { if (p.voted != null) p.votes[p.voted!]--; p.votes[k]++; p.voted = k; }
@@ -214,7 +218,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                                               child: Stack(
                                                 children: [
                                                   Positioned.fill(child: FractionallySizedBox(alignment: Alignment.centerLeft, widthFactor: m.poll!.votes[k] / (total == 0 ? 1 : total), child: Container(color: c.board.withValues(alpha: 0.4)))),
-                                                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(m.poll!.opts[k], style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)), Text('${m.poll!.votes[k]}', style: const TextStyle(fontSize: 12))]),
+                                                  Row(children: [Expanded(child: Text(m.poll!.opts[k], style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)), Text('${m.poll!.votes[k]}', style: const TextStyle(fontSize: 12))]),
                                                 ],
                                               ),
                                             ),
@@ -260,6 +264,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                     for (final a in [['File', Icons.description_outlined, 0], ['Photo', Icons.camera_alt_outlined, 1], ['Poll', Icons.bar_chart_outlined, 2], ['Location', Icons.location_on_outlined, 3]])
                       Expanded(
                         child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
                           onTap: () {
                             if (a[0] == 'File') send(file: 'Lecture_07_Heaps.pdf · 1.1 MB');
                             else if (a[0] == 'Photo') send(file: 'IMG_2026_whiteboard.jpg · 840 KB');
@@ -273,7 +278,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 ),
               Row(
                 children: [
-                  GestureDetector(onTap: () => setState(() => attach = !attach), child: Container(width: 40, height: 40, decoration: BoxDecoration(color: attach ? c.tealInk : c.dustSoft, shape: BoxShape.circle), child: Icon(Icons.add, color: attach ? c.cream : c.tealInk))),
+                  GestureDetector(onTap: () => setState(() => attach = !attach), child: Container(alignment: Alignment.center, width: 40, height: 40, decoration: BoxDecoration(color: attach ? c.tealInk : c.dustSoft, shape: BoxShape.circle), child: Icon(Icons.add, color: attach ? c.cream : c.tealInk))),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Container(
@@ -284,10 +289,11 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                   ),
                   const SizedBox(width: 8),
                   GestureDetector(
+                    behavior: HitTestBehavior.opaque,
                     onTap: text.trim().isEmpty ? null : () => send(),
                     child: Opacity(
                       opacity: text.trim().isEmpty ? 0.4 : 1,
-                      child: Container(width: 44, height: 44, decoration: BoxDecoration(color: c.teal, shape: BoxShape.circle, boxShadow: [BoxShadow(color: c.clay, offset: const Offset(0, 4))]), child: const Icon(Icons.send, color: Colors.white, size: 18)),
+                      child: Container(alignment: Alignment.center, width: 44, height: 44, decoration: BoxDecoration(color: c.teal, shape: BoxShape.circle, boxShadow: [BoxShadow(color: c.clay, offset: const Offset(0, 4))]), child: const Icon(Icons.send, color: Colors.white, size: 18)),
                     ),
                   ),
                 ],

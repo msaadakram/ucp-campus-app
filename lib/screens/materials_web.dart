@@ -53,6 +53,7 @@ class _MaterialsScreenState extends State<MaterialsScreen> {
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => sel = x.code),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -87,6 +88,7 @@ class _MaterialsScreenState extends State<MaterialsScreen> {
                 for (final v in ['files', 'papers'])
                   Expanded(
                     child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => view = v),
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -113,6 +115,7 @@ class _MaterialsScreenState extends State<MaterialsScreen> {
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => kind = k),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -142,10 +145,10 @@ class _MaterialsScreenState extends State<MaterialsScreen> {
                     children: [
                       Row(
                         children: [
-                          Container(width: 48, height: 48, decoration: BoxDecoration(color: badge, borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.description_outlined, color: Colors.white)),
+                          Container(alignment: Alignment.center, width: 48, height: 48, decoration: BoxDecoration(color: badge, borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.description_outlined, color: Colors.white)),
                           const SizedBox(width: 12),
                           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${c.code} ${p[0]} · ${p[1]}', style: body(ac, size: 14, weight: FontWeight.w600)), Text(p[2] as String, style: body(ac, size: 12, color: ac.tealInk.withValues(alpha: 0.55)))])),
-                          Container(width: 40, height: 40, decoration: BoxDecoration(color: ac.dustSoft, shape: BoxShape.circle), child: Icon(Icons.download_outlined, size: 18, color: ac.tealInk)),
+                          Container(alignment: Alignment.center, width: 40, height: 40, decoration: BoxDecoration(color: ac.dustSoft, shape: BoxShape.circle), child: Icon(Icons.download_outlined, size: 18, color: ac.tealInk)),
                         ],
                       ),
                       const SizedBox(height: 10),
@@ -161,6 +164,7 @@ class _MaterialsScreenState extends State<MaterialsScreen> {
                             ),
                             const Spacer(),
                             GestureDetector(
+                              behavior: HitTestBehavior.opaque,
                               onTap: () => setState(() => ok ? done.remove(id) : done.add(id)),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -187,12 +191,12 @@ class _MaterialsScreenState extends State<MaterialsScreen> {
                     Container(width: 48, height: 48, decoration: BoxDecoration(color: bgTones[it[3] as int], borderRadius: BorderRadius.circular(12)), child: Center(child: Text(it[0] as String, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)))),
                     const SizedBox(width: 12),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(it[1] as String, style: body(ac, size: 14, weight: FontWeight.w600)), Text(it[2] as String, style: body(ac, size: 12, color: ac.tealInk.withValues(alpha: 0.55)))])),
-                    Container(width: 40, height: 40, decoration: BoxDecoration(color: ac.dustSoft, shape: BoxShape.circle), child: Icon(Icons.download_outlined, size: 18, color: ac.tealInk)),
+                    Container(alignment: Alignment.center, width: 40, height: 40, decoration: BoxDecoration(color: ac.dustSoft, shape: BoxShape.circle), child: Icon(Icons.download_outlined, size: 18, color: ac.tealInk)),
                   ],
                 ),
               ),
           ],
-          const SizedBox(height: 24),
+          const SizedBox(height: 96),
         ],
       ),
     );
@@ -240,7 +244,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
                 Icon(Icons.lock_outline, size: 16, color: c.teal),
                 const SizedBox(width: 8),
                 Expanded(child: TextField(controller: ctrl, onSubmitted: go, style: const TextStyle(fontSize: 14), decoration: const InputDecoration(border: InputBorder.none, isDense: true))),
-                GestureDetector(onTap: () => go(ctrl.text), child: Container(width: 36, height: 36, decoration: BoxDecoration(color: c.tealInk, borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.refresh, size: 16, color: Colors.white))),
+                GestureDetector(onTap: () => go(ctrl.text), child: Container(alignment: Alignment.center, width: 36, height: 36, decoration: BoxDecoration(color: c.tealInk, borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.refresh, size: 16, color: Colors.white))),
               ],
             ),
           ),
@@ -251,6 +255,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
                     onTap: () => go(s[1]),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -297,7 +302,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 96),
         ],
       ),
     );

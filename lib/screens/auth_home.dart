@@ -20,6 +20,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final c = AppScope.colorsOf(context);
     final hero = AppScope.paletteOf(context).heroAsset;
     return SingleChildScrollView(
+      primary: false,
       child: Column(
         children: [
           SizedBox(
@@ -135,8 +136,9 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             children: [
               GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: widget.onMenu,
-                child: Container(width: 44, height: 44, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.menu, color: Colors.white)),
+                child: Container(alignment: Alignment.center, width: 44, height: 44, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.menu, color: Colors.white)),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -149,6 +151,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: widget.toProfile,
                 child: Container(
                   width: 48, height: 48,
@@ -160,11 +163,14 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 20),
           Row(
             children: [
-              for (final s in const [['3.62', 'GPA'], ['11', 'Credits'], ['94%', 'Attend.']])
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: GestureDetector(
+              for (int i = 0; i < 3; i++)
+                Builder(builder: (_) {
+                  final s = [['3.62', 'GPA'], ['11', 'Credits'], ['94%', 'Attend.']][i];
+                  return Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(right: i == 2 ? 0 : 8),
+                      child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: s[1] == 'GPA' ? widget.onGpa : null,
                       child: Container(
                         padding: const EdgeInsets.all(12),
@@ -179,7 +185,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
-                ),
+                  );
+                }),
             ],
           ),
           const SizedBox(height: 20),
@@ -211,6 +218,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => filter = f),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -229,6 +237,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 children: [
                   GestureDetector(
+                    behavior: HitTestBehavior.opaque,
                     onTap: () => widget.onOpen(course),
                     child: Container(
                       padding: const EdgeInsets.all(16),
@@ -256,6 +265,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   GestureDetector(
+                    behavior: HitTestBehavior.opaque,
                     onTap: () => widget.onBoard(course),
                     child: Container(
                       margin: const EdgeInsets.symmetric(horizontal: 12),
@@ -278,7 +288,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 96),
         ],
       ),
     );
@@ -294,15 +304,16 @@ class DetailScreen extends StatelessWidget {
     final c = AppScope.colorsOf(context);
     final bg = toneBg(course.tone, c);
     return SingleChildScrollView(
+      primary: false,
       child: Column(
         children: [
         Container(
-          padding: const EdgeInsets.fromLTRB(20, 48, 20, 32),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
           decoration: BoxDecoration(color: bg, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32))),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              GestureDetector(onTap: back, child: Container(width: 40, height: 40, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.25), shape: BoxShape.circle), child: const Icon(Icons.arrow_back, color: Colors.white))),
+              GestureDetector(onTap: back, child: Container(alignment: Alignment.center, width: 40, height: 40, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.25), shape: BoxShape.circle), child: const Icon(Icons.arrow_back, color: Colors.white))),
               const SizedBox(height: 24),
               Text(course.code.toUpperCase(), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.75))),
               Text(course.title, style: display(c, size: 36, color: course.tone == CourseTone.board ? c.tealInk : Colors.white)),
@@ -348,6 +359,7 @@ class DetailScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+              const SizedBox(height: 96),
             ],
           ),
         ),

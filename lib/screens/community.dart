@@ -56,22 +56,27 @@ class _CommunityScreenState extends State<CommunityScreen> {
     final c = AppScope.colorsOf(context);
     final post = openId == null ? null : posts.firstWhere((p) => p.id == openId);
     if (post != null) return _threadView(c, post);
-    return UHead(
+    return Stack(
+      children: [
+        UHead(
       height: 112,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('r/campus', style: display(c, size: 28, color: Colors.white)),
-                  Text('4.2k students · 138 online', style: body(c, size: 14, color: Colors.white.withValues(alpha: 0.78))),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('r/campus', style: display(c, size: 28, color: Colors.white), overflow: TextOverflow.ellipsis),
+                    Text('4.2k students · 138 online', style: body(c, size: 14, color: Colors.white.withValues(alpha: 0.78)), overflow: TextOverflow.ellipsis),
+                  ],
+                ),
               ),
+              const SizedBox(width: 12),
               GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () => setState(() => composing = true),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -83,11 +88,12 @@ class _CommunityScreenState extends State<CommunityScreen> {
           ),
           const SizedBox(height: 16),
           GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => setState(() => composing = true),
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(16)),
-              child: Row(children: [const CircleAvatar(radius: 18, child: Text('A')), const SizedBox(width: 12), Text('Share something with campus…', style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.5)))]),
+              child: Row(children: [const CircleAvatar(radius: 18, child: Text('A')), const SizedBox(width: 12), Expanded(child: Text('Share something with campus…', style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.5)), overflow: TextOverflow.ellipsis))]),
             ),
           ),
           const SizedBox(height: 16),
@@ -99,6 +105,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 for (final s in ['Hot', 'New', 'Top'])
                   Expanded(
                     child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => sort = s),
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -119,6 +126,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => flair = f),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -133,10 +141,21 @@ class _CommunityScreenState extends State<CommunityScreen> {
           const SizedBox(height: 12),
           for (final p in shown) _postCard(c, p, onOpen: () => setState(() => openId = p.id)),
           if (shown.isEmpty) Center(child: Padding(padding: const EdgeInsets.all(40), child: Text('No posts with this flair yet.', style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.5))))),
-          const SizedBox(height: 24),
-          if (composing) _composer(c),
+          const SizedBox(height: 96),
         ],
       ),
+    ),
+        if (composing)
+          Positioned.fill(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Expanded(child: GestureDetector(onTap: () => setState(() => composing = false), child: Container(color: Colors.black.withValues(alpha: 0.4)))),
+                _composer(c),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
@@ -157,6 +176,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
             ],
           ),
           GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: onOpen,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -172,14 +192,19 @@ class _CommunityScreenState extends State<CommunityScreen> {
             children: [
               _votes(c, p.score, p.vote, (v) => setState(() => p.vote = p.vote == v ? 0 : v)),
               const SizedBox(width: 8),
-              GestureDetector(
-                onTap: onOpen,
-                child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: c.dustSoft.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20)), child: Row(children: [const Icon(Icons.chat_bubble_outline, size: 16), Text(' ${countComments(p.comments)}', style: const TextStyle(fontWeight: FontWeight.bold))])),
+              Flexible(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onOpen,
+                  child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: c.dustSoft.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20)), child: Row(children: [const Icon(Icons.chat_bubble_outline, size: 16), Flexible(child: Text(' ${countComments(p.comments)}', style: const TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis))])),
+                ),
               ),
               const SizedBox(width: 8),
-              Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: c.dustSoft.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20)), child: const Row(children: [Icon(Icons.share_outlined, size: 15), Text(' Share', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13))])),
+              Flexible(
+                child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: c.dustSoft.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20)), child: const Row(children: [Icon(Icons.share_outlined, size: 15), Flexible(child: Text(' Share', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis))])),
+              ),
               const Spacer(),
-              GestureDetector(onTap: () => setState(() => p.saved = !p.saved), child: Container(width: 32, height: 32, decoration: BoxDecoration(color: p.saved ? c.board : c.dustSoft.withValues(alpha: 0.7), shape: BoxShape.circle), child: Icon(Icons.bookmark_outline, size: 16, color: p.saved ? c.tealInk : c.tealInk))),
+              GestureDetector(onTap: () => setState(() => p.saved = !p.saved), child: Container(alignment: Alignment.center, width: 32, height: 32, decoration: BoxDecoration(color: p.saved ? c.board : c.dustSoft.withValues(alpha: 0.7), shape: BoxShape.circle), child: Icon(Icons.bookmark_outline, size: 16, color: p.saved ? c.tealInk : c.tealInk))),
             ],
           ),
         ],
@@ -202,7 +227,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
   Widget _threadView(AppColors c, Post post) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 48, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Column(
         children: [
           Row(children: [GestureDetector(onTap: () => setState(() { openId = null; replyTo = null; }), child: const Row(children: [Icon(Icons.arrow_back, size: 18), Text(' r/campus', style: TextStyle(fontWeight: FontWeight.w600))]))]),
@@ -244,6 +269,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   ),
                   const SizedBox(width: 8),
                   GestureDetector(
+                    behavior: HitTestBehavior.opaque,
                     onTap: () {
                       if (draft.trim().isEmpty) return;
                       setState(() {
@@ -257,7 +283,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                         draft = ''; replyTo = null;
                       });
                     },
-                    child: Container(width: 44, height: 44, decoration: BoxDecoration(color: c.teal, shape: BoxShape.circle), child: const Icon(Icons.send, color: Colors.white, size: 18)),
+                    child: Container(alignment: Alignment.center, width: 44, height: 44, decoration: BoxDecoration(color: c.teal, shape: BoxShape.circle), child: const Icon(Icons.send, color: Colors.white, size: 18)),
                   ),
                 ],
               ),
@@ -309,9 +335,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                GestureDetector(onTap: () => setState(() => composing = false), child: Container(width: 36, height: 36, decoration: BoxDecoration(color: c.dustSoft, shape: BoxShape.circle), child: const Icon(Icons.close, size: 18))),
+                GestureDetector(onTap: () => setState(() => composing = false), child: Container(alignment: Alignment.center, width: 36, height: 36, decoration: BoxDecoration(color: c.dustSoft, shape: BoxShape.circle), child: const Icon(Icons.close, size: 18))),
                 Text('Create post', style: display(c, size: 18)),
                 GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: title.trim().isEmpty ? null : () {
                     setState(() {
                       posts.insert(0, Post(id: DateTime.now().millisecondsSinceEpoch, author: 'ayaan.w', flair: fl, title: title.trim(), body: bdy.trim(), time: 'now', age: 0, score: 1));

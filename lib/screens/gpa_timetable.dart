@@ -60,10 +60,18 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('GPA calculator', style: display(c, size: 26, color: Colors.white)), Text('Relative grading · curved on class mean', style: body(c, size: 13, color: Colors.white.withValues(alpha: 0.78)))]),
-              GestureDetector(onTap: () => setState(() => help = !help), child: Container(width: 44, height: 44, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.info_outline, color: Colors.white))),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('GPA calculator', style: display(c, size: 26, color: Colors.white), overflow: TextOverflow.ellipsis),
+                    Text('Relative grading · curved on class mean', style: body(c, size: 13, color: Colors.white.withValues(alpha: 0.78)), overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              GestureDetector(onTap: () => setState(() => help = !help), child: Container(alignment: Alignment.center, width: 44, height: 44, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.info_outline, color: Colors.white))),
             ],
           ),
           const SizedBox(height: 20),
@@ -129,12 +137,13 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 96),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Courses', style: display(c, size: 20)),
               GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () => setState(() { uid++; rows.add(GpaRow(id: uid, name: 'New course', cr: 3, marks: 60, mean: 60, sd: 10)); open = uid; }),
                 child: Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: c.tealInk, borderRadius: BorderRadius.circular(20)), child: const Row(children: [Icon(Icons.add, size: 16, color: Colors.white), Text(' Add', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))])),
               ),
@@ -152,6 +161,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                 child: Column(
                   children: [
                     GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => open = on ? null : r.id),
                       child: Padding(
                         padding: const EdgeInsets.all(16),
@@ -170,17 +180,20 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                         decoration: BoxDecoration(border: Border(top: BorderSide(color: c.dustSoft))),
                         child: Column(
                           children: [
-                            TextField(controller: TextEditingController(text: r.name), onChanged: (v) => setState(() => r.name = v), decoration: InputDecoration(border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: c.dustSoft, width: 2)), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8))),
+                            TextFormField(
+                              key: ValueKey('name-${r.id}'),
+                              initialValue: r.name,
+                              onChanged: (v) => r.name = v, decoration: InputDecoration(border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: c.dustSoft, width: 2)), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8))),
                             const SizedBox(height: 12),
                             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Your marks', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)), Text('${r.marks} / 100', style: TextStyle(color: c.teal, fontWeight: FontWeight.bold, fontSize: 12))]),
                             Slider(value: r.marks.toDouble(), min: 0, max: 100, activeColor: c.teal, onChanged: (v) => setState(() => r.marks = v.round())),
                             Row(
                               children: [
-                                Expanded(child: _numBoxInt(c, 'CLASS MEAN', r.mean, 100, (v) => setState(() => r.mean = v))),
+                                Expanded(child: _numBoxInt(c, 'CLASS MEAN', r.mean, 100, (v) => setState(() => r.mean = v), keyVal: 'mean-${r.id}')),
                                 const SizedBox(width: 8),
-                                Expanded(child: _numBoxInt(c, 'STD. DEV', r.sd, 50, (v) => setState(() => r.sd = v))),
+                                Expanded(child: _numBoxInt(c, 'STD. DEV', r.sd, 50, (v) => setState(() => r.sd = v), keyVal: 'sd-${r.id}')),
                                 const SizedBox(width: 8),
-                                Expanded(child: _numBoxInt(c, 'CREDITS', r.cr, 6, (v) => setState(() => r.cr = v))),
+                                Expanded(child: _numBoxInt(c, 'CREDITS', r.cr, 6, (v) => setState(() => r.cr = v), keyVal: 'cr-${r.id}')),
                               ],
                             ),
                             const SizedBox(height: 12),
@@ -211,7 +224,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
     );
   }
 
-  Widget _numBox(AppColors c, String label, double v, double max, ValueChanged<double> set) {
+  Widget _numBox(AppColors c, String label, double v, double max, ValueChanged<double> set, {Object? keyVal}) {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(color: c.dustSoft.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(12)),
@@ -219,10 +232,11 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-          TextField(
-            controller: TextEditingController(text: v.toString()),
+          TextFormField(
+            key: ValueKey(keyVal ?? label),
+            initialValue: v.toString(),
             keyboardType: TextInputType.number,
-            onSubmitted: (s) => set(double.tryParse(s)?.clamp(0, max) ?? v),
+            onFieldSubmitted: (s) => set(double.tryParse(s)?.clamp(0, max) ?? v),
             decoration: const InputDecoration(border: InputBorder.none, isDense: true),
             style: display(c, size: 18),
           ),
@@ -231,7 +245,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
     );
   }
 
-  Widget _numBoxInt(AppColors c, String label, int v, int max, ValueChanged<int> set) {
+  Widget _numBoxInt(AppColors c, String label, int v, int max, ValueChanged<int> set, {Object? keyVal}) {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(color: c.dustSoft.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(12)),
@@ -239,10 +253,11 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-          TextField(
-            controller: TextEditingController(text: '$v'),
+          TextFormField(
+            key: ValueKey(keyVal ?? label),
+            initialValue: '$v',
             keyboardType: TextInputType.number,
-            onSubmitted: (s) => set(int.tryParse(s)?.clamp(0, max) ?? v),
+            onFieldSubmitted: (s) => set(int.tryParse(s)?.clamp(0, max) ?? v),
             decoration: const InputDecoration(border: InputBorder.none, isDense: true),
             style: display(c, size: 18),
           ),
@@ -321,7 +336,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Timetable', style: display(c, size: 28, color: Colors.white)), Text('Fall 2026 · Week 7', style: body(c, size: 14, color: Colors.white.withValues(alpha: 0.78)))]),
-              GestureDetector(onTap: () => setState(() => grid = !grid), child: Container(width: 44, height: 44, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(16)), child: Icon(grid ? Icons.list : Icons.grid_view_outlined, color: Colors.white))),
+              GestureDetector(onTap: () => setState(() => grid = !grid), child: Container(alignment: Alignment.center, width: 44, height: 44, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(16)), child: Icon(grid ? Icons.list : Icons.grid_view_outlined, color: Colors.white))),
             ],
           ),
           const SizedBox(height: 20),
@@ -332,6 +347,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                   child: Padding(
                     padding: EdgeInsets.only(right: i == 4 ? 0 : 8),
                     child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() { day = i; grid = false; }),
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -343,7 +359,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 96),
           if (grid)
             Container(
               padding: const EdgeInsets.all(12),
@@ -369,6 +385,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                     Positioned(
                                       top: (s.start - 9) * 44, height: (s.end - s.start) * 44 - 2, left: 2, right: 2,
                                       child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
                                         onTap: () => setState(() { day = d; grid = false; }),
                                         child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: toneBg(sub(s.code).tone, c), borderRadius: BorderRadius.circular(8)), child: Text('${s.code}\n${s.kind}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white))),
                                       ),
@@ -385,8 +402,11 @@ class _TimetableScreenState extends State<TimetableScreen> {
             )
           else ...[
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [Text(dayLong[day], style: display(c, size: 20)), Text('${list.length} classes · ${hours}h', style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.55)))],
+              children: [
+                Flexible(child: Text(dayLong[day], style: display(c, size: 20), overflow: TextOverflow.ellipsis)),
+                const SizedBox(width: 8),
+                Text('${list.length} classes · ${hours}h', style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.55))),
+              ],
             ),
             const SizedBox(height: 16),
             for (final s in list)
@@ -420,7 +440,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                     Row(
                                       children: [
                                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${s.code} · ${s.kind}'.toUpperCase(), style: const TextStyle(fontSize: 12, color: Colors.white70)), Text(cc.title, style: display(c, size: 17, color: cc.tone == CourseTone.board ? c.tealInk : Colors.white))])),
-                                        GestureDetector(onTap: () => setState(() => on ? remind.remove(id) : remind.add(id),), child: Container(width: 36, height: 36, decoration: BoxDecoration(color: on ? Colors.white : Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle), child: Icon(Icons.notifications_outlined, size: 16, color: on ? c.tealInk : Colors.white))),
+                                        GestureDetector(onTap: () => setState(() => on ? remind.remove(id) : remind.add(id),), child: Container(alignment: Alignment.center, width: 36, height: 36, decoration: BoxDecoration(color: on ? Colors.white : Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle), child: Icon(Icons.notifications_outlined, size: 16, color: on ? c.tealInk : Colors.white))),
                                       ],
                                     ),
                                     const SizedBox(height: 8),

@@ -65,6 +65,7 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
                   child: Row(children: [Text('Challan #  ', style: body(c, size: 12, color: c.tealInk.withValues(alpha: 0.55))), Expanded(child: Text(currentChallan.id, style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w600, fontSize: 13))), Text('Copy', style: body(c, size: 13, weight: FontWeight.bold, color: c.teal))]),
                 ),
                 GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: () => setState(() => open = !open),
                   child: Padding(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Fee breakdown', style: TextStyle(fontWeight: FontWeight.bold)), Icon(open ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down)])),
                 ),
@@ -74,7 +75,7 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
                     child: Column(
                       children: [
                         for (final it in currentChallan.items)
-                          Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(it.key, style: TextStyle(color: c.tealInk.withValues(alpha: 0.65))), Text(it.value < 0 ? '− ${rs(-it.value)}' : rs(it.value), style: TextStyle(fontWeight: FontWeight.w600, color: it.value < 0 ? c.teal : c.tealInk))])),
+                          Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [Expanded(child: Text(it.key, style: TextStyle(color: c.tealInk.withValues(alpha: 0.65)))), const SizedBox(width: 8), Text(it.value < 0 ? '− ${rs(-it.value)}' : rs(it.value), style: TextStyle(fontWeight: FontWeight.w600, color: it.value < 0 ? c.teal : c.tealInk))])),
                         Container(padding: const EdgeInsets.only(top: 8), decoration: BoxDecoration(border: Border(top: BorderSide(color: c.dustSoft))), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Payable', style: TextStyle(fontWeight: FontWeight.bold)), Text(rs(amt), style: const TextStyle(fontWeight: FontWeight.bold))])),
                       ],
                     ),
@@ -88,6 +89,7 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
             const SizedBox(height: 12),
             for (final m in [['bank', 'Bank branch', 'HBL, MCB, Meezan', Icons.account_balance_outlined], ['wallet', 'JazzCash / Easypaisa', 'Pay with mobile wallet', Icons.smartphone_outlined], ['card', 'Debit / credit card', 'Visa, Mastercard', Icons.credit_card_outlined]])
               GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () => setState(() => method = m[0] as String),
                 child: Container(
                   margin: const EdgeInsets.only(bottom: 8),
@@ -95,7 +97,7 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
                   decoration: BoxDecoration(color: c.white, border: Border.all(color: method == m[0] ? c.teal : Colors.transparent, width: 2), borderRadius: BorderRadius.circular(16)),
                   child: Row(
                     children: [
-                      Container(width: 44, height: 44, decoration: BoxDecoration(color: method == m[0] ? c.teal : c.dustSoft, borderRadius: BorderRadius.circular(12)), child: Icon(m[3] as IconData, color: method == m[0] ? Colors.white : c.tealInk)),
+                      Container(alignment: Alignment.center, width: 44, height: 44, decoration: BoxDecoration(color: method == m[0] ? c.teal : c.dustSoft, borderRadius: BorderRadius.circular(12)), child: Icon(m[3] as IconData, color: method == m[0] ? Colors.white : c.tealInk)),
                       const SizedBox(width: 12),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(m[1] as String, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), Text(m[2] as String, style: TextStyle(fontSize: 12, color: c.tealInk.withValues(alpha: 0.55)))])),
                       Container(width: 20, height: 20, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: method == m[0] ? c.teal : c.dustSoft, width: 2), color: method == m[0] ? c.teal : null), child: method == m[0] ? const Center(child: SizedBox(width: 8, height: 8, child: DecoratedBox(decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle)))) : null),
@@ -106,7 +108,7 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
             const SizedBox(height: 8),
             Row(
               children: [
-                Container(width: 56, height: 56, decoration: BoxDecoration(color: c.dustSoft, borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.download_outlined)),
+                Container(alignment: Alignment.center, width: 56, height: 56, decoration: BoxDecoration(color: c.dustSoft, borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.download_outlined)),
                 const SizedBox(width: 8),
                 Expanded(child: ClayButton(label: paying ? 'Processing…' : method == 'bank' ? 'Generate bank voucher' : 'Pay ${rs(amt)}', colors: c, onPressed: paying ? null : pay)),
               ],
@@ -122,16 +124,16 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
               decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(16)),
               child: Row(
                 children: [
-                  Container(width: 44, height: 44, decoration: BoxDecoration(color: c.board.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.receipt_outlined, size: 19)),
+                  Container(alignment: Alignment.center, width: 44, height: 44, decoration: BoxDecoration(color: c.board.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.receipt_outlined, size: 19)),
                   const SizedBox(width: 12),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(ch.term, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14), overflow: TextOverflow.ellipsis), Text('Paid ${ch.paid}', style: TextStyle(fontSize: 12, color: (ch.paid ?? '').contains('late') ? c.clay : c.tealInk.withValues(alpha: 0.55)))])),
                   Text(rs(challanTotal(ch)), style: const TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(width: 8),
-                  Container(width: 36, height: 36, decoration: BoxDecoration(color: c.dustSoft, shape: BoxShape.circle), child: const Icon(Icons.download_outlined, size: 16)),
+                  Container(alignment: Alignment.center, width: 36, height: 36, decoration: BoxDecoration(color: c.dustSoft, shape: BoxShape.circle), child: const Icon(Icons.download_outlined, size: 16)),
                 ],
               ),
             ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 96),
         ],
       ),
     );
@@ -170,7 +172,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         children: [
           Row(
             children: [
-              GestureDetector(onTap: widget.back, child: Container(width: 44, height: 44, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.arrow_back, color: Colors.white))),
+              GestureDetector(onTap: widget.back, child: Container(alignment: Alignment.center, width: 44, height: 44, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.arrow_back, color: Colors.white))),
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Leaderboard', style: display(c, size: 22, color: Colors.white)), Text('$code · ${sub.title}', style: body(c, size: 13, color: Colors.white.withValues(alpha: 0.78),)) ])),
             ],
@@ -184,6 +186,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => code = x.code),
                       child: Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: code == x.code ? Colors.white : Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)), child: Text(x.code, style: TextStyle(fontWeight: FontWeight.bold, color: code == x.code ? c.tealInk : Colors.white))),
                     ),
@@ -232,6 +235,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 for (final m in ['Overall', 'Quizzes', 'Assignments', 'Attendance'])
                   Expanded(
                     child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => metric = m),
                       child: Container(padding: const EdgeInsets.symmetric(vertical: 8), decoration: BoxDecoration(color: metric == m ? c.tealInk : Colors.transparent, borderRadius: BorderRadius.circular(20)), child: Center(child: Text(m, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: metric == m ? c.cream : c.tealInk.withValues(alpha: 0.6))))),
                     ),
@@ -276,7 +280,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               );
             }),
           Center(child: Padding(padding: const EdgeInsets.all(16), child: Text('Updated weekly by ${sub.prof}', style: body(c, size: 12, color: c.tealInk.withValues(alpha: 0.5))))),
-          const SizedBox(height: 24),
+          const SizedBox(height: 96),
         ],
       ),
     );
