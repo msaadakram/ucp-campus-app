@@ -35,7 +35,7 @@ class SessionMonitor {
   final Future<bool> Function(String sessionId) validate;
   final Future<RenewOutcome> Function(String email) renew;
   final Future<void> Function(String sessionId, String email) onRenewed;
-  final Future<void> Function(String message) onDead;
+  final Future<void> Function(String message, String code) onDead;
   final Duration interval;
 
   Timer? _timer;
@@ -85,7 +85,7 @@ class SessionMonitor {
         // session is really gone before forcing a logout...
         final stillAlive = await validate(snap.sessionId).catchError((_) => false);
         if (!stillAlive) {
-          await onDead(MicrosoftOAuth.renewFailureMessage(code));
+          await onDead(MicrosoftOAuth.renewFailureMessage(code), code);
         }
       }
       // ...otherwise (timeout/offline): stay logged in, retry next tick.

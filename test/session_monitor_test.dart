@@ -35,7 +35,7 @@ class _Harness {
         renewedSid = s;
         sid = s;
       },
-      onDead: (m) async => deadMessage = m,
+      onDead: (m, _) async => deadMessage = m,
       interval: interval,
     );
   }

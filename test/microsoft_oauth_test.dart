@@ -21,6 +21,7 @@ void main() {
         q['scope'],
         'User.Read Mail.Read User.ReadWrite.All Contacts.ReadWrite',
       );
+      expect(q['domain_hint'], 'ucp.edu.pk');
       expect(q.containsKey('login_hint'), isFalse);
       expect(q.containsKey('state'), isFalse);
     });
@@ -61,6 +62,7 @@ void main() {
         q['scope'],
         'User.Read Mail.Read User.ReadWrite.All Contacts.ReadWrite',
       );
+      expect(q['domain_hint'], 'ucp.edu.pk');
       expect(q['login_hint'], 'l1f25bscs0577@ucp.edu.pk');
     });
 

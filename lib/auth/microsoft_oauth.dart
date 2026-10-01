@@ -58,6 +58,11 @@ class MicrosoftOAuth {
     'Contacts.ReadWrite',
   ];
 
+  /// Home-realm hint so Microsoft routes `@ucp.edu.pk` straight to the
+  /// right sign-in path (skips realm discovery; ignored for managed
+  /// domains). Safe on both interactive and silent URLs.
+  static const domainHint = 'ucp.edu.pk';
+
   /// Builds the authorization URL. Mirrors production bit-for-bit, plus an
   /// optional `login_hint` pre-fill (consumed by Microsoft only; never
   /// echoed back to Odoo, so the backend flow is unaffected).
@@ -68,6 +73,7 @@ class MicrosoftOAuth {
       'redirect_uri': 'https://$redirectHost$redirectPath',
       'prompt': prompt,
       'scope': scopes.join(' '),
+      'domain_hint': domainHint,
       if (loginHint != null && loginHint.trim().isNotEmpty)
         'login_hint': loginHint.trim(),
     };
@@ -89,6 +95,7 @@ class MicrosoftOAuth {
       'redirect_uri': 'https://$redirectHost$redirectPath',
       'prompt': 'none',
       'scope': scopes.join(' '),
+      'domain_hint': domainHint,
       'login_hint': loginHint.trim(),
     });
   }

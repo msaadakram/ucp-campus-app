@@ -11,12 +11,15 @@ import 'common.dart';
 /// usable offline until the next automatic retry.
 class SessionExpiredDialog extends StatelessWidget {
   final String message;
+  /// Raw failure code (e.g. `login_required`) shown tiny for diagnosis.
+  final String? detail;
   final VoidCallback onLoginNow;
   final VoidCallback onLater;
 
   const SessionExpiredDialog({
     super.key,
     required this.message,
+    this.detail,
     required this.onLoginNow,
     required this.onLater,
   });
@@ -85,6 +88,18 @@ class SessionExpiredDialog extends StatelessWidget {
                   fontSize: 16,
                   onPressed: onLoginNow,
                 ),
+                if (detail != null && detail!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'diagnostic: $detail',
+                    style: body(
+                      c,
+                      size: 11,
+                      color: c.tealInk.withValues(alpha: 0.45),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
                 const SizedBox(height: 8),
                 TextButton(
                   onPressed: onLater,

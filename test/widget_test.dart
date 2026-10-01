@@ -122,6 +122,7 @@ void main() {
           home: Scaffold(
             body: SessionExpiredDialog(
               message: 'Your portal session expired.',
+              detail: 'login_required',
               onLoginNow: () => loginNow = true,
               onLater: () => later = true,
             ),
@@ -133,6 +134,7 @@ void main() {
     expect(find.text('Session expired'), findsOneWidget);
     expect(find.text('Your portal session expired.'), findsOneWidget);
     expect(find.textContaining('laptop'), findsOneWidget);
+    expect(find.textContaining('login_required'), findsOneWidget);
     await tester.tap(find.text('Login here now'));
     await tester.pumpAndSettle();
     expect(loginNow, isTrue);

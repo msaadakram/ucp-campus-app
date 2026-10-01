@@ -206,6 +206,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         authed = true;
         _expiredForSid = null;
         _expiredMessage = null;
+        _expiredCode = null;
       });
       _startMonitor();
       _loadDashboard();
@@ -278,11 +279,12 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           sessionEmail = email;
           _expiredForSid = null;
           _expiredMessage = null;
+          _expiredCode = null;
         });
         _flashHealNotice();
         if (widget.authHooks == null) _loadDashboard();
       },
-      onDead: (message) => _handleSessionDead(message),
+      onDead: (message, code) => _handleSessionDead(message, code),
       interval: widget.authHooks?.monitorInterval ?? SessionMonitor.heartbeat,
     );
     _monitor = monitor;
@@ -304,6 +306,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// [_expiredForSid] stops the popup re-firing for the same dead session
   /// on every 30 s tick; it resets on the next successful authentication.
   String? _expiredMessage;
+  String? _expiredCode;
   String? _expiredForSid;
 
   /// Mounts the hidden `prompt=none` WebView and resolves with the renewed
@@ -334,13 +337,14 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// The watchdog proved the portal session dead and silent renewal failed:
   /// show the "someone logged in elsewhere?" popup instead of silently
   /// dumping the user to the login screen.
-  Future<void> _handleSessionDead(String message) async {
+  Future<void> _handleSessionDead(String message, String code) async {
     if (!mounted || !authed || oauthEmail != null) return;
     final sid = sessionId;
     if (sid != null && _expiredForSid == sid) return; // already notified
     setState(() {
       _expiredForSid = sid;
       _expiredMessage = message;
+      _expiredCode = code;
     });
   }
 
@@ -380,6 +384,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       oauthEmail = null;
       authError = message;
       _expiredMessage = null;
+      _expiredCode = null;
       _expiredForSid = null;
       dashboard = null;
       tab = 'home';
@@ -496,6 +501,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                         authed = true;
                                         _expiredForSid = null;
                                         _expiredMessage = null;
+                                        _expiredCode = null;
                                       });
                                       _startMonitor();
                                       _loadDashboard();
@@ -648,6 +654,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                         Positioned.fill(
                           child: SessionExpiredDialog(
                             message: _expiredMessage!,
+                            detail: _expiredCode,
                             onLoginNow: _reloginNow,
                             onLater: () => setState(
                                 () => _expiredMessage = null),
