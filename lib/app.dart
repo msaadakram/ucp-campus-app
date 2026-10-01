@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'auth/odoo_api.dart';
+import 'auth/microsoft_oauth.dart';
 import 'auth/session_manager.dart';
 import 'auth/session_store.dart';
 import 'data/seed.dart';
@@ -48,6 +49,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   String? _silentEmail;
   int _silentRunId = 0;
   Completer<String?>? _silentCompleter;
+  /// Microsoft error / 'timeout' / 'no_session' from the last silent run.
+  String? _silentFailCode;
 
   @override
   void initState() {
@@ -80,8 +83,12 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
 
   /// Resume a previously stored portal session: fresh sessions are validated
   /// directly, stale ones are silently renewed first — this is the auto-login.
+  /// If silent renewal reports the Microsoft session dead, the login screen
+  /// explains that a fresh sign-in is needed (roughly monthly).
   Future<void> _restoreSession() async {
-    final manager = SessionManager(store: SessionStore(), api: OdooApi());
+    final store = SessionStore();
+    if (await store.load() == null) return; // first launch ever: no message
+    final manager = SessionManager(store: store, api: OdooApi());
     try {
       final valid = await manager.ensureValidSession(renew: _renewViaWebView);
       if (!mounted) return;
@@ -91,7 +98,13 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         authed = true;
       });
     } on AuthRequired {
-      await SessionStore().clear();
+      await store.clear();
+      if (!mounted) return;
+      setState(() {
+        authError = MicrosoftOAuth.renewFailureMessage(
+          _silentFailCode ?? 'login_required',
+        );
+      });
     } catch (_) {
       // Offline etc: stay on the login screen; user retries by opening app.
     }
@@ -104,13 +117,30 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     if (saved == null || !mounted) return;
     final manager = SessionManager(store: store, api: OdooApi());
     if (!manager.isStale(await store.savedAtMs(), DateTime.now())) return;
+    String? fresh;
     try {
-      final fresh = await _renewViaWebView(saved.email);
-      if (fresh == null || !mounted) return;
+      fresh = await _renewViaWebView(saved.email);
+    } catch (_) {
+      fresh = null;
+      _silentFailCode ??= 'timeout';
+    }
+    if (!mounted) return;
+    if (fresh != null && fresh.isNotEmpty) {
       await store.save(sessionId: fresh, email: saved.email);
       setState(() => sessionId = fresh);
-    } catch (_) {
-      if (!background && mounted) await _logout();
+      return;
+    }
+    // Renewal failed. Soft failures (timeout/offline) keep the old session
+    // and retry later. A dead Microsoft session only forces logout when the
+    // old Horizon session is dead too.
+    final code = _silentFailCode ?? 'timeout';
+    if (MicrosoftOAuth.isInteractionError(code) || code == 'no_session') {
+      final stillValid =
+          await OdooApi().isSessionValid(saved.sessionId).catchError((_) => false);
+      if (!mounted) return;
+      if (!stillValid) {
+        await _logout(message: MicrosoftOAuth.renewFailureMessage(code));
+      }
     }
   }
 
@@ -127,7 +157,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     return completer.future;
   }
 
-  void _finishSilentRenew(String? sessionId) {
+  void _finishSilentRenew(String? sessionId, {String? failCode}) {
+    if (failCode != null) _silentFailCode = failCode;
     final completer = _silentCompleter;
     _silentCompleter = null;
     if (mounted) setState(() => _silentEmail = null); // unmounts WebView
@@ -138,7 +169,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
 
   void go(String t) => setState(() { tab = t; course = null; picker = false; menu = false; chat = null; });
 
-  Future<void> _logout() async {
+  Future<void> _logout({String? message}) async {
     _finishSilentRenew(null); // abort any background renewal
     await SessionStore().clear();
     try {
@@ -150,7 +181,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       sessionId = null;
       sessionEmail = null;
       oauthEmail = null;
-      authError = null;
+      authError = message;
       tab = 'home';
       menu = false;
     });
@@ -275,9 +306,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                             child: SilentRenewWebView(
                               key: ValueKey('silent-$_silentRunId'),
                               email: _silentEmail!,
-                              onRenewed: _finishSilentRenew,
-                              onInteractionRequired: () =>
-                                  _finishSilentRenew(null),
+                              onRenewed: (sid) =>
+                                  _finishSilentRenew(sid),
+                              onInteractionRequired: (code) =>
+                                  _finishSilentRenew(null,
+                                      failCode: code),
                             ),
                           ),
                         ),

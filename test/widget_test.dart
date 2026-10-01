@@ -52,4 +52,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('My courses'), findsOneWidget);
   });
+
+  testWidgets('login screen shows the re-sign-in notice when provided',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LoginScreen(
+            onMicrosoftSignIn: (_) {},
+            authError: 'Your Microsoft sign-in expired. Please sign in again.',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('expired'), findsOneWidget);
+  });
 }

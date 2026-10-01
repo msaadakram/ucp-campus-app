@@ -76,6 +76,29 @@ void main() {
       expect(MicrosoftOAuth.isInteractionError('access_denied'), isFalse);
       expect(MicrosoftOAuth.isInteractionError('invalid_request'), isFalse);
     });
+
+    test('renew failure messages guide the user back to sign-in', () {
+      expect(
+        MicrosoftOAuth.renewFailureMessage('login_required'),
+        contains('expired'),
+      );
+      expect(
+        MicrosoftOAuth.renewFailureMessage('interaction_required'),
+        contains('sign in again'),
+      );
+      expect(
+        MicrosoftOAuth.renewFailureMessage('timeout'),
+        contains('connection'),
+      );
+      expect(
+        MicrosoftOAuth.renewFailureMessage('no_session'),
+        contains('portal'),
+      );
+      expect(
+        MicrosoftOAuth.renewFailureMessage('weird_code'),
+        contains('weird_code'),
+      );
+    });
   });
 
   group('URL classifiers', () {

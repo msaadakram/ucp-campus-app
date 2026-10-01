@@ -103,6 +103,26 @@ class MicrosoftOAuth {
     }.contains(code);
   }
 
+  /// User-facing message when a silent renewal fails.
+  ///
+  /// [code] is the Microsoft error, `'timeout'` when Microsoft never
+  /// answered, or `'no_session'` when Odoo consumed the code but issued no
+  /// session cookie.
+  static String renewFailureMessage(String code) {
+    if (isInteractionError(code)) {
+      return 'Your Microsoft sign-in expired (about a month old). '
+          'Please sign in again — then you are silent for another month.';
+    }
+    switch (code) {
+      case 'timeout':
+        return 'Could not reach Microsoft. Check your connection and try again.';
+      case 'no_session':
+        return 'The portal did not create a session. Please sign in again.';
+      default:
+        return 'Automatic sign-in failed ($code). Please sign in again.';
+    }
+  }
+
   static bool isMicrosoftHost(Uri uri) =>
       uri.host.toLowerCase() == authorityHost;
 

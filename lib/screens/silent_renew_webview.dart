@@ -16,7 +16,9 @@ import '../auth/odoo_api.dart';
 class SilentRenewWebView extends StatefulWidget {
   final String email;
   final void Function(String sessionId) onRenewed;
-  final VoidCallback onInteractionRequired;
+  /// Called with the Microsoft error code, `'timeout'`, or `'no_session'`
+  /// when silent renewal cannot complete.
+  final void Function(String code) onInteractionRequired;
   final Duration timeout;
 
   const SilentRenewWebView({
@@ -38,6 +40,7 @@ class _SilentRenewWebViewState extends State<SilentRenewWebView> {
   Timer? _timer;
   bool _done = false;
   bool _busy = false;
+  bool _sawCallback = false;
 
   @override
   void initState() {
@@ -48,7 +51,7 @@ class _SilentRenewWebViewState extends State<SilentRenewWebView> {
         NavigationDelegate(onUrlChange: _onUrl),
       )
       ..loadRequest(MicrosoftOAuth.buildSilentUrl(loginHint: widget.email));
-    _timer = Timer(widget.timeout, () => _finish(interaction: true));
+    _timer = Timer(widget.timeout, () => _finish(code: 'timeout'));
   }
 
   @override
@@ -58,14 +61,14 @@ class _SilentRenewWebViewState extends State<SilentRenewWebView> {
     super.dispose();
   }
 
-  void _finish({required bool interaction, String? sessionId}) {
+  void _finish({String? sessionId, String? code}) {
     if (_done || !mounted) return;
     _done = true;
     _timer?.cancel();
-    if (interaction || sessionId == null) {
-      widget.onInteractionRequired();
-    } else {
+    if (sessionId != null) {
       widget.onRenewed(sessionId);
+    } else {
+      widget.onInteractionRequired(code ?? 'no_session');
     }
   }
 
@@ -78,7 +81,9 @@ class _SilentRenewWebViewState extends State<SilentRenewWebView> {
       // Any error under prompt=none means "ask the user" — including
       // access_denied. A code is consumed by Odoo; the landing follows.
       if (outcome['status'] == 'error') {
-        _finish(interaction: true);
+        _finish(code: outcome['value']);
+      } else {
+        _sawCallback = true;
       }
       return;
     }
@@ -98,7 +103,10 @@ class _SilentRenewWebViewState extends State<SilentRenewWebView> {
         }
       }
       if (sessionId != null && await _api.isSessionValid(sessionId)) {
-        _finish(interaction: false, sessionId: sessionId);
+        _finish(sessionId: sessionId);
+      } else if (_sawCallback && mounted) {
+        // Odoo consumed the code but produced no usable session.
+        _finish(code: 'no_session');
       }
       // Else: keep waiting for the landing/cookie (or the timeout).
     } catch (_) {
