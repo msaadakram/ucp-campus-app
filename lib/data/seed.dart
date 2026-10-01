@@ -95,7 +95,7 @@ List<BoardEntry> board(String code, String metric) {
 
 // ---- Community ----
 class CComment {
-  final int id;
+  final String id;
   final String author;
   final String text;
   final String time;
@@ -106,7 +106,7 @@ class CComment {
 }
 
 class Post {
-  final int id;
+  final String id;
   final String author;
   final String flair;
   final String title;
@@ -116,8 +116,9 @@ class Post {
   int score;
   int vote;
   bool saved;
+  final String? imageUrl;
   final List<CComment> comments;
-  Post({required this.id, required this.author, required this.flair, required this.title, required this.body, required this.time, required this.age, required this.score, this.vote = 0, this.saved = false, List<CComment>? comments}) : comments = comments ?? [];
+  Post({required this.id, required this.author, required this.flair, required this.title, required this.body, required this.time, required this.age, required this.score, this.vote = 0, this.saved = false, this.imageUrl, List<CComment>? comments}) : comments = comments ?? [];
 }
 
 int countComments(List<CComment> cs) => cs.fold(0, (n, x) => n + 1 + countComments(x.replies));

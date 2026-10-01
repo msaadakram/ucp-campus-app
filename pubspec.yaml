@@ -36,6 +36,8 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   http: ^1.2.2
   html: ^0.15.4
+  supabase_flutter: ^2.8.0
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:

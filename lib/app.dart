@@ -11,6 +11,10 @@ import 'auth/portal_api.dart';
 import 'auth/session_manager.dart';
 import 'auth/session_monitor.dart';
 import 'auth/session_store.dart';
+import 'community/community_service.dart';
+import 'community/fake_community_service.dart';
+import 'community/supabase_config.dart';
+import 'community/supabase_service.dart';
 import 'data/seed.dart';
 import 'screens/auth_home.dart';
 import 'screens/community.dart';
@@ -95,9 +99,22 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// screen shows a short "Signing you in…" animation instead of the form.
   bool _restoring = false;
 
+  /// Community backend, chosen once: live Supabase when configured,
+  /// seeded fake in widget-test modes, null (= setup notice) otherwise.
+  CommunityService? _community;
+
   /// Foreground liveness watchdog. Never started in `skipLogin` test mode
   /// (real timers + real network would hang widget tests).
   SessionMonitor? _monitor;
+
+  CommunityService? _communityService() {
+    _community ??= isSupabaseConfigured
+        ? SupabaseCommunityService()
+        : ((widget.skipLogin || widget.authHooks != null)
+            ? FakeCommunityService()
+            : null);
+    return _community;
+  }
 
   /// Brief "session refreshed" banner after a silent heal. Auto-dismissed.
   bool _healNotice = false;
@@ -146,6 +163,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   void dispose() {
     _healTimer?.cancel();
     _monitor?.stop();
+    _community?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -412,7 +430,10 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           screen = const MaterialsScreen();
           break;
         case 'community':
-          screen = const CommunityScreen();
+          screen = CommunityScreen(
+            service: _communityService(),
+            myEmail: sessionEmail ?? '',
+          );
           break;
         case 'groups':
           screen = GroupsScreen(onChat: (g) => setState(() => chat = g));
