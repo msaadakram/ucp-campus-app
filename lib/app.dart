@@ -19,6 +19,7 @@ import 'screens/materials_web.dart';
 import 'screens/oauth_webview.dart';
 import 'screens/profile.dart';
 import 'screens/silent_renew_webview.dart';
+import 'widgets/session_expired_dialog.dart';
 import 'theme/palette.dart';
 import 'widgets/common.dart';
 
@@ -116,6 +117,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         sessionId = valid.sessionId;
         sessionEmail = valid.email;
         authed = true;
+        _expiredForSid = null;
+        _expiredMessage = null;
       });
       _startMonitor();
       _loadDashboard();
@@ -173,14 +176,22 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         setState(() {
           sessionId = sid;
           sessionEmail = email;
+          _expiredForSid = null;
+          _expiredMessage = null;
         });
         _loadDashboard();
       },
-      onDead: (message) => _logout(message: message),
+      onDead: (message) => _handleSessionDead(message),
     );
     _monitor = monitor;
     monitor.start();
   }
+
+  /// Popup state for a session that died mid-use (laptop login, timeout).
+  /// [_expiredForSid] stops the popup re-firing for the same dead session
+  /// on every 30 s tick; it resets on the next successful authentication.
+  String? _expiredMessage;
+  String? _expiredForSid;
 
   /// Mounts the hidden `prompt=none` WebView and resolves with the renewed
   /// `session_id`, or null when the user must sign in interactively.
@@ -207,6 +218,38 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
 
   void go(String t) => setState(() { tab = t; course = null; picker = false; menu = false; chat = null; });
 
+  /// The watchdog proved the portal session dead and silent renewal failed:
+  /// show the "someone logged in elsewhere?" popup instead of silently
+  /// dumping the user to the login screen.
+  Future<void> _handleSessionDead(String message) async {
+    if (!mounted || !authed || oauthEmail != null) return;
+    final sid = sessionId;
+    if (sid != null && _expiredForSid == sid) return; // already notified
+    setState(() {
+      _expiredForSid = sid;
+      _expiredMessage = message;
+    });
+  }
+
+  /// "Login here now": keep the (still valid) Microsoft cookies, drop only
+  /// the dead Horizon session, and open the interactive sign-in. A fresh
+  /// success clears the popup guard.
+  Future<void> _reloginNow() async {
+    final email =
+        sessionEmail ?? await SessionStore().readEmail() ?? '';
+    await SessionStore().clear();
+    if (!mounted) return;
+    setState(() {
+      sessionId = null;
+      authed = false;
+      oauthEmail = email.isNotEmpty ? email : null;
+      authError = null;
+      _expiredMessage = null;
+      tab = 'home';
+      menu = false;
+    });
+  }
+
   Future<void> _logout({String? message}) async {
     _monitor?.stop();
     _finishSilentRenew(null); // abort any background renewal
@@ -221,6 +264,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       sessionEmail = null;
       oauthEmail = null;
       authError = message;
+      _expiredMessage = null;
+      _expiredForSid = null;
       dashboard = null;
       tab = 'home';
       menu = false;
@@ -315,6 +360,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                         oauthEmail = null;
                                         authError = null;
                                         authed = true;
+                                        _expiredForSid = null;
+                                        _expiredMessage = null;
                                       });
                                       _startMonitor();
                                       _loadDashboard();
@@ -458,6 +505,19 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                           ),
                         ),
                       ],
+                      // Dead-session popup sits above menu/picker: "someone
+                      // logged in elsewhere?" + Login-here-now option.
+                      if (authed &&
+                          oauthEmail == null &&
+                          _expiredMessage != null)
+                        Positioned.fill(
+                          child: SessionExpiredDialog(
+                            message: _expiredMessage!,
+                            onLoginNow: _reloginNow,
+                            onLater: () => setState(
+                                () => _expiredMessage = null),
+                          ),
+                        ),
                     ],
                   ),
                 ),

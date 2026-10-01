@@ -6,6 +6,7 @@ import 'package:ucp/auth/dashboard_parser.dart';
 import 'package:ucp/screens/auth_home.dart';
 import 'package:ucp/theme/palette.dart';
 import 'package:ucp/widgets/common.dart';
+import 'package:ucp/widgets/session_expired_dialog.dart';
 
 void main() {
   testWidgets('Campus app boots to UCP login', (WidgetTester tester) async {
@@ -70,6 +71,39 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('expired'), findsOneWidget);
+  });
+
+  testWidgets('session-expired popup offers login-here-now and later',
+      (WidgetTester tester) async {
+    var loginNow = false;
+    var later = false;
+    final colors = AppColors.of(AppPalette.skater, false);
+    await tester.pumpWidget(
+      AppScope(
+        colors: colors,
+        palette: AppPalette.skater,
+        child: MaterialApp(
+          home: Scaffold(
+            body: SessionExpiredDialog(
+              message: 'Your portal session expired.',
+              onLoginNow: () => loginNow = true,
+              onLater: () => later = true,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Session expired'), findsOneWidget);
+    expect(find.text('Your portal session expired.'), findsOneWidget);
+    expect(find.textContaining('laptop'), findsOneWidget);
+    await tester.tap(find.text('Login here now'));
+    await tester.pumpAndSettle();
+    expect(loginNow, isTrue);
+    expect(later, isFalse);
+    await tester.tap(find.text('Later'));
+    await tester.pumpAndSettle();
+    expect(later, isTrue);
   });
 
   testWidgets('home shows live dashboard name, stats and badge',
