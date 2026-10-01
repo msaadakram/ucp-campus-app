@@ -4,6 +4,15 @@ import '../data/seed.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
 
+/// Time-of-day greeting: night <5, morning <12, afternoon <17,
+/// evening <21, else night.
+String greetingForHour(int hour) {
+  if (hour < 5 || hour >= 21) return 'Good night,';
+  if (hour < 12) return 'Good morning,';
+  if (hour < 17) return 'Good afternoon,';
+  return 'Good evening,';
+}
+
 class LoginScreen extends StatefulWidget {
   /// Called with the typed university email. The app opens Microsoft
   /// sign-in with it as `login_hint`; the password is typed by the user on
@@ -262,8 +271,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 }
 
-class HomeScreen extends StatefulWidget {
-  final ValueChanged<Course> onOpen;
+class HomeScreen extends StatefulWidget {  final ValueChanged<Course> onOpen;
   final VoidCallback toProfile;
   final VoidCallback onMenu;
   final VoidCallback onGpa;
@@ -282,6 +290,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final c = AppScope.colorsOf(context);
     final hero = AppScope.paletteOf(context).heroAsset;
     final list = filter == 'All' ? courses : courses.where((x) => filter == 'Ongoing' ? x.progress < 80 : x.progress >= 80).toList();
+    final greeting = greetingForHour(DateTime.now().hour);
     final live = widget.dashboard;
     final liveTiles = live == null
         ? <List<String>>[]
@@ -319,7 +328,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Good morning,', style: body(c, size: 14, color: Colors.white.withValues(alpha: 0.8))),
+                    Text(greeting, style: body(c, size: 14, color: Colors.white.withValues(alpha: 0.8))),
                     Row(children: [Flexible(child: Text('$displayName ', style: display(c, size: 28, color: Colors.white), overflow: TextOverflow.ellipsis)), const Text('👋', style: TextStyle(fontSize: 24))]),
                   ],
                 ),

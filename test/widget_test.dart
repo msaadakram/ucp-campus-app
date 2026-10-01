@@ -218,6 +218,20 @@ void main() {
     expect(find.text('3.77'), findsOneWidget);
   });
 
+  testWidgets('greeting matches the time of day', (WidgetTester tester) async {
+    expect(greetingForHour(0), 'Good night,');
+    expect(greetingForHour(4), 'Good night,');
+    expect(greetingForHour(5), 'Good morning,');
+    expect(greetingForHour(8), 'Good morning,');
+    expect(greetingForHour(11), 'Good morning,');
+    expect(greetingForHour(12), 'Good afternoon,');
+    expect(greetingForHour(16), 'Good afternoon,');
+    expect(greetingForHour(17), 'Good evening,');
+    expect(greetingForHour(20), 'Good evening,');
+    expect(greetingForHour(21), 'Good night,');
+    expect(greetingForHour(23), 'Good night,');
+  });
+
   testWidgets('web tab renders portal shell in test mode',
       (WidgetTester tester) async {
     await tester.pumpWidget(
