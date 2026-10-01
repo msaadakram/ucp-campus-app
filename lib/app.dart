@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'auth/odoo_api.dart';
+import 'auth/session_store.dart';
 import 'data/seed.dart';
 import 'screens/auth_home.dart';
 import 'screens/community.dart';
@@ -6,18 +9,28 @@ import 'screens/fee_board.dart';
 import 'screens/gpa_timetable.dart';
 import 'screens/groups_chat.dart';
 import 'screens/materials_web.dart';
+import 'screens/oauth_webview.dart';
 import 'screens/profile.dart';
 import 'theme/palette.dart';
 import 'widgets/common.dart';
 
 class CampusApp extends StatefulWidget {
-  const CampusApp({super.key});
+  /// Test-only shortcut: when true, the app starts logged in with a mock
+  /// session so widget tests can exercise post-login screens without
+  /// performing the interactive Microsoft sign-in (which needs a real
+  /// browser, real credentials and network).
+  final bool skipLogin;
+  const CampusApp({super.key, this.skipLogin = false});
   @override
   State<CampusApp> createState() => _CampusAppState();
 }
 
 class _CampusAppState extends State<CampusApp> {
   bool authed = false;
+  String? sessionId;
+  String? sessionEmail;
+  String? oauthEmail;
+  String? authError;
   String tab = 'home';
   Course? course;
   Course boardOf = courses[0];
@@ -26,7 +39,53 @@ class _CampusAppState extends State<CampusApp> {
   bool menu = false;
   GroupInfo? chat;
 
+  @override
+  void initState() {
+    super.initState();
+    if (widget.skipLogin) {
+      authed = true;
+      sessionId = 'test-session';
+      sessionEmail = 'tester@ucp.edu.pk';
+    } else {
+      _restoreSession();
+    }
+  }
+
+  /// Resume a previously stored portal session (validated server-side).
+  Future<void> _restoreSession() async {
+    final store = SessionStore();
+    final saved = await store.readSessionId();
+    if (saved == null || !mounted) return;
+    if (await OdooApi().isSessionValid(saved)) {
+      if (!mounted) return;
+      setState(() {
+        sessionId = saved;
+        authed = true;
+      });
+      sessionEmail = await store.readEmail();
+    } else {
+      await store.clear();
+    }
+  }
+
   void go(String t) => setState(() { tab = t; course = null; picker = false; menu = false; chat = null; });
+
+  Future<void> _logout() async {
+    await SessionStore().clear();
+    try {
+      await WebViewCookieManager().clearCookies();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      authed = false;
+      sessionId = null;
+      sessionEmail = null;
+      oauthEmail = null;
+      authError = null;
+      tab = 'home';
+      menu = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,11 +128,11 @@ class _CampusAppState extends State<CampusApp> {
           screen = const WebViewScreen();
           break;
         default:
-          screen = ProfileScreen(logout: () => setState(() { authed = false; tab = 'home'; }), prefs: prefs, onPrefs: (p) => setState(() => prefs = p));
+          screen = ProfileScreen(logout: _logout, prefs: prefs, onPrefs: (p) => setState(() => prefs = p));
       }
     }
 
-    final bool showNav = authed && chat == null;
+    final bool showNav = authed && chat == null && oauthEmail == null;
 
     return AppScope(
       colors: colors,
@@ -101,7 +160,41 @@ class _CampusAppState extends State<CampusApp> {
                     children: [
                       Positioned.fill(
                         child: !authed
-                            ? LoginScreen(onLogin: () => setState(() => authed = true))
+                            ? oauthEmail != null
+                                ? OAuthWebView(
+                                    email: oauthEmail!,
+                                    onAuthenticated: (sid) async {
+                                      await SessionStore().saveSession(
+                                        sessionId: sid,
+                                        email: oauthEmail!,
+                                      );
+                                      if (!mounted) return;
+                                      setState(() {
+                                        sessionId = sid;
+                                        sessionEmail = oauthEmail;
+                                        oauthEmail = null;
+                                        authError = null;
+                                        authed = true;
+                                      });
+                                    },
+                                    onCancelled: () => setState(() {
+                                      oauthEmail = null;
+                                      authError = null;
+                                    }),
+                                    onError: (msg) => setState(() {
+                                      oauthEmail = null;
+                                      authError = msg;
+                                    }),
+                                  )
+                                : LoginScreen(
+                                    authError: authError,
+                                    onMicrosoftSignIn: (email) => setState(
+                                      () {
+                                        oauthEmail = email;
+                                        authError = null;
+                                      },
+                                    ),
+                                  )
                             : SafeArea(top: true, bottom: false, child: screen),
                       ),
                       if (authed && picker) ...[
@@ -194,7 +287,10 @@ class _CampusAppState extends State<CampusApp> {
                                   padding: const EdgeInsets.all(12),
                                   child: GestureDetector(
                                     behavior: HitTestBehavior.opaque,
-                                    onTap: () => setState(() { menu = false; authed = false; tab = 'home'; }),
+                                    onTap: () {
+                                      setState(() => menu = false);
+                                      _logout();
+                                    },
                                     child: Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: colors.dustSoft, borderRadius: BorderRadius.circular(16)), child: Row(children: [Icon(Icons.logout, color: colors.clay), Text(' Log out', style: TextStyle(fontWeight: FontWeight.w600, color: colors.clay))])),
                                   ),
                                 ),

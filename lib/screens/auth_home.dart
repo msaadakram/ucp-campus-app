@@ -4,17 +4,21 @@ import '../theme/palette.dart';
 import '../widgets/common.dart';
 
 class LoginScreen extends StatefulWidget {
-  final VoidCallback onLogin;
-  const LoginScreen({super.key, required this.onLogin});
+  /// Called with the typed university email. The app opens Microsoft
+  /// sign-in with it as `login_hint`; the password is typed by the user on
+  /// Microsoft's own page and never enters the app.
+  final ValueChanged<String> onMicrosoftSignIn;
+  final String? authError;
+  const LoginScreen(
+      {super.key, required this.onMicrosoftSignIn, this.authError});
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
   String email = '';
-  String pw = '';
-  bool show = false;
-  bool get ok => email.trim().toLowerCase().endsWith('@ucp.edu.pk') && pw.length >= 4;
+  bool get ok =>
+      email.trim().toLowerCase().endsWith('@ucp.edu.pk');
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
@@ -81,25 +85,44 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Text('PASSWORD', style: body(c, size: 12, weight: FontWeight.w600, color: c.tealInk.withValues(alpha: 0.6))),
-                const SizedBox(height: 6),
-                TextField(
-                  onChanged: (v) => setState(() => pw = v),
-                  obscureText: !show,
-                  decoration: InputDecoration(
-                    hintText: '••••••••',
-                    filled: true, fillColor: c.white,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: c.dustSoft, width: 2)),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: c.dustSoft, width: 2)),
-                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: c.teal, width: 2)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-                    suffixIcon: TextButton(onPressed: () => setState(() => show = !show), child: Text(show ? 'Hide' : 'Show', style: body(c, size: 14, weight: FontWeight.w600, color: c.teal))),
+                if (widget.authError != null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: c.clay.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      widget.authError!,
+                      style: body(
+                        c,
+                        size: 13,
+                        weight: FontWeight.w600,
+                        color: c.clay,
+                      ),
+                    ),
+                  ),
+                if (widget.authError != null) const SizedBox(height: 12),
+                ClayButton(
+                  label: 'Continue with Microsoft',
+                  colors: c,
+                  onPressed: ok
+                      ? () => widget.onMicrosoftSignIn(email.trim())
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                Center(
+                  child: Text(
+                    'You sign in on Microsoft — your password never enters this app.',
+                    textAlign: TextAlign.center,
+                    style: body(
+                      c,
+                      size: 12,
+                      color: c.tealInk.withValues(alpha: 0.5),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 24),
-                ClayButton(label: 'Log in', colors: c, onPressed: ok ? widget.onLogin : null),
-                const SizedBox(height: 12),
-                Center(child: Text('Tip: any @ucp.edu.pk email + 4-char password works', style: body(c, size: 12, color: c.tealInk.withValues(alpha: 0.5)))),
                 const SizedBox(height: 40),
               ],
             ),

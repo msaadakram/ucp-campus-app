@@ -3,16 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ucp/app.dart';
 
+/// Post-login screens are exercised with the documented `skipLogin` test
+/// hook: interactive Microsoft sign-in needs a real browser + a real user,
+/// so it cannot run inside widget tests. OAuth URL building, redirect
+/// classification and session validation are covered by unit tests instead.
 Future<void> _login(WidgetTester tester) async {
-  await tester.pumpWidget(const CampusApp());
-  await tester.pumpAndSettle();
-  await tester.enterText(find.byType(TextField).first, 'ayaan.w@ucp.edu.pk');
-  await tester.enterText(find.byType(TextField).at(1), '1234');
-  await tester.pump();
-  final loginBtn = find.text('Log in');
-  await tester.ensureVisible(loginBtn);
-  await tester.pumpAndSettle();
-  await tester.tap(loginBtn, warnIfMissed: false);
+  await tester.pumpWidget(const CampusApp(skipLogin: true));
   await tester.pumpAndSettle();
   expect(find.text('My courses'), findsOneWidget);
 }
