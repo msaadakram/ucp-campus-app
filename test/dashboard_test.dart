@@ -55,6 +55,27 @@ void main() {
     });
   });
 
+
+
+  group('real /student/dashboard markup (anonymized excerpt)', () {
+    const realHtml = '<div class="user_heading_dash"><div class="user_heading_avatar"><div class="thumbnail"><img alt="user" src="avatar.jpg" data-savepage-loading="lazy"></div></div><div class="user_heading_content" style="padding: 2px 0;"><h2 class="heading_b" style="color:black;"><span class="uk-text-truncate">Test Student</span><span class="sub-heading" style="color:grey;">L1F25XXXX0000</span><span class="sub-heading" style="color:grey;">Faculty of Information Technology and Computer Science</span></h2></div><div></div></div></div><div class="uk-width-large-2-10" style=""><div class="user_heading_content"> Academic Standings: <br> CGPA: <span class="\'md-color-green-700\' if student.cgpa > 3.0 else \'md-color-orange-800\'"> 3.13 </span></div></div><div class="uk-width-large-2-10" style=""><div class="user_heading_content"><div>Earned Cr : 30.0 </div><div>Total Cr : 0.0 </div><div>Inprogress Cr : 0 </div></div></div><div class="uk-width-large-3-10" style=""><div class="user_heading_content d-flex flex-column"><strong> Today Classes: </strong><span class="md-color-green-700">No class is scheduled</span></div></div></div><h3 class="heading_a uk-tab">Classes, Grades and Attendance</h3><div class="uk-grid uk-grid-width-small-1-12 uk-grid-width-medium-1-12 uk-grid-width-medium-1-12 uk-grid-width-large-1-4 uk-margin-medium-bottom" data-uk-grid-margin="" id="hierarchical_show2" data-show-delay="100"><div style="margin-left: 3%;" class="uk-row-first">Courses not available.</div></div><h3 class="heading_a uk-tab">News and Announcements</h3><span>Stay tuned.</span>';
+
+    test('exact selectors: name, id, faculty, cgpa, credits, today, news', () {
+      final d = parseDashboard(realHtml);
+      expect(d.studentName, 'Test Student');
+      expect(d.studentId, 'L1F25XXXX0000');
+      expect(d.faculty,
+          'Faculty of Information Technology and Computer Science');
+      expect(
+        d.stats.map((s) => '${s.label}=${s.value}').toList(),
+        ['CGPA=3.13', 'Earned Cr=30.0', 'Total Cr=0.0', 'Inprogress Cr=0'],
+      );
+      expect(d.todayClasses, 'No class is scheduled');
+      expect(d.news, contains('Stay tuned.'));
+      expect(d.isEmpty, isFalse);
+    });
+  });
+
   group('PortalApi.fetchPage', () {
     test('sends session cookie and returns body', () async {
       String? seenCookie;

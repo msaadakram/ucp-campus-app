@@ -16,7 +16,20 @@ class ProfileScreen extends StatefulWidget {
   final VoidCallback logout;
   final ProfilePrefs prefs;
   final ValueChanged<ProfilePrefs> onPrefs;
-  const ProfileScreen({super.key, required this.logout, required this.prefs, required this.onPrefs});
+  /// Live identity from the portal (null = bundled sample content).
+  final String? studentName;
+  final String? studentId;
+  final String? faculty;
+  final String? email;
+  const ProfileScreen(
+      {super.key,
+      required this.logout,
+      required this.prefs,
+      required this.onPrefs,
+      this.studentName,
+      this.studentId,
+      this.faculty,
+      this.email});
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
@@ -32,6 +45,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
     final hero = AppScope.paletteOf(context).heroAsset;
+    final name = widget.studentName ?? 'Ayaan Warraich';
+    final rows = [
+      ['Student ID', widget.studentId ?? '2024-CS-0719'],
+      ['Email', widget.email ?? 'ayaan.w@ucp.edu.pk'],
+      ['Faculty', widget.faculty ?? 'Engineering & Computing'],
+      ['Advisor', 'Dr. Amina Qureshi'],
+      ['Enrolled', 'Sep 2024'],
+    ];
     return SingleChildScrollView(
       primary: false,
       child: Column(
@@ -47,7 +68,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Ayaan Warraich', style: display(c, size: 28, color: Colors.white)),
+                    Text(name, style: display(c, size: 28, color: Colors.white)),
                     Text('BS Computer Science · Year 2', style: body(c, size: 14, color: c.cream.withValues(alpha: 0.85))),
                   ],
                 ),
@@ -64,7 +85,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(24)),
                 child: Column(
                   children: [
-                    for (final kv in [['Student ID', '2024-CS-0719'], ['Email', 'ayaan.w@ucp.edu.pk'], ['Faculty', 'Engineering & Computing'], ['Advisor', 'Dr. Amina Qureshi'], ['Enrolled', 'Sep 2024']])
+                    for (final kv in rows)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                         decoration: BoxDecoration(border: kv[0] == 'Enrolled' ? null : Border(bottom: BorderSide(color: c.dustSoft))),

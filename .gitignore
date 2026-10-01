@@ -14,6 +14,7 @@ migrate_working_dir/
 *.apk
 *.aab
 *.zip
+*.html
 
 # IntelliJ related
 *.iml

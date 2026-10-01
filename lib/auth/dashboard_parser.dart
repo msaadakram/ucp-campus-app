@@ -3,10 +3,24 @@ import 'package:html/parser.dart' as html_parser;
 
 /// Parsed view of the Horizon student dashboard.
 ///
-/// The parser is deliberately heuristic: the dashboard is server-rendered
-/// Odoo HTML whose exact markup can only be confirmed with a live student
-/// session. Layers run from most-specific to most-generic and everything
-/// degrades to empty (never throws on unexpected markup).
+/// Selector mapping was reverse-engineered from the real
+/// `/student/dashboard` page (Odoo 15 + Altair admin theme):
+///
+/// - name     : `h2.heading_b > span.uk-text-truncate`
+/// - studentId: `h2.heading_b > span.sub-heading` [0]  (e.g. L1F25…)
+/// - faculty  : `h2.heading_b > span.sub-heading` [1]
+/// - CGPA     : `.user_heading_content` containing "Academic Standings",
+///   number after `CGPA:` (the span's class is a raw QWeb conditional, so
+///   the label text — not the class — is matched)
+/// - credits  : sibling `.user_heading_content` divs, `Earned/Total/
+///   Inprogress Cr : <number>` via regex on the block text
+/// - today    : `.user_heading_content` containing "Today Classes",
+///   following `<span>` text
+/// - news     : `<h3>` "News and Announcements" + following `<span>` and
+///   slider `<li>` items
+///
+/// Generic heuristic layers still run as fallback when the exact markup is
+/// absent (other pages/portal versions). Parsing never throws.
 class DashboardStat {
   final String label;
   final String value;
@@ -15,10 +29,26 @@ class DashboardStat {
 
 class DashboardData {
   final String? studentName;
+  final String? studentId;
+  final String? faculty;
   final List<DashboardStat> stats;
-  const DashboardData({this.studentName, this.stats = const []});
+  final String? todayClasses;
+  final List<String> news;
+  const DashboardData({
+    this.studentName,
+    this.studentId,
+    this.faculty,
+    this.stats = const [],
+    this.todayClasses,
+    this.news = const [],
+  });
 
-  bool get isEmpty => studentName == null && stats.isEmpty;
+  bool get isEmpty =>
+      studentName == null &&
+      studentId == null &&
+      stats.isEmpty &&
+      todayClasses == null &&
+      news.isEmpty;
 }
 
 String _clean(String? s) => (s ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -31,9 +61,85 @@ DashboardData parseDashboard(String html) {
   } catch (_) {
     return const DashboardData();
   }
+  final exact = _parseExact(doc);
+  // Heuristic layers fill whatever the exact pass missed.
   return DashboardData(
-    studentName: _findName(doc),
-    stats: _findStats(doc),
+    studentName: exact.studentName ?? _findName(doc),
+    studentId: exact.studentId,
+    faculty: exact.faculty,
+    stats: exact.stats.isNotEmpty ? exact.stats : _findStats(doc),
+    todayClasses: exact.todayClasses,
+    news: exact.news,
+  );
+}
+
+/// Exact pass against the real dashboard markup.
+DashboardData _parseExact(Document doc) {
+  String? name;
+  String? sid;
+  String? faculty;
+  final h2 = doc.querySelector('h2.heading_b');
+  if (h2 != null) {
+    name = _clean(h2.querySelector('span.uk-text-truncate')?.text);
+    final subs = h2
+        .querySelectorAll('span.sub-heading')
+        .map((e) => _clean(e.text))
+        .where((t) => t.isNotEmpty)
+        .toList();
+    if (subs.isNotEmpty) sid = subs[0];
+    if (subs.length > 1) faculty = subs[1];
+  }
+
+  final stats = <DashboardStat>[];
+  String? today;
+  for (final block in doc.querySelectorAll('.user_heading_content')) {
+    final text = _clean(block.text);
+    if (text.contains('Academic Standings')) {
+      final cgpa = RegExp(r'CGPA:\s*([0-9]+\.[0-9]+)').firstMatch(text);
+      if (cgpa != null) stats.add(DashboardStat('CGPA', cgpa.group(1)!));
+    }
+    if (text.contains('Earned Cr')) {
+      for (final entry in ['Earned Cr', 'Total Cr', 'Inprogress Cr']) {
+        final m =
+            RegExp('${RegExp.escape(entry)}\\s*:\\s*([0-9]+\\.?[0-9]*)')
+                .firstMatch(text);
+        if (m != null) stats.add(DashboardStat(entry, m.group(1)!));
+      }
+    }
+    if (text.contains('Today Classes')) {
+      final span = block.querySelector('span');
+      today = _clean(span?.text);
+      if (today != null && today.isEmpty) today = null;
+    }
+  }
+
+  final news = <String>[];
+  for (final h in doc.querySelectorAll('h3')) {
+    if (_clean(h.text) != 'News and Announcements') continue;
+    var el = h.nextElementSibling;
+    var hops = 0;
+    while (el != null && hops < 4) {
+      if (el.localName == 'span') {
+        final t = _clean(el.text);
+        if (t.isNotEmpty) news.add(t);
+      }
+      for (final li in el.querySelectorAll('li')) {
+        final t = _clean(li.text);
+        if (t.isNotEmpty && t.length < 200 && news.length < 6) news.add(t);
+      }
+      el = el.nextElementSibling;
+      hops++;
+    }
+    break;
+  }
+
+  return DashboardData(
+    studentName: (name != null && name.isNotEmpty) ? name : null,
+    studentId: (sid != null && sid.isNotEmpty) ? sid : null,
+    faculty: (faculty != null && faculty.isNotEmpty) ? faculty : null,
+    stats: stats,
+    todayClasses: today,
+    news: news,
   );
 }
 

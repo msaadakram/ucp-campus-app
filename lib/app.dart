@@ -313,7 +313,15 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           screen = const WebViewScreen();
           break;
         default:
-          screen = ProfileScreen(logout: _logout, prefs: prefs, onPrefs: (p) => setState(() => prefs = p));
+          screen = ProfileScreen(
+            logout: _logout,
+            prefs: prefs,
+            onPrefs: (p) => setState(() => prefs = p),
+            studentName: dashboard?.studentName,
+            studentId: dashboard?.studentId,
+            faculty: dashboard?.faculty,
+            email: sessionEmail,
+          );
       }
     }
 
