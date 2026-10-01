@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../auth/dashboard_parser.dart';
 import '../data/seed.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
@@ -139,7 +140,9 @@ class HomeScreen extends StatefulWidget {
   final VoidCallback onMenu;
   final VoidCallback onGpa;
   final ValueChanged<Course> onBoard;
-  const HomeScreen({super.key, required this.onOpen, required this.toProfile, required this.onMenu, required this.onGpa, required this.onBoard});
+  /// Live portal data. Null while loading/failed → bundled sample content.
+  final DashboardData? dashboard;
+  const HomeScreen({super.key, required this.onOpen, required this.toProfile, required this.onMenu, required this.onGpa, required this.onBoard, this.dashboard});
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -151,6 +154,25 @@ class _HomeScreenState extends State<HomeScreen> {
     final c = AppScope.colorsOf(context);
     final hero = AppScope.paletteOf(context).heroAsset;
     final list = filter == 'All' ? courses : courses.where((x) => filter == 'Ongoing' ? x.progress < 80 : x.progress >= 80).toList();
+    final live = widget.dashboard;
+    final liveStats = live == null
+        ? null
+        : live.stats.length >= 3
+            ? live.stats.sublist(0, 3)
+            : null;
+    final nameParts =
+        (live?.studentName ?? '').split(' ').where((w) => w.isNotEmpty).toList();
+    final displayName = nameParts.isEmpty ? 'Ayaan' : nameParts.first;
+    final statTiles = liveStats != null
+        ? [
+            for (final s in liveStats)
+              [s.value, s.label],
+          ]
+        : const [
+            ['3.62', 'GPA'],
+            ['11', 'Credits'],
+            ['94%', 'Attend.'],
+          ];
     return UHead(
       height: 120,
       child: Column(
@@ -169,7 +191,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Good morning,', style: body(c, size: 14, color: Colors.white.withValues(alpha: 0.8))),
-                    Row(children: [Text('Ayaan ', style: display(c, size: 28, color: Colors.white)), const Text('👋', style: TextStyle(fontSize: 24))]),
+                    Row(children: [Flexible(child: Text('$displayName ', style: display(c, size: 28, color: Colors.white), overflow: TextOverflow.ellipsis)), const Text('👋', style: TextStyle(fontSize: 24))]),
                   ],
                 ),
               ),
@@ -188,7 +210,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               for (int i = 0; i < 3; i++)
                 Builder(builder: (_) {
-                  final s = [['3.62', 'GPA'], ['11', 'Credits'], ['94%', 'Attend.']][i];
+                  final s = statTiles[i];
                   return Expanded(
                     child: Padding(
                       padding: EdgeInsets.only(right: i == 2 ? 0 : 8),
@@ -230,7 +252,21 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [Text('My courses', style: display(c, size: 20)), Text('Fall 2026', style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.5)))],
+            children: [
+              Text('My courses', style: display(c, size: 20)),
+              Row(
+                children: [
+                  if (liveStats != null)
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(color: c.teal, borderRadius: BorderRadius.circular(10)),
+                      child: const Text('LIVE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+                    ),
+                  Text('Fall 2026', style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.5))),
+                ],
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           SingleChildScrollView(

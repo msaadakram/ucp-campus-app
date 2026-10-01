@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'auth/odoo_api.dart';
 import 'auth/microsoft_oauth.dart';
+import 'auth/dashboard_parser.dart';
+import 'auth/portal_api.dart';
 import 'auth/session_manager.dart';
 import 'auth/session_monitor.dart';
 import 'auth/session_store.dart';
@@ -52,6 +54,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   Completer<String?>? _silentCompleter;
   /// Microsoft error / 'timeout' / 'no_session' from the last silent run.
   String? _silentFailCode;
+
+  /// Live portal data for the current session. Null = not loaded yet (or
+  /// load failed); Home falls back to bundled sample content meanwhile.
+  DashboardData? dashboard;
+  int _dashRun = 0;
 
   /// Foreground liveness watchdog. Never started in `skipLogin` test mode
   /// (real timers + real network would hang widget tests).
@@ -111,6 +118,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         authed = true;
       });
       _startMonitor();
+      _loadDashboard();
     } on AuthRequired {
       await store.clear();
       if (!mounted) return;
@@ -124,6 +132,22 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     }
   }
 
+  /// Pulls `/student/dashboard` with the live session and parses it for
+  /// Home. Never throws: on any failure the previous data (or the bundled
+  /// sample content) stays on screen. Stale runs are discarded.
+  Future<void> _loadDashboard() async {
+    final sid = sessionId;
+    if (sid == null || !mounted) return;
+    final run = ++_dashRun;
+    try {
+      final html = await PortalApi().fetchDashboard(sid);
+      if (!mounted || run != _dashRun) return;
+      final parsed = parseDashboard(html);
+      setState(() => dashboard = parsed.isEmpty ? null : parsed);
+    } catch (_) {
+      // Keep previous data / sample fallback; next login or resume retries.
+    }
+  }
   /// Builds (or rebuilds) the foreground watchdog. Called whenever the app
   /// becomes authenticated; stopped on logout/dispose.
   void _startMonitor() {
@@ -150,6 +174,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           sessionId = sid;
           sessionEmail = email;
         });
+        _loadDashboard();
       },
       onDead: (message) => _logout(message: message),
     );
@@ -196,6 +221,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       sessionEmail = null;
       oauthEmail = null;
       authError = message;
+      dashboard = null;
       tab = 'home';
       menu = false;
     });
@@ -215,7 +241,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     } else {
       switch (tab) {
         case 'home':
-          screen = HomeScreen(onOpen: (c) => setState(() { course = c; }), toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; tab = 'board'; }); });
+          screen = HomeScreen(onOpen: (c) => setState(() { course = c; }), toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; tab = 'board'; }); }, dashboard: dashboard);
           break;
         case 'material':
           screen = const MaterialsScreen();
@@ -291,6 +317,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                         authed = true;
                                       });
                                       _startMonitor();
+                                      _loadDashboard();
                                     },
                                     onCancelled: () => setState(() {
                                       oauthEmail = null;

@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ucp/app.dart';
+import 'package:ucp/auth/dashboard_parser.dart';
 import 'package:ucp/screens/auth_home.dart';
+import 'package:ucp/theme/palette.dart';
+import 'package:ucp/widgets/common.dart';
 
 void main() {
   testWidgets('Campus app boots to UCP login', (WidgetTester tester) async {
@@ -67,5 +70,40 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('expired'), findsOneWidget);
+  });
+
+  testWidgets('home shows live dashboard name, stats and badge',
+      (WidgetTester tester) async {
+    const data = DashboardData(
+      studentName: 'Test Student',
+      stats: [
+        DashboardStat('CGPA', '3.90'),
+        DashboardStat('Credits', '60'),
+        DashboardStat('Attendance', '98%'),
+      ],
+    );
+    final colors = AppColors.of(AppPalette.skater, false);
+    await tester.pumpWidget(
+      AppScope(
+        colors: colors,
+        palette: AppPalette.skater,
+        child: MaterialApp(
+          home: Scaffold(
+            body: HomeScreen(
+              onOpen: (_) {},
+              toProfile: () {},
+              onMenu: () {},
+              onGpa: () {},
+              onBoard: (_) {},
+              dashboard: data,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Test '), findsOneWidget);
+    expect(find.text('3.90'), findsOneWidget);
+    expect(find.text('LIVE'), findsOneWidget);
   });
 }
