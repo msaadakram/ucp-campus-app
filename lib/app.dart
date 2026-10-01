@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'auth/odoo_api.dart';
+import 'auth/session_manager.dart';
 import 'auth/session_store.dart';
 import 'data/seed.dart';
 import 'screens/auth_home.dart';
@@ -11,6 +14,7 @@ import 'screens/groups_chat.dart';
 import 'screens/materials_web.dart';
 import 'screens/oauth_webview.dart';
 import 'screens/profile.dart';
+import 'screens/silent_renew_webview.dart';
 import 'theme/palette.dart';
 import 'widgets/common.dart';
 
@@ -25,7 +29,7 @@ class CampusApp extends StatefulWidget {
   State<CampusApp> createState() => _CampusAppState();
 }
 
-class _CampusAppState extends State<CampusApp> {
+class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   bool authed = false;
   String? sessionId;
   String? sessionEmail;
@@ -39,9 +43,16 @@ class _CampusAppState extends State<CampusApp> {
   bool menu = false;
   GroupInfo? chat;
 
+  /// Active background renewal: mounting [SilentRenewWebView] for this email.
+  /// Null when no renewal is running.
+  String? _silentEmail;
+  int _silentRunId = 0;
+  Completer<String?>? _silentCompleter;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (widget.skipLogin) {
       authed = true;
       sessionId = 'test-session';
@@ -51,26 +62,84 @@ class _CampusAppState extends State<CampusApp> {
     }
   }
 
-  /// Resume a previously stored portal session (validated server-side).
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // App re-entered with a possibly stale (>10 min old) session: renew
+    // silently in the background. On failure we stay logged in — the next
+    // resume or API failure retries; only a proven-dead session logs out.
+    if (state == AppLifecycleState.resumed && authed && _silentEmail == null) {
+      _refreshIfStale(background: true);
+    }
+  }
+
+  /// Resume a previously stored portal session: fresh sessions are validated
+  /// directly, stale ones are silently renewed first — this is the auto-login.
   Future<void> _restoreSession() async {
-    final store = SessionStore();
-    final saved = await store.readSessionId();
-    if (saved == null || !mounted) return;
-    if (await OdooApi().isSessionValid(saved)) {
+    final manager = SessionManager(store: SessionStore(), api: OdooApi());
+    try {
+      final valid = await manager.ensureValidSession(renew: _renewViaWebView);
       if (!mounted) return;
       setState(() {
-        sessionId = saved;
+        sessionId = valid.sessionId;
+        sessionEmail = valid.email;
         authed = true;
       });
-      sessionEmail = await store.readEmail();
-    } else {
-      await store.clear();
+    } on AuthRequired {
+      await SessionStore().clear();
+    } catch (_) {
+      // Offline etc: stay on the login screen; user retries by opening app.
+    }
+  }
+
+  /// Renew in the background while already logged in (resume path).
+  Future<void> _refreshIfStale({required bool background}) async {
+    final store = SessionStore();
+    final saved = await store.load();
+    if (saved == null || !mounted) return;
+    final manager = SessionManager(store: store, api: OdooApi());
+    if (!manager.isStale(await store.savedAtMs(), DateTime.now())) return;
+    try {
+      final fresh = await _renewViaWebView(saved.email);
+      if (fresh == null || !mounted) return;
+      await store.save(sessionId: fresh, email: saved.email);
+      setState(() => sessionId = fresh);
+    } catch (_) {
+      if (!background && mounted) await _logout();
+    }
+  }
+
+  /// Mounts the hidden `prompt=none` WebView and resolves with the renewed
+  /// `session_id`, or null when the user must sign in interactively.
+  Future<String?> _renewViaWebView(String email) {
+    final completer = Completer<String?>();
+    if (!mounted) return Future.value(null);
+    _silentCompleter = completer;
+    setState(() {
+      _silentEmail = email;
+      _silentRunId++;
+    });
+    return completer.future;
+  }
+
+  void _finishSilentRenew(String? sessionId) {
+    final completer = _silentCompleter;
+    _silentCompleter = null;
+    if (mounted) setState(() => _silentEmail = null); // unmounts WebView
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(sessionId);
     }
   }
 
   void go(String t) => setState(() { tab = t; course = null; picker = false; menu = false; chat = null; });
 
   Future<void> _logout() async {
+    _finishSilentRenew(null); // abort any background renewal
     await SessionStore().clear();
     try {
       await WebViewCookieManager().clearCookies();
@@ -197,6 +266,21 @@ class _CampusAppState extends State<CampusApp> {
                                   )
                             : SafeArea(top: true, bottom: false, child: screen),
                       ),
+                      // Background silent renewal (1x1 px, touch-transparent).
+                      if (_silentEmail != null)
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          child: IgnorePointer(
+                            child: SilentRenewWebView(
+                              key: ValueKey('silent-$_silentRunId'),
+                              email: _silentEmail!,
+                              onRenewed: _finishSilentRenew,
+                              onInteractionRequired: () =>
+                                  _finishSilentRenew(null),
+                            ),
+                          ),
+                        ),
                       if (authed && picker) ...[
                         Positioned.fill(
                           child: GestureDetector(

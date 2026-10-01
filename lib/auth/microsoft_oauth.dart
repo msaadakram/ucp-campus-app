@@ -74,6 +74,35 @@ class MicrosoftOAuth {
     return Uri.https(authorityHost, authorizePath, params);
   }
 
+  /// Silent-renewal URL (OpenID Connect `prompt=none`).
+  ///
+  /// Loads invisibly in a background WebView: if the user still has a live
+  /// Microsoft SSO session, Microsoft immediately redirects back with a
+  /// fresh `code` — no taps, no password. Otherwise it returns an
+  /// `interaction_required`-style error and the app falls back to the
+  /// interactive sign-in. `login_hint` is REQUIRED here so Microsoft can
+  /// pick the right account without asking.
+  static Uri buildSilentUrl({required String loginHint}) {
+    return Uri.https(authorityHost, authorizePath, {
+      'client_id': clientId,
+      'response_type': 'code',
+      'redirect_uri': 'https://$redirectHost$redirectPath',
+      'prompt': 'none',
+      'scope': scopes.join(' '),
+      'login_hint': loginHint.trim(),
+    });
+  }
+
+  /// Microsoft error codes that mean "I cannot proceed silently — show UI".
+  static bool isInteractionError(String code) {
+    return const {
+      'interaction_required',
+      'login_required',
+      'consent_required',
+      'account_selection_needed',
+    }.contains(code);
+  }
+
   static bool isMicrosoftHost(Uri uri) =>
       uri.host.toLowerCase() == authorityHost;
 

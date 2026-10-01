@@ -44,6 +44,40 @@ void main() {
     });
   });
 
+  group('silent renewal URL (prompt=none)', () {
+    test('uses prompt=none and keeps production params', () {
+      final url = MicrosoftOAuth.buildSilentUrl(
+        loginHint: 'l1f25bscs0577@ucp.edu.pk',
+      );
+      final q = url.queryParameters;
+      expect(q['prompt'], 'none');
+      expect(q['client_id'], MicrosoftOAuth.clientId);
+      expect(q['response_type'], 'code');
+      expect(
+        q['redirect_uri'],
+        'https://horizon.ucp.edu.pk/auth_oauth/microsoft/signin',
+      );
+      expect(
+        q['scope'],
+        'User.Read Mail.Read User.ReadWrite.All Contacts.ReadWrite',
+      );
+      expect(q['login_hint'], 'l1f25bscs0577@ucp.edu.pk');
+    });
+
+    test('interaction error classification', () {
+      for (final code in [
+        'interaction_required',
+        'login_required',
+        'consent_required',
+        'account_selection_needed',
+      ]) {
+        expect(MicrosoftOAuth.isInteractionError(code), isTrue);
+      }
+      expect(MicrosoftOAuth.isInteractionError('access_denied'), isFalse);
+      expect(MicrosoftOAuth.isInteractionError('invalid_request'), isFalse);
+    });
+  });
+
   group('URL classifiers', () {
     test('microsoft host detection', () {
       expect(
