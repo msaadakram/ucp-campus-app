@@ -53,6 +53,44 @@ class DashboardData {
 
 String _clean(String? s) => (s ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
 
+/// Degree requirements (BS programs on the portal run 132 credits).
+const degreeTotalCredits = 132.0;
+
+/// Enrollment term derived from the student ID batch code, e.g.
+/// `L1F25BSCS0577` → `F25` → "Fall 2025". Returns null when unparseable.
+String? enrollmentFromStudentId(String? id) {
+  if (id == null) return null;
+  final m = RegExp(r'([FS])(\d{2})').firstMatch(id.toUpperCase());
+  if (m == null) return null;
+  final year = 2000 + int.parse(m.group(2)!);
+  return m.group(1) == 'F' ? 'Fall $year' : 'Spring $year';
+}
+
+/// Current semester number (1-based) from the batch code in [id].
+/// Fall 2025 starters are in semester 3 during Fall 2026. Returns null
+/// when the ID carries no parseable term.
+int? semesterFromStudentId(String? id, DateTime now) {
+  if (id == null) return null;
+  final m = RegExp(r'([FS])(\d{2})').firstMatch(id.toUpperCase());
+  if (m == null) return null;
+  final startYear = 2000 + int.parse(m.group(2)!);
+  final startIdx = startYear * 2 + (m.group(1) == 'F' ? 1 : 0);
+  // Local academic calendar: Fall = Aug–Dec, Spring = Feb–Jul.
+  final nowIdx = now.year * 2 + (now.month >= 8 ? 1 : 0);
+  final sem = nowIdx - startIdx + 1;
+  return sem < 1 ? 1 : sem;
+}
+
+/// Numeric value of a parsed stat by label (e.g. "Earned Cr"), or null.
+double? statValue(List<DashboardStat> stats, String label) {
+  for (final s in stats) {
+    if (s.label.toLowerCase() == label.toLowerCase()) {
+      return double.tryParse(s.value);
+    }
+  }
+  return null;
+}
+
 /// Parse `/student/dashboard` HTML into displayable data.
 DashboardData parseDashboard(String html) {
   final Document doc;

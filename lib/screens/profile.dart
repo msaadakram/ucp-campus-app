@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../auth/dashboard_parser.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
 
@@ -21,6 +22,8 @@ class ProfileScreen extends StatefulWidget {
   final String? studentId;
   final String? faculty;
   final String? email;
+  /// Parsed "Earned Cr" from the dashboard; drives the degree progress bar.
+  final double? earnedCredits;
   const ProfileScreen(
       {super.key,
       required this.logout,
@@ -29,7 +32,8 @@ class ProfileScreen extends StatefulWidget {
       this.studentName,
       this.studentId,
       this.faculty,
-      this.email});
+      this.email,
+      this.earnedCredits});
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
@@ -46,13 +50,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final c = AppScope.colorsOf(context);
     final hero = AppScope.paletteOf(context).heroAsset;
     final name = widget.studentName ?? 'Ayaan Warraich';
+    final enrolled = enrollmentFromStudentId(widget.studentId) ?? '—';
+    final semester = semesterFromStudentId(widget.studentId, DateTime.now());
     final rows = [
       ['Student ID', widget.studentId ?? '2024-CS-0719'],
       ['Email', widget.email ?? 'ayaan.w@ucp.edu.pk'],
       ['Faculty', widget.faculty ?? 'Engineering & Computing'],
-      ['Advisor', 'Dr. Amina Qureshi'],
-      ['Enrolled', 'Sep 2024'],
+      ['Semester', semester == null ? '—' : 'Semester $semester'],
+      ['Enrolled', enrolled],
     ];
+    final earned = widget.earnedCredits ?? 0;
+    final earnedLabel =
+        earned == earned.roundToDouble() ? '${earned.toInt()}' : '$earned';
+    final progress =
+        (earned / degreeTotalCredits).clamp(0.0, 1.0);
     return SingleChildScrollView(
       primary: false,
       child: Column(
@@ -108,9 +119,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('DEGREE PROGRESS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.clay)),
-                    Text('52 / 132 credits', style: display(c, size: 22)),
+                    Text('$earnedLabel / ${degreeTotalCredits.toInt()} credits', style: display(c, size: 22)),
                     const SizedBox(height: 12),
-                    ClipRRect(borderRadius: BorderRadius.circular(8), child: LinearProgressIndicator(value: 0.39, backgroundColor: c.white, valueColor: AlwaysStoppedAnimation(c.clay), minHeight: 12)),
+                    ClipRRect(borderRadius: BorderRadius.circular(8), child: LinearProgressIndicator(value: progress, backgroundColor: c.white, valueColor: AlwaysStoppedAnimation(c.clay), minHeight: 12)),
                   ],
                 ),
               ),

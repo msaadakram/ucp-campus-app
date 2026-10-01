@@ -76,6 +76,31 @@ void main() {
     });
   });
 
+  group('portal helpers', () {
+    test('enrollment term from student ID batch code', () {
+      expect(enrollmentFromStudentId('L1F25BSCS0577'), 'Fall 2025');
+      expect(enrollmentFromStudentId('l1s26bscs0001'), 'Spring 2026');
+      expect(enrollmentFromStudentId('nope'), isNull);
+      expect(enrollmentFromStudentId(null), isNull);
+    });
+
+    test('semester number from batch code', () {
+      // Fall 2025 starters: F25=1, S26=2, F26=3.
+      expect(semesterFromStudentId('L1F25BSCS0577', DateTime(2026, 10, 1)), 3);
+      expect(semesterFromStudentId('L1F25BSCS0577', DateTime(2025, 9, 1)), 1);
+      expect(semesterFromStudentId('L1F25BSCS0577', DateTime(2026, 3, 1)), 2);
+      expect(semesterFromStudentId('nope', DateTime(2026, 10, 1)), isNull);
+    });
+
+    test('statValue lookup', () {
+      const stats = [DashboardStat('CGPA', '3.13'), DashboardStat('Earned Cr', '30.0')];
+      expect(statValue(stats, 'Earned Cr'), 30.0);
+      expect(statValue(stats, 'earned cr'), 30.0);
+      expect(statValue(stats, 'Missing'), isNull);
+      expect(degreeTotalCredits, 132.0);
+    });
+  });
+
   group('PortalApi.fetchPage', () {
     test('sends session cookie and returns body', () async {
       String? seenCookie;

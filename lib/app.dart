@@ -321,6 +321,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
             studentId: dashboard?.studentId,
             faculty: dashboard?.faculty,
             email: sessionEmail,
+            earnedCredits: dashboard == null
+                ? null
+                : statValue(dashboard!.stats, 'Earned Cr'),
           );
       }
     }

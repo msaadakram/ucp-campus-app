@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ucp/app.dart';
 import 'package:ucp/auth/dashboard_parser.dart';
 import 'package:ucp/screens/auth_home.dart';
+import 'package:ucp/screens/profile.dart';
 import 'package:ucp/theme/palette.dart';
 import 'package:ucp/widgets/common.dart';
 import 'package:ucp/widgets/session_expired_dialog.dart';
@@ -104,6 +105,39 @@ void main() {
     await tester.tap(find.text('Later'));
     await tester.pumpAndSettle();
     expect(later, isTrue);
+  });
+
+  testWidgets('profile shows semester, no advisor, earned progress',
+      (WidgetTester tester) async {
+    final colors = AppColors.of(AppPalette.skater, false);
+    await tester.pumpWidget(
+      AppScope(
+        colors: colors,
+        palette: AppPalette.skater,
+        child: MaterialApp(
+          home: Scaffold(
+            body: ProfileScreen(
+              logout: () {},
+              prefs: ProfilePrefs(),
+              onPrefs: (_) {},
+              studentName: 'Test Student',
+              studentId: 'L1F25BSCS0577',
+              faculty: 'Faculty of IT',
+              email: 't@ucp.edu.pk',
+              earnedCredits: 30.0,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Test Student'), findsOneWidget);
+    expect(find.text('L1F25BSCS0577'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^Semester \d+$')), findsOneWidget);
+    expect(find.text('Fall 2025'), findsOneWidget);
+    expect(find.text('30 / 132 credits'), findsOneWidget);
+    expect(find.text('Advisor'), findsNothing);
+    expect(find.text('Dr. Amina Qureshi'), findsNothing);
   });
 
   testWidgets('home shows live dashboard name, stats and badge',
