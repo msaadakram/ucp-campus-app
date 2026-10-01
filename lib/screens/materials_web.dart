@@ -384,7 +384,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
           ),
           const SizedBox(height: 16),
           Container(
-            height: 480,
+            height: 600,
             decoration: BoxDecoration(
               color: c.white,
               borderRadius: BorderRadius.circular(24),
@@ -479,7 +479,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 96),
+          const SizedBox(height: 24),
         ],
       ),
     );
