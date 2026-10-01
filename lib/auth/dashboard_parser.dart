@@ -49,6 +49,48 @@ class DashboardData {
       stats.isEmpty &&
       todayClasses == null &&
       news.isEmpty;
+
+  Map<String, dynamic> toJson() => {
+        'name': studentName,
+        'id': studentId,
+        'faculty': faculty,
+        'stats': [
+          for (final s in stats) {'label': s.label, 'value': s.value}
+        ],
+        'today': todayClasses,
+        'news': news,
+      };
+
+  factory DashboardData.fromJson(Map<String, dynamic> json) {
+    final rawStats = json['stats'];
+    final stats = <DashboardStat>[];
+    if (rawStats is List) {
+      for (final e in rawStats) {
+        if (e is Map) {
+          final l = e['label']?.toString() ?? '';
+          final v = e['value']?.toString() ?? '';
+          if (l.isNotEmpty && v.isNotEmpty) {
+            stats.add(DashboardStat(l, v));
+          }
+        }
+      }
+    }
+    List<String> newsOf(dynamic v) =>
+        v is List ? v.map((e) => e.toString()).toList() : const <String>[];
+    String? str(dynamic v) {
+      final s = v?.toString() ?? '';
+      return s.isEmpty ? null : s;
+    }
+
+    return DashboardData(
+      studentName: str(json['name']),
+      studentId: str(json['id']),
+      faculty: str(json['faculty']),
+      stats: stats,
+      todayClasses: str(json['today']),
+      news: newsOf(json['news']),
+    );
+  }
 }
 
 String _clean(String? s) => (s ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();

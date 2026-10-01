@@ -12,6 +12,9 @@ import 'package:http/http.dart' as http;
 class OdooApi {
   static const host = 'horizon.ucp.edu.pk';
 
+  /// Bounds every portal call so auto-login can never hang the UI forever.
+  static const apiTimeout = Duration(seconds: 15);
+
   final http.Client _client;
   OdooApi([http.Client? client]) : _client = client ?? http.Client();
 
@@ -27,11 +30,14 @@ class OdooApi {
     Map<String, dynamic> params,
     String sessionId,
   ) async {
-    final res = await _client.post(
-      _uri(path),
-      headers: _headers(sessionId),
-      body: jsonEncode({'jsonrpc': '2.0', 'method': 'call', 'params': params}),
-    );
+    final res = await _client
+        .post(
+          _uri(path),
+          headers: _headers(sessionId),
+          body:
+              jsonEncode({'jsonrpc': '2.0', 'method': 'call', 'params': params}),
+        )
+        .timeout(apiTimeout);
     if (res.statusCode != 200) {
       throw OdooApiException('HTTP ${res.statusCode} from $path');
     }

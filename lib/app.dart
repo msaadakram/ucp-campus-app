@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -90,6 +91,10 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   DashboardData? dashboard;
   int _dashRun = 0;
 
+  /// True while the cold-start auto-login attempt is running: the login
+  /// screen shows a short "Signing you in…" animation instead of the form.
+  bool _restoring = false;
+
   /// Foreground liveness watchdog. Never started in `skipLogin` test mode
   /// (real timers + real network would hang widget tests).
   SessionMonitor? _monitor;
@@ -128,8 +133,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       authed = true;
       sessionId = 'hook-session';
       sessionEmail = 'hook@ucp.edu.pk';
+      _loadCachedDashboard();
       _startMonitor();
     } else {
+      _restoring = true;
+      _loadCachedDashboard();
       _restoreSession();
     }
   }
@@ -164,8 +172,21 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// If silent renewal reports the Microsoft session dead, the login screen
   /// explains that a fresh sign-in is needed (roughly monthly).
   Future<void> _restoreSession() async {
+    try {
+      await _doRestoreSession();
+    } finally {
+      if (mounted) setState(() => _restoring = false);
+    }
+  }
+
+  Future<void> _doRestoreSession() async {
     final store = _backend;
-    if (await store.load() == null) return; // first launch ever: no message
+    // Bounded: a hung keystore must never trap the splash screen; the
+    // deeper steps (validation 15 s, silent webview 25 s) carry own bounds.
+    final saved = await store
+        .load()
+        .timeout(const Duration(seconds: 8), onTimeout: () => null);
+    if (saved == null) return; // first launch ever: no message
     final validate = _validateSession;
     final manager = SessionManager(
       store: store,
@@ -201,9 +222,25 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     }
   }
 
+  /// Loads the last dashboard snapshot from the phone so Home paints
+  /// instantly, then the live fetch in [_loadDashboard] refreshes it.
+  Future<void> _loadCachedDashboard() async {
+    try {
+      final raw = await _backend
+          .loadDashboard()
+          .timeout(const Duration(seconds: 8), onTimeout: () => null);
+      if (raw == null || !mounted) return;
+      final parsed = DashboardData.fromJson(
+        jsonDecode(raw) as Map<String, dynamic>,
+      );
+      if (!parsed.isEmpty) setState(() => dashboard = parsed);
+    } catch (_) {}
+  }
+
   /// Pulls `/student/dashboard` with the live session and parses it for
-  /// Home. Never throws: on any failure the previous data (or the bundled
-  /// sample content) stays on screen. Stale runs are discarded.
+  /// Home. Saves a fresh snapshot to the phone on success. Never throws:
+  /// on any failure the previous data (or the bundled sample content)
+  /// stays on screen. Stale runs are discarded.
   Future<void> _loadDashboard() async {
     final sid = sessionId;
     if (sid == null || !mounted) return;
@@ -212,7 +249,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       final html = await PortalApi().fetchDashboard(sid);
       if (!mounted || run != _dashRun) return;
       final parsed = parseDashboard(html);
-      setState(() => dashboard = parsed.isEmpty ? null : parsed);
+      if (parsed.isEmpty) return;
+      setState(() => dashboard = parsed);
+      unawaited(_backend.saveDashboard(jsonEncode(parsed.toJson())));
     } catch (_) {
       // Keep previous data / sample fallback; next login or resume retries.
     }
@@ -463,6 +502,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                     }),
                                   )
                                 : LoginScreen(
+                                    restoring: _restoring,
                                     authError: authError,
                                     onMicrosoftSignIn: (email) => setState(
                                       () {

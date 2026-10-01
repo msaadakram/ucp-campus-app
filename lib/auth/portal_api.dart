@@ -16,13 +16,15 @@ class PortalApi {
   PortalApi([http.Client? client]) : _client = client ?? http.Client();
 
   Future<String> fetchPage(String path, String sessionId) async {
-    final res = await _client.get(
-      Uri.https(host, path),
-      headers: {
-        'Cookie': 'session_id=$sessionId',
-        'User-Agent': 'UCP-Campus-App/1.0',
-      },
-    );
+    final res = await _client
+        .get(
+          Uri.https(host, path),
+          headers: {
+            'Cookie': 'session_id=$sessionId',
+            'User-Agent': 'UCP-Campus-App/1.0',
+          },
+        )
+        .timeout(const Duration(seconds: 20));
     if (res.statusCode == 301 ||
         res.statusCode == 302 ||
         res.statusCode == 303 ||

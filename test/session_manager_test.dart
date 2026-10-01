@@ -36,6 +36,16 @@ class _MemoryBackend implements SessionBackend {
 
   @override
   Future<int?> savedAtMs() async => savedAt;
+
+  String? dashboardJson;
+
+  @override
+  Future<void> saveDashboard(String json) async {
+    dashboardJson = json;
+  }
+
+  @override
+  Future<String?> loadDashboard() async => dashboardJson;
 }
 
 /// Odoo stub: only `good-live-session` belongs to a logged-in user (uid 7).

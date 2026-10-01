@@ -34,6 +34,16 @@ class _MemoryBackend implements SessionBackend {
 
   @override
   Future<int?> savedAtMs() async => savedAt;
+
+  String? dashboardJson;
+
+  @override
+  Future<void> saveDashboard(String json) async {
+    dashboardJson = json;
+  }
+
+  @override
+  Future<String?> loadDashboard() async => dashboardJson;
 }
 
 int _recentMs() =>

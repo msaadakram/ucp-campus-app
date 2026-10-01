@@ -3,16 +3,50 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ucp/app.dart';
 import 'package:ucp/auth/dashboard_parser.dart';
+import 'package:ucp/auth/session_manager.dart';
 import 'package:ucp/screens/auth_home.dart';
 import 'package:ucp/screens/profile.dart';
 import 'package:ucp/theme/palette.dart';
 import 'package:ucp/widgets/common.dart';
 import 'package:ucp/widgets/session_expired_dialog.dart';
 
+class _HookDashBackend implements SessionBackend {
+  String? sid;
+  String? email;
+  int? savedAt;
+  String? dashboardJson;
+  @override
+  Future<void> save({required String sessionId, required String email}) async {
+    sid = sessionId;
+    this.email = email;
+    savedAt = DateTime.now().millisecondsSinceEpoch;
+  }
+
+  @override
+  Future<({String email, String sessionId})?> load() async =>
+      (sid == null || email == null) ? null : (sessionId: sid!, email: email!);
+  @override
+  Future<String?> readEmail() async => email;
+  @override
+  Future<int?> savedAtMs() async => savedAt;
+  @override
+  Future<void> clear() async {
+    sid = null;
+    email = null;
+    savedAt = null;
+    dashboardJson = null;
+  }
+
+  @override
+  Future<void> saveDashboard(String json) async => dashboardJson = json;
+  @override
+  Future<String?> loadDashboard() async => dashboardJson;
+}
+
 void main() {
   testWidgets('Campus app boots to UCP login', (WidgetTester tester) async {
     await tester.pumpWidget(const CampusApp());
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
     expect(find.text('Hey, welcome back.'), findsOneWidget);
     expect(find.text('Continue with Microsoft'), findsOneWidget);
     // No password field: the password is typed on Microsoft's page only.
@@ -138,6 +172,47 @@ void main() {
     expect(find.text('30 / 132 credits'), findsOneWidget);
     expect(find.text('Advisor'), findsNothing);
     expect(find.text('Dr. Amina Qureshi'), findsNothing);
+  });
+
+  testWidgets('restoring flag shows the signing-in animation, not the form',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LoginScreen(
+            restoring: true,
+            onMicrosoftSignIn: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Signing you in…'), findsOneWidget);
+    expect(find.text('Hey, welcome back.'), findsNothing);
+    expect(find.byType(TextField), findsNothing);
+  });
+
+  testWidgets('cached dashboard paints instantly in hooks mode',
+      (WidgetTester tester) async {
+    final backend = _HookDashBackend();
+    await backend.saveDashboard(
+      '{"name":"Cached Student","id":null,"faculty":null,'
+      '"stats":[{"label":"CGPA","value":"3.77"}],"today":null,"news":[]}',
+    );
+    await backend.save(sessionId: 'cached-sid', email: 'c@ucp.edu.pk');
+    await tester.pumpWidget(CampusApp(
+      authHooks: AuthTestHooks(
+        backend: backend,
+        validate: (_) async => true,
+        monitorInterval: const Duration(minutes: 5),
+        startAuthed: true,
+      ),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    // Cached name is on screen even before any network fetch lands.
+    expect(find.text('Cached '), findsOneWidget);
+    expect(find.text('3.77'), findsOneWidget);
   });
 
   testWidgets('home shows live dashboard name, stats and badge',

@@ -20,6 +20,10 @@ abstract class SessionBackend {
   Future<String?> readEmail();
   Future<int?> savedAtMs();
   Future<void> clear();
+
+  /// Cached dashboard JSON (see [DashboardData]) for instant paint.
+  Future<void> saveDashboard(String json);
+  Future<String?> loadDashboard();
 }
 
 /// Result of [SessionManager.ensureValidSession].

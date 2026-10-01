@@ -5,6 +5,25 @@ import 'package:http/testing.dart';
 import 'package:ucp/auth/dashboard_parser.dart';
 import 'package:ucp/auth/odoo_api.dart';
 import 'package:ucp/auth/portal_api.dart';
+import 'package:ucp/auth/session_manager.dart';
+
+class _DashMemory implements SessionBackend {
+  String? dashboardJson;
+  @override
+  Future<void> saveDashboard(String json) async => dashboardJson = json;
+  @override
+  Future<String?> loadDashboard() async => dashboardJson;
+  @override
+  Future<void> save({required String sessionId, required String email}) async {}
+  @override
+  Future<({String email, String sessionId})?> load() async => null;
+  @override
+  Future<String?> readEmail() async => null;
+  @override
+  Future<int?> savedAtMs() async => null;
+  @override
+  Future<void> clear() async {}
+}
 
 const _cardHtml = '''
 <html><head><title>Student Dashboard</title></head><body>
@@ -98,6 +117,52 @@ void main() {
       expect(statValue(stats, 'earned cr'), 30.0);
       expect(statValue(stats, 'Missing'), isNull);
       expect(degreeTotalCredits, 132.0);
+    });
+  });
+
+  group('dashboard serialization', () {
+    test('roundtrip preserves all fields', () {
+      const d = DashboardData(
+        studentName: 'Test Student',
+        studentId: 'L1F25XXXX0000',
+        faculty: 'Faculty of IT',
+        stats: [DashboardStat('CGPA', '3.13'), DashboardStat('Earned Cr', '30.0')],
+        todayClasses: 'No class is scheduled',
+        news: ['Stay tuned.'],
+      );
+      final back = DashboardData.fromJson(
+        Map<String, dynamic>.from(d.toJson()),
+      );
+      expect(back.studentName, 'Test Student');
+      expect(back.studentId, 'L1F25XXXX0000');
+      expect(back.faculty, 'Faculty of IT');
+      expect(back.stats.map((s) => '${s.label}=${s.value}').toList(),
+          ['CGPA=3.13', 'Earned Cr=30.0']);
+      expect(back.todayClasses, 'No class is scheduled');
+      expect(back.news, ['Stay tuned.']);
+      expect(back.isEmpty, isFalse);
+    });
+
+    test('fromJson tolerates garbage', () {
+      expect(DashboardData.fromJson({}).isEmpty, isTrue);
+      expect(
+        DashboardData.fromJson({
+          'stats': [
+            {'label': '', 'value': 'x'},
+            'nope',
+            {'label': 'A', 'value': 'B'},
+          ],
+          'news': 'notalist',
+        }).stats.map((s) => s.label).toList(),
+        ['A'],
+      );
+    });
+
+    test('memory backend persists dashboard JSON', () async {
+      final b = _DashMemory();
+      expect(await b.loadDashboard(), isNull);
+      await b.saveDashboard('{"name":"X"}');
+      expect(await b.loadDashboard(), '{"name":"X"}');
     });
   });
 

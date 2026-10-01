@@ -10,20 +10,55 @@ class LoginScreen extends StatefulWidget {
   /// Microsoft's own page and never enters the app.
   final ValueChanged<String> onMicrosoftSignIn;
   final String? authError;
+  /// True while the cold-start auto-login attempt runs: shows a short
+  /// "Signing you in…" animation instead of the form.
+  final bool restoring;
   const LoginScreen(
-      {super.key, required this.onMicrosoftSignIn, this.authError});
+      {super.key,
+      required this.onMicrosoftSignIn,
+      this.authError,
+      this.restoring = false});
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   String email = '';
   bool get ok =>
       email.trim().toLowerCase().endsWith('@ucp.edu.pk');
+
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.restoring) _pulse.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(LoginScreen old) {
+    super.didUpdateWidget(old);
+    if (widget.restoring && !_pulse.isAnimating) {
+      _pulse.repeat(reverse: true);
+    } else if (!widget.restoring && _pulse.isAnimating) {
+      _pulse.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
     final hero = AppScope.paletteOf(context).heroAsset;
+    if (widget.restoring) return _restoringView(c, hero);
     return SingleChildScrollView(
       primary: false,
       child: Column(
@@ -132,6 +167,99 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+
+  /// Short branded wait shown while the app tries the saved session
+  /// (validate → silent renew): pulsing UCP badge, spinner, status text.
+  Widget _restoringView(AppColors c, String hero) {
+    return SingleChildScrollView(
+      primary: false,
+      child: Column(
+        children: [
+          SizedBox(
+            height: MediaQuery.of(context).size.height * 0.30,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                    child: Image.asset(hero,
+                        fit: BoxFit.cover,
+                        alignment: const Alignment(0.5, -0.4))),
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          c.teal.withValues(alpha: 0.1),
+                          Colors.transparent,
+                          c.teal
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            transform: Matrix4.translationValues(0, -24, 0),
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(24, 40, 24, 64),
+            decoration: BoxDecoration(
+                color: c.cream2,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(32))),
+            child: Column(
+              children: [
+                ScaleTransition(
+                  scale: Tween(begin: 0.92, end: 1.06).animate(
+                    CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
+                  ),
+                  child: Container(
+                    width: 76,
+                    height: 76,
+                    decoration: BoxDecoration(
+                      color: c.teal,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                            color: c.clay,
+                            offset: const Offset(0, 6),
+                            blurRadius: 0),
+                      ],
+                    ),
+                    child: Center(
+                      child: Text('UCP',
+                          style: display(c, size: 20, color: Colors.white)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text('Signing you in…', style: display(c, size: 24)),
+                const SizedBox(height: 8),
+                Text('Checking your saved session securely.',
+                    style: body(c,
+                        size: 14,
+                        color: c.tealInk.withValues(alpha: 0.6))),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: 220,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      backgroundColor: c.dustSoft,
+                      valueColor: AlwaysStoppedAnimation(c.teal),
+                      minHeight: 6,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class HomeScreen extends StatefulWidget {
@@ -155,24 +283,25 @@ class _HomeScreenState extends State<HomeScreen> {
     final hero = AppScope.paletteOf(context).heroAsset;
     final list = filter == 'All' ? courses : courses.where((x) => filter == 'Ongoing' ? x.progress < 80 : x.progress >= 80).toList();
     final live = widget.dashboard;
-    final liveStats = live == null
-        ? null
-        : live.stats.length >= 3
-            ? live.stats.sublist(0, 3)
-            : null;
+    final liveTiles = live == null
+        ? <List<String>>[]
+        : [
+            for (final s in live.stats.take(3))
+              [s.value, s.label],
+          ];
+    const mockTiles = [
+      ['3.62', 'GPA'],
+      ['11', 'Credits'],
+      ['94%', 'Attend.'],
+    ];
+    final statTiles = [
+      ...liveTiles,
+      ...mockTiles.sublist(0, 3 - liveTiles.length),
+    ];
+    final liveBadge = liveTiles.isNotEmpty;
     final nameParts =
         (live?.studentName ?? '').split(' ').where((w) => w.isNotEmpty).toList();
     final displayName = nameParts.isEmpty ? 'Ayaan' : nameParts.first;
-    final statTiles = liveStats != null
-        ? [
-            for (final s in liveStats)
-              [s.value, s.label],
-          ]
-        : const [
-            ['3.62', 'GPA'],
-            ['11', 'Credits'],
-            ['94%', 'Attend.'],
-          ];
     return UHead(
       height: 120,
       child: Column(
@@ -256,7 +385,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Text('My courses', style: display(c, size: 20)),
               Row(
                 children: [
-                  if (liveStats != null)
+                  if (liveBadge)
                     Container(
                       margin: const EdgeInsets.only(right: 8),
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

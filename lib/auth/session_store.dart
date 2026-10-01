@@ -11,6 +11,7 @@ class SessionStore implements SessionBackend {
   static const _kSessionId = 'ucp_horizon_session_id';
   static const _kEmail = 'ucp_login_email';
   static const _kSavedAt = 'ucp_horizon_session_saved_at_ms';
+  static const _kDashboard = 'ucp_horizon_dashboard_json';
 
   final FlutterSecureStorage _storage;
   SessionStore([FlutterSecureStorage? storage])
@@ -57,5 +58,13 @@ class SessionStore implements SessionBackend {
     await _storage.delete(key: _kSessionId);
     await _storage.delete(key: _kEmail);
     await _storage.delete(key: _kSavedAt);
+    await _storage.delete(key: _kDashboard);
   }
+
+  @override
+  Future<void> saveDashboard(String json) =>
+      _storage.write(key: _kDashboard, value: json);
+
+  @override
+  Future<String?> loadDashboard() => _storage.read(key: _kDashboard);
 }
