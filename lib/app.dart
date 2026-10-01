@@ -217,7 +217,7 @@ class _CampusAppState extends State<CampusApp> {
                             child: ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 430),
                               child: Container(
-                                padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+                                padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
                                 decoration: BoxDecoration(color: colors.white, border: Border(top: BorderSide(color: colors.dustSoft))),
                                 child: Row(
                                   children: [
@@ -232,8 +232,8 @@ class _CampusAppState extends State<CampusApp> {
                                           children: [
                                             Container(
                                               alignment: Alignment.center,
-                                              transform: Matrix4.translationValues(0, -20, 0),
-                                              width: 60, height: 60,
+                                              transform: Matrix4.translationValues(0, -12, 0),
+                                              width: 52, height: 52,
                                               decoration: BoxDecoration(color: (tab == 'home' && course == null) ? colors.teal : colors.tealInk, shape: BoxShape.circle, border: Border.all(color: colors.cream2, width: 4), boxShadow: [BoxShadow(color: colors.clay, offset: const Offset(0, 6))]),
                                               child: const Icon(Icons.home_outlined, color: Colors.white, size: 26),
                                             ),
@@ -270,9 +270,10 @@ class _CampusAppState extends State<CampusApp> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 56, height: 32,
-              decoration: BoxDecoration(color: on ? c.teal : Colors.transparent, borderRadius: BorderRadius.circular(16)),
-              child: Icon(icon, color: on ? Colors.white : c.tealInk.withValues(alpha: 0.55)),
+              alignment: Alignment.center,
+              width: 56, height: 30,
+              decoration: BoxDecoration(color: on ? c.teal : Colors.transparent, borderRadius: BorderRadius.circular(15)),
+              child: Icon(icon, size: 20, color: on ? Colors.white : c.tealInk.withValues(alpha: 0.55)),
             ),
             Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: on ? c.tealInk : c.tealInk.withValues(alpha: 0.55))),
           ],
