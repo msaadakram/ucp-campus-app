@@ -116,6 +116,12 @@ class MicrosoftOAuth {
   /// answered, or `'no_session'` when Odoo consumed the code but issued no
   /// session cookie.
   static String renewFailureMessage(String code) {
+    // UCP enforces verification on every sign-in, so silent renewal can
+    // never pass it: say plainly what to do instead of blaming expiry.
+    if (code == 'interaction_required') {
+      return 'Microsoft needs verification (e.g. authenticator approval). '
+          'Please sign in again — one tap below.';
+    }
     if (isInteractionError(code)) {
       return 'Your Microsoft sign-in expired (about a month old). '
           'Please sign in again — then you are silent for another month.';

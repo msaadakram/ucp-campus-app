@@ -86,7 +86,7 @@ void main() {
       );
       expect(
         MicrosoftOAuth.renewFailureMessage('interaction_required'),
-        contains('sign in again'),
+        contains('verification'),
       );
       expect(
         MicrosoftOAuth.renewFailureMessage('timeout'),
