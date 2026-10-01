@@ -425,7 +425,15 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           screen = LeaderboardScreen(start: boardOf.code, back: () => go('home'));
           break;
         case 'web':
-          screen = const WebViewScreen();
+          // Platform WebViews don't exist in widget tests: render the
+          // placeholder shell there, the live portal everywhere else.
+          final bool testMode =
+              widget.skipLogin || widget.authHooks != null;
+          screen = WebViewScreen(
+            sessionId: sessionId,
+            renderWebView: !testMode,
+            onSessionExpired: () => _monitor?.checkNow(),
+          );
           break;
         default:
           screen = ProfileScreen(

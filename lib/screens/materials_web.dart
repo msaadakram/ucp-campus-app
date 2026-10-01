@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import '../data/seed.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
@@ -203,103 +204,279 @@ class _MaterialsScreenState extends State<MaterialsScreen> {
   }
 }
 
+/// Real Horizon portal inside the app, authenticated with the captured
+/// `session_id` cookie.
+///
+/// The cookie is injected into the WebView store before the first load, so
+/// the portal opens already signed in — no second login. If the portal
+/// bounces to `/web/login` (session died), an inline notice offers
+/// re-login, which triggers [onSessionExpired] (the watchdog validates,
+/// renews or pops up — same as everywhere else).
 class WebViewScreen extends StatefulWidget {
-  const WebViewScreen({super.key});
+  final String? sessionId;
+  final VoidCallback? onSessionExpired;
+  /// False in widget tests: platform WebViews don't exist headlessly, so a
+  /// lightweight placeholder renders instead (title/chips stay identical).
+  final bool renderWebView;
+  const WebViewScreen(
+      {super.key, this.sessionId, this.onSessionExpired, this.renderWebView = true});
   @override
   State<WebViewScreen> createState() => _WebViewScreenState();
 }
 
 class _WebViewScreenState extends State<WebViewScreen> {
-  final sites = const [['Student portal', 'portal.uni.edu'], ['Library', 'library.uni.edu'], ['LMS', 'learn.uni.edu']];
-  String url = 'portal.uni.edu';
-  bool loading = false;
-  late TextEditingController ctrl;
+  static const _host = 'horizon.ucp.edu.pk';
+  static const _shortcuts = [
+    ['Dashboard', '/student/dashboard'],
+    ['Profile', '/student/profile'],
+    ['Portal', '/my/home'],
+  ];
+
+  WebViewController? _controller;
+  String _path = '/student/dashboard';
+  double _progress = 0;
+  bool _expired = false;
+
   @override
   void initState() {
     super.initState();
-    ctrl = TextEditingController(text: url);
+    if (widget.renderWebView) _initController();
   }
 
-  void go(String u) {
-    setState(() { url = u; ctrl.text = u; loading = true; });
-    Future.delayed(const Duration(milliseconds: 600), () => mounted ? setState(() => loading = false) : null);
+  @override
+  void didUpdateWidget(WebViewScreen old) {
+    super.didUpdateWidget(old);
+    // Session healed in the background while this tab is open: re-seed the
+    // cookie and reload so the portal never shows a stale login page.
+    if (widget.sessionId != null &&
+        widget.sessionId != old.sessionId &&
+        _controller != null) {
+      _loadPortal(_path);
+    }
+  }
+
+  Future<void> _initController() async {
+    final controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onProgress: (p) {
+            if (mounted) setState(() => _progress = p / 100);
+          },
+          onUrlChange: _onUrl,
+        ),
+      );
+    _controller = controller;
+    await _loadPortal(_path);
+  }
+
+  Future<void> _loadPortal(String path) async {
+    final sid = widget.sessionId;
+    final controller = _controller;
+    if (controller == null) return;
+    if (sid != null && sid.isNotEmpty) {
+      try {
+        await WebViewCookieManager().setCookie(
+          WebViewCookie(name: 'session_id', value: sid, domain: _host, path: '/'),
+        );
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    setState(() {
+      _path = path;
+      _expired = false;
+    });
+    await controller.loadRequest(Uri.https(_host, path));
+  }
+
+  void _onUrl(UrlChange change) {
+    final uri = change.url == null ? null : Uri.tryParse(change.url!);
+    if (uri == null || !mounted) return;
+    if (uri.host == _host && uri.path.startsWith('/web/login')) {
+      setState(() {
+        _expired = true;
+        _path = uri.path;
+      });
+    } else if (uri.host == _host) {
+      setState(() {
+        _path = uri.path;
+        _expired = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
-    final title = sites.firstWhere((s) => s[1] == url, orElse: () => ['Web page', url])[0];
     return UHead(
       height: 108,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Web view', style: display(c, size: 28, color: Colors.white)),
+          Text('Horizon portal · signed in with your session',
+              style: body(c,
+                  size: 13, color: Colors.white.withValues(alpha: 0.78))),
           const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(16)),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                Icon(Icons.lock_outline, size: 16, color: c.teal),
-                const SizedBox(width: 8),
-                Expanded(child: TextField(controller: ctrl, onSubmitted: go, style: const TextStyle(fontSize: 14), decoration: const InputDecoration(border: InputBorder.none, isDense: true))),
-                GestureDetector(onTap: () => go(ctrl.text), child: Container(alignment: Alignment.center, width: 36, height: 36, decoration: BoxDecoration(color: c.tealInk, borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.refresh, size: 16, color: Colors.white))),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              for (final s in sites)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => go(s[1]),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(color: url == s[1] ? c.teal : c.dustSoft, borderRadius: BorderRadius.circular(20)),
-                      child: Text(s[0], style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: url == s[1] ? Colors.white : c.tealInk)),
+                for (final s in _shortcuts)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        if (widget.renderWebView) {
+                          _loadPortal(s[1]);
+                        } else {
+                          setState(() => _path = s[1]);
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: _path == s[1] ? c.teal : c.dustSoft,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(s[0],
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: _path == s[1]
+                                    ? Colors.white
+                                    : c.tealInk)),
+                      ),
+                    ),
+                  ),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    if (widget.renderWebView) {
+                      _controller?.reload();
+                    } else {
+                      setState(() {});
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: c.tealInk,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.refresh, size: 14, color: Colors.white),
+                        Text(' Reload',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white)),
+                      ],
                     ),
                   ),
                 ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 16),
           Container(
-            decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: c.dustSoft, width: 2)),
-            child: Column(
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-                  child: LinearProgressIndicator(value: loading ? 0.66 : 1, backgroundColor: c.dustSoft, valueColor: AlwaysStoppedAnimation(c.clay), minHeight: 4),
-                ),
-                Container(
-                  width: double.infinity, padding: const EdgeInsets.all(20), color: c.teal,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(url.toUpperCase(), style: TextStyle(fontSize: 12, color: c.cream.withValues(alpha: 0.8))),
-                      Text(title, style: display(c, size: 22, color: Colors.white)),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: loading
-                      ? Column(children: [for (int i = 0; i < 4; i++) Container(margin: const EdgeInsets.only(bottom: 8), height: 16, decoration: BoxDecoration(color: c.dustSoft, borderRadius: BorderRadius.circular(8)))])
-                      : Column(
+            height: 480,
+            decoration: BoxDecoration(
+              color: c.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: c.dustSoft, width: 2),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(22),
+              child: Stack(
+                children: [
+                  if (widget.renderWebView && _controller != null)
+                    WebViewWidget(controller: _controller!)
+                  else
+                    Container(
+                      color: c.dustSoft.withValues(alpha: 0.4),
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            for (final l in ['Fee voucher — Fall 2026', 'Exam timetable', 'Course registration', 'Transcript request'])
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: Row(children: [Expanded(child: Text(l, style: body(c, size: 14, weight: FontWeight.w600))), Icon(Icons.chevron_right, color: c.teal)]),
+                            Icon(Icons.language_outlined,
+                                size: 40,
+                                color: c.tealInk.withValues(alpha: 0.4)),
+                            const SizedBox(height: 8),
+                            Text(
+                              widget.renderWebView
+                                  ? 'Loading portal…'
+                                  : 'Portal preview unavailable in tests',
+                              style: body(
+                                c,
+                                size: 13,
+                                color: c.tealInk.withValues(alpha: 0.55),
                               ),
+                            ),
                           ],
                         ),
-                ),
-              ],
+                      ),
+                    ),
+                  if (_progress > 0 && _progress < 1)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: LinearProgressIndicator(
+                        value: _progress,
+                        backgroundColor: c.dustSoft,
+                        valueColor: AlwaysStoppedAnimation(c.clay),
+                        minHeight: 3,
+                      ),
+                    ),
+                  if (_expired)
+                    Positioned.fill(
+                      child: Container(
+                        color: c.cream2.withValues(alpha: 0.97),
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.lock_outline,
+                                size: 36, color: c.clay),
+                            const SizedBox(height: 12),
+                            Text('Portal session expired',
+                                style: display(c, size: 18),
+                                textAlign: TextAlign.center),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Sign in again to keep browsing the portal here.',
+                              style: body(
+                                c,
+                                size: 13,
+                                color:
+                                    c.tealInk.withValues(alpha: 0.6),
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            ClayButton(
+                              label: 'Re-login now',
+                              colors: c,
+                              height: 48,
+                              fontSize: 15,
+                              onPressed: widget.onSessionExpired != null
+                                  ? () {
+                                      setState(() => _expired = false);
+                                      widget.onSessionExpired!();
+                                    }
+                                  : null,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 96),

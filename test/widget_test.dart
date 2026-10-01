@@ -5,6 +5,7 @@ import 'package:ucp/app.dart';
 import 'package:ucp/auth/dashboard_parser.dart';
 import 'package:ucp/auth/session_manager.dart';
 import 'package:ucp/screens/auth_home.dart';
+import 'package:ucp/screens/materials_web.dart';
 import 'package:ucp/screens/profile.dart';
 import 'package:ucp/theme/palette.dart';
 import 'package:ucp/widgets/common.dart';
@@ -213,6 +214,28 @@ void main() {
     // Cached name is on screen even before any network fetch lands.
     expect(find.text('Cached '), findsOneWidget);
     expect(find.text('3.77'), findsOneWidget);
+  });
+
+  testWidgets('web tab renders portal shell in test mode',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: WebViewScreen(
+            sessionId: 'sid',
+            renderWebView: false,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Web view'), findsOneWidget);
+    expect(find.text('Dashboard'), findsOneWidget);
+    expect(find.text('Portal preview unavailable in tests'), findsOneWidget);
+    await tester.tap(find.text('Profile'));
+    await tester.pumpAndSettle();
+    // Shortcut switches without any platform WebView.
+    expect(find.text('Portal preview unavailable in tests'), findsOneWidget);
   });
 
   testWidgets('home shows live dashboard name, stats and badge',

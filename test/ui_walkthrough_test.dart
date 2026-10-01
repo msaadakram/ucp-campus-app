@@ -37,7 +37,13 @@ void main() {
     await _openCommunityFeed(tester);
     await _tapNav(tester, 'Web');
     expect(find.text('Web view'), findsOneWidget);
-    await _tapNav(tester, 'Profile');
+    // NOTE: the Web tab also has a "Profile" shortcut chip, so the bottom
+    // nav item (last in tree order) is tapped explicitly here.
+    final profileNav = find.text('Profile').last;
+    await tester.ensureVisible(profileNav);
+    await tester.pumpAndSettle();
+    await tester.tap(profileNav, warnIfMissed: false);
+    await tester.pumpAndSettle();
     expect(find.text('Ayaan Warraich'), findsWidgets);
     await _tapNav(tester, 'Home');
     expect(find.text('My courses'), findsOneWidget);
