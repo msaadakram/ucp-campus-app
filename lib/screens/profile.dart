@@ -50,6 +50,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final c = AppScope.colorsOf(context);
     final hero = AppScope.paletteOf(context).heroAsset;
     final name = widget.studentName ?? 'Ayaan Warraich';
+    final program = programFromStudentId(widget.studentId);
+    final year =
+        yearFromSemester(semesterFromStudentId(widget.studentId, DateTime.now()));
+    final subtitle = (program != null && year != null)
+        ? '$program · Year $year'
+        : 'BS Computer Science · Year 2';
     final enrolled = enrollmentFromStudentId(widget.studentId) ?? '—';
     final semester = semesterFromStudentId(widget.studentId, DateTime.now());
     final rows = [
@@ -80,7 +86,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(name, style: display(c, size: 28, color: Colors.white)),
-                    Text('BS Computer Science · Year 2', style: body(c, size: 14, color: c.cream.withValues(alpha: 0.85))),
+                    Text(subtitle, style: body(c, size: 14, color: c.cream.withValues(alpha: 0.85))),
                   ],
                 ),
               ),

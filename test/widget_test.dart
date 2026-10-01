@@ -170,6 +170,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Test Student'), findsOneWidget);
     expect(find.text('L1F25BSCS0577'), findsOneWidget);
+    expect(find.text('BS Computer Science · Year 2'), findsOneWidget);
     expect(find.textContaining(RegExp(r'^Semester \d+$')), findsOneWidget);
     expect(find.text('Fall 2025'), findsOneWidget);
     expect(find.text('30 / 132 credits'), findsOneWidget);

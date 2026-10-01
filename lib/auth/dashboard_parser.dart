@@ -123,6 +123,43 @@ int? semesterFromStudentId(String? id, DateTime now) {
   return sem < 1 ? 1 : sem;
 }
 
+/// Program code embedded in the student ID, e.g. `L1F25BSCS0577` → `BSCS`.
+/// Returns null when the ID carries no recognizable code.
+String? programCodeFromStudentId(String? id) {
+  if (id == null) return null;
+  final m =
+      RegExp(r'[FS]\d{2}([A-Z]+?)\d*$').firstMatch(id.toUpperCase());
+  if (m == null) return null;
+  final code = m.group(1)!;
+  return code.isEmpty ? null : code;
+}
+
+/// Human-readable program name for a student ID, or null when unknown.
+String? programFromStudentId(String? id) {
+  const names = {
+    'BSCS': 'BS Computer Science',
+    'BSSE': 'BS Software Engineering',
+    'BSDS': 'BS Data Science',
+    'BSAI': 'BS Artificial Intelligence',
+    'BSIT': 'BS Information Technology',
+    'BSCYS': 'BS Cyber Security',
+    'BBA': 'BBA',
+    'MBA': 'MBA',
+    'BFA': 'BFA',
+    'BSDM': 'BS Digital Media',
+    'BSFT': 'BS Film and TV',
+  };
+  final code = programCodeFromStudentId(id);
+  if (code == null) return null;
+  return names[code];
+}
+
+/// Study year (1-based) from a semester number: semesters 1–2 → Year 1, etc.
+int? yearFromSemester(int? semester) {
+  if (semester == null || semester < 1) return null;
+  return (semester + 1) ~/ 2;
+}
+
 /// Numeric value of a parsed stat by label (e.g. "Earned Cr"), or null.
 double? statValue(List<DashboardStat> stats, String label) {
   for (final s in stats) {

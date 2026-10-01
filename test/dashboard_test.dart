@@ -111,6 +111,18 @@ void main() {
       expect(semesterFromStudentId('nope', DateTime(2026, 10, 1)), isNull);
     });
 
+    test('program and year from student ID', () {
+      expect(programCodeFromStudentId('L1F25BSCS0577'), 'BSCS');
+      expect(programFromStudentId('L1F25BSCS0577'), 'BS Computer Science');
+      expect(programFromStudentId('L1F24BSSE0123'), 'BS Software Engineering');
+      expect(programFromStudentId('nope'), isNull);
+      expect(yearFromSemester(1), 1);
+      expect(yearFromSemester(2), 1);
+      expect(yearFromSemester(3), 2);
+      expect(yearFromSemester(null), isNull);
+      expect(yearFromSemester(0), isNull);
+    });
+
     test('statValue lookup', () {
       const stats = [DashboardStat('CGPA', '3.13'), DashboardStat('Earned Cr', '30.0')];
       expect(statValue(stats, 'Earned Cr'), 30.0);
