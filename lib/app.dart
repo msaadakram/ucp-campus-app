@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'auth/odoo_api.dart';
@@ -23,13 +24,41 @@ import 'widgets/session_expired_dialog.dart';
 import 'theme/palette.dart';
 import 'widgets/common.dart';
 
+@visibleForTesting
+class FakeValidatingApi extends OdooApi {
+  final Future<bool> Function(String sid) fn;
+  FakeValidatingApi(this.fn);
+  @override
+  Future<bool> isSessionValid(String sid) => fn(sid);
+}
+
+/// Test-only seams for driving auth flows in widget tests without network
+/// or platform WebViews: a fake session store, a fake validator, a fake
+/// renewer, and a short monitor interval.
+@visibleForTesting
+class AuthTestHooks {
+  final SessionBackend backend;
+  final Future<bool> Function(String sid)? validate;
+  final Future<RenewOutcome> Function(String email)? renew;
+  final Duration monitorInterval;
+  final bool startAuthed;
+  const AuthTestHooks({
+    required this.backend,
+    this.validate,
+    this.renew,
+    this.monitorInterval = const Duration(milliseconds: 200),
+    this.startAuthed = false,
+  });
+}
+
 class CampusApp extends StatefulWidget {
   /// Test-only shortcut: when true, the app starts logged in with a mock
   /// session so widget tests can exercise post-login screens without
   /// performing the interactive Microsoft sign-in (which needs a real
   /// browser, real credentials and network).
   final bool skipLogin;
-  const CampusApp({super.key, this.skipLogin = false});
+  final AuthTestHooks? authHooks;
+  const CampusApp({super.key, this.skipLogin = false, this.authHooks});
   @override
   State<CampusApp> createState() => _CampusAppState();
 }
@@ -65,6 +94,28 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// (real timers + real network would hang widget tests).
   SessionMonitor? _monitor;
 
+  /// Brief "session refreshed" banner after a silent heal. Auto-dismissed.
+  bool _healNotice = false;
+  Timer? _healTimer;
+
+  /// Storage + validation seams: test hooks override both in widget tests.
+  SessionBackend get _backend => widget.authHooks?.backend ?? SessionStore();
+
+  Future<bool> _validateSession(String sid) {
+    final v = widget.authHooks?.validate;
+    if (v != null) return v(sid);
+    return OdooApi().isSessionValid(sid);
+  }
+
+  /// Renewal seam: test hooks resolve without mounting a (platform) WebView.
+  Future<RenewOutcome> _performRenew(String email) async {
+    final r = widget.authHooks?.renew;
+    if (r != null) return r(email);
+    final sid = await _renewViaWebView(email);
+    if (sid != null && sid.isNotEmpty) return RenewOutcome(sessionId: sid);
+    return RenewOutcome(failCode: _silentFailCode ?? 'timeout');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -73,6 +124,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       authed = true;
       sessionId = 'test-session';
       sessionEmail = 'tester@ucp.edu.pk';
+    } else if (widget.authHooks != null && widget.authHooks!.startAuthed) {
+      authed = true;
+      sessionId = 'hook-session';
+      sessionEmail = 'hook@ucp.edu.pk';
+      _startMonitor();
     } else {
       _restoreSession();
     }
@@ -80,6 +136,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _healTimer?.cancel();
     _monitor?.stop();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -107,11 +164,20 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// If silent renewal reports the Microsoft session dead, the login screen
   /// explains that a fresh sign-in is needed (roughly monthly).
   Future<void> _restoreSession() async {
-    final store = SessionStore();
+    final store = _backend;
     if (await store.load() == null) return; // first launch ever: no message
-    final manager = SessionManager(store: store, api: OdooApi());
+    final validate = _validateSession;
+    final manager = SessionManager(
+      store: store,
+      api: FakeValidatingApi(validate),
+    );
     try {
-      final valid = await manager.ensureValidSession(renew: _renewViaWebView);
+      final valid = await manager.ensureValidSession(
+        renew: (email) async {
+          final outcome = await _performRenew(email);
+          return outcome.sessionId;
+        },
+      );
       if (!mounted) return;
       setState(() {
         sessionId = valid.sessionId;
@@ -156,22 +222,17 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   void _startMonitor() {
     _monitor?.stop();
     if (widget.skipLogin) return;
+    final backend = _backend;
     final monitor = SessionMonitor(
       readSession: () async {
-        final saved = await SessionStore().load();
+        final saved = await backend.load();
         if (saved == null) return null;
         return MonitorSnapshot(saved.sessionId, saved.email);
       },
-      validate: (sid) => OdooApi().isSessionValid(sid),
-      renew: (email) async {
-        final sid = await _renewViaWebView(email);
-        if (sid != null && sid.isNotEmpty) {
-          return RenewOutcome(sessionId: sid);
-        }
-        return RenewOutcome(failCode: _silentFailCode ?? 'timeout');
-      },
+      validate: _validateSession,
+      renew: _performRenew,
       onRenewed: (sid, email) async {
-        await SessionStore().save(sessionId: sid, email: email);
+        await backend.save(sessionId: sid, email: email);
         if (!mounted) return;
         setState(() {
           sessionId = sid;
@@ -179,12 +240,25 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           _expiredForSid = null;
           _expiredMessage = null;
         });
-        _loadDashboard();
+        _flashHealNotice();
+        if (widget.authHooks == null) _loadDashboard();
       },
       onDead: (message) => _handleSessionDead(message),
+      interval: widget.authHooks?.monitorInterval ?? SessionMonitor.heartbeat,
     );
     _monitor = monitor;
     monitor.start();
+  }
+
+  /// Brief non-blocking banner proving the background heal ran ("Session
+  /// refreshed automatically"). Auto-dismissed; never steals taps.
+  void _flashHealNotice() {
+    if (!mounted) return;
+    setState(() => _healNotice = true);
+    _healTimer?.cancel();
+    _healTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _healNotice = false);
+    });
   }
 
   /// Popup state for a session that died mid-use (laptop login, timeout).
@@ -236,8 +310,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// success clears the popup guard.
   Future<void> _reloginNow() async {
     final email =
-        sessionEmail ?? await SessionStore().readEmail() ?? '';
-    await SessionStore().clear();
+        sessionEmail ?? await _backend.readEmail() ?? '';
+    await _backend.clear();
     if (!mounted) return;
     setState(() {
       sessionId = null;
@@ -252,8 +326,10 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
 
   Future<void> _logout({String? message}) async {
     _monitor?.stop();
+    _healTimer?.cancel();
+    _healNotice = false;
     _finishSilentRenew(null); // abort any background renewal
-    await SessionStore().clear();
+    await _backend.clear();
     try {
       await WebViewCookieManager().clearCookies();
     } catch (_) {}
@@ -527,6 +603,53 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                             onLoginNow: _reloginNow,
                             onLater: () => setState(
                                 () => _expiredMessage = null),
+                          ),
+                        ),
+                      // Silent-heal notice: brief proof the background
+                      // renewal ran. Non-interactive, above content but
+                      // below dialogs.
+                      if (authed && _healNotice && _expiredMessage == null)
+                        Positioned(
+                          left: 16,
+                          right: 16,
+                          bottom: 16,
+                          child: IgnorePointer(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: colors.tealInk,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.black26,
+                                    blurRadius: 8,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.check_circle_outline,
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Session refreshed automatically — you stay signed in.',
+                                      style: body(
+                                        colors,
+                                        size: 13,
+                                        weight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                     ],

@@ -17,6 +17,7 @@ class AuthRequired implements Exception {
 abstract class SessionBackend {
   Future<void> save({required String sessionId, required String email});
   Future<({String sessionId, String email})?> load();
+  Future<String?> readEmail();
   Future<int?> savedAtMs();
   Future<void> clear();
 }

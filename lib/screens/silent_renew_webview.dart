@@ -51,7 +51,15 @@ class _SilentRenewWebViewState extends State<SilentRenewWebView> {
         NavigationDelegate(onUrlChange: _onUrl),
       )
       ..loadRequest(MicrosoftOAuth.buildSilentUrl(loginHint: widget.email));
-    _timer = Timer(widget.timeout, () => _finish(code: 'timeout'));
+    _timer = Timer(widget.timeout, () {
+      // If Odoo already consumed a code, silence until now means it failed
+      // to mint a session — treat as hard failure, not a soft timeout.
+      if (_sawCallback) {
+        _finish(code: 'no_session');
+      } else {
+        _finish(code: 'timeout');
+      }
+    });
   }
 
   @override

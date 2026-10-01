@@ -25,6 +25,9 @@ class _MemoryBackend implements SessionBackend {
       (sid == null || email == null) ? null : (sessionId: sid!, email: email!);
 
   @override
+  Future<String?> readEmail() async => email;
+
+  @override
   Future<void> save({required String sessionId, required String email}) async {
     sid = sessionId;
     this.email = email;
