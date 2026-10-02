@@ -109,13 +109,15 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   SessionMonitor? _monitor;
 
   CommunityService? _communityService() {
-    _community ??= isNodeConfigured
-        ? NodeCommunityService(
-            baseUrl: nodeApiUrl,
-            sessionOf: () => sessionId,
-          )
-        : ((widget.skipLogin || widget.authHooks != null)
-            ? FakeCommunityService()
+    // Widget tests always use deterministic seed data (never network),
+    // even though production defaults are configured.
+    _community ??= ((widget.skipLogin || widget.authHooks != null)
+        ? FakeCommunityService()
+        : isNodeConfigured
+            ? NodeCommunityService(
+                baseUrl: nodeApiUrl,
+                sessionOf: () => sessionId,
+              )
             : null);
     return _community;
   }
