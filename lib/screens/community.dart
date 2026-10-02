@@ -154,10 +154,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('r/campus', style: display(c, size: 28, color: Colors.white)),
-            Text('Connecting to campus feed…',
-                style: body(c,
-                    size: 14, color: Colors.white.withValues(alpha: 0.78))),
+            _feedHeader(c),
             const SizedBox(height: 24),
             const Center(
                 child: Padding(
@@ -173,7 +170,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('r/campus', style: display(c, size: 28, color: Colors.white)),
+            _feedHeader(c),
             const SizedBox(height: 16),
             Container(
               width: double.infinity,
@@ -221,6 +218,67 @@ class _CommunityScreenState extends State<CommunityScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _feedHeader(c),
+          const SizedBox(height: 12),
+          for (final p in shown) _postCard(c, p, onOpen: () => setState(() => openId = p.id)),
+          if (shown.isEmpty) Center(child: Padding(padding: const EdgeInsets.all(40), child: Text('No posts with this flair yet.', style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.5))))),
+          const SizedBox(height: 96),
+        ],
+      ),
+    ),
+        if (composing)
+          Positioned.fill(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Expanded(child: GestureDetector(onTap: () => setState(() => composing = false), child: Container(color: Colors.black.withValues(alpha: 0.4)))),
+                _composer(c),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Shown in production before Supabase credentials are configured.
+  Widget _setupNotice(AppColors c) {
+    return UHead(
+      height: 112,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('r/campus', style: display(c, size: 28, color: Colors.white)),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+                color: c.white, borderRadius: BorderRadius.circular(24)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Community backend not connected',
+                    style: display(c, size: 18)),
+                const SizedBox(height: 8),
+                Text(
+                  'Add your Supabase project URL and anon key (see supabase/README.md), then rebuild the app.',
+                  style: body(c,
+                      size: 14, color: c.tealInk.withValues(alpha: 0.65)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Header shared by loading/error/feed states so the Post entry points
+  /// never disappear (a hanging feed used to hide the composer button).
+  Widget _feedHeader(AppColors c) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
           Row(
             children: [
               Expanded(
@@ -297,59 +355,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          for (final p in shown) _postCard(c, p, onOpen: () => setState(() => openId = p.id)),
-          if (shown.isEmpty) Center(child: Padding(padding: const EdgeInsets.all(40), child: Text('No posts with this flair yet.', style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.5))))),
-          const SizedBox(height: 96),
-        ],
-      ),
-    ),
-        if (composing)
-          Positioned.fill(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Expanded(child: GestureDetector(onTap: () => setState(() => composing = false), child: Container(color: Colors.black.withValues(alpha: 0.4)))),
-                _composer(c),
-              ],
-            ),
-          ),
       ],
     );
   }
-
-  /// Shown in production before Supabase credentials are configured.
-  Widget _setupNotice(AppColors c) {
-    return UHead(
-      height: 112,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('r/campus', style: display(c, size: 28, color: Colors.white)),
-          const SizedBox(height: 16),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-                color: c.white, borderRadius: BorderRadius.circular(24)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Community backend not connected',
-                    style: display(c, size: 18)),
-                const SizedBox(height: 8),
-                Text(
-                  'Add your Supabase project URL and anon key (see supabase/README.md), then rebuild the app.',
-                  style: body(c,
-                      size: 14, color: c.tealInk.withValues(alpha: 0.65)),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _postCard(AppColors c, Post p, {VoidCallback? onOpen}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -383,7 +391,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                       p.imageUrl!,
                       fit: BoxFit.cover,
                       width: double.infinity,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      errorBuilder: (_, _, _) => const SizedBox.shrink(),
                     ),
                   ),
                 ],

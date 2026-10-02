@@ -17,6 +17,12 @@ class NodeCommunityService extends CommunityService {
   final String? Function() sessionOf;
   final http.Client _client;
 
+  /// Bounds every request so a stalled network can never trap the UI on a
+  /// spinner (the bug that hid the Post button). SSE is exempt (long-lived
+  /// by design, with its own reconnect).
+  static const requestTimeout = Duration(seconds: 20);
+  static const uploadTimeout = Duration(seconds: 60);
+
   final _updates = StreamController<void>.broadcast();
   bool _sseActive = false;
   bool _disposed = false;
@@ -90,10 +96,12 @@ class NodeCommunityService extends CommunityService {
 
   @override
   Future<List<Post>> fetchPosts({required String myEmail}) async {
-    final res = await _client.get(
-      Uri.parse('$baseUrl/api/posts?limit=60'),
-      headers: _headers(),
-    );
+    final res = await _client
+        .get(
+          Uri.parse('$baseUrl/api/posts?limit=60'),
+          headers: _headers(),
+        )
+        .timeout(requestTimeout);
     if (res.statusCode != 200) _throwFor(res);
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     final items = (body['posts'] as List?) ?? [];
@@ -172,11 +180,13 @@ class NodeCommunityService extends CommunityService {
     String path, {
     Map<String, dynamic>? body,
   }) async {
-    final res = await _client.post(
-      Uri.parse('$baseUrl$path'),
-      headers: _headers(json: true),
-      body: jsonEncode(body ?? {}),
-    );
+    final res = await _client
+        .post(
+          Uri.parse('$baseUrl$path'),
+          headers: _headers(json: true),
+          body: jsonEncode(body ?? {}),
+        )
+        .timeout(requestTimeout);
     if (res.statusCode != 200 && res.statusCode != 201) _throwFor(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -253,7 +263,8 @@ class NodeCommunityService extends CommunityService {
         filename: 'upload.$extension',
         contentType: _mediaType(contentType),
       ));
-    final streamed = await _client.send(req);
+    final streamed =
+        await _client.send(req).timeout(uploadTimeout);
     final res = await http.Response.fromStream(streamed);
     if (res.statusCode != 200 && res.statusCode != 201) _throwFor(res);
     final body = jsonDecode(res.body) as Map<String, dynamic>;

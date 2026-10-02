@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -7,13 +8,64 @@ import 'package:http/testing.dart';
 import 'package:ucp/community/community_service.dart';
 import 'package:ucp/community/fake_community_service.dart';
 import 'package:ucp/community/node_community_service.dart';
-
-import 'package:ucp/community/community_service.dart';
-import 'package:ucp/community/fake_community_service.dart';
-import 'package:ucp/community/node_community_service.dart';
+import 'package:ucp/data/seed.dart';
 import 'package:ucp/screens/community.dart';
 import 'package:ucp/theme/palette.dart';
 import 'package:ucp/widgets/common.dart';
+
+/// Never resolves: proves the UI keeps its Post entry points on a hung feed.
+class _HangingService extends CommunityService {
+  @override
+  Future<List<Post>> fetchPosts({required String myEmail}) =>
+      Completer<List<Post>>().future;
+  @override
+  Future<void> setVote(
+          {required String postId,
+          required String myEmail,
+          required int? value}) async {}
+  @override
+  Future<void> setCommentVote(
+          {required String commentId,
+          required String myEmail,
+          required int? value}) async {}
+  @override
+  Future<CComment> addComment(
+      {required String postId,
+      required String? parentId,
+      required String myEmail,
+      required String authorName,
+      required String text}) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<Post> createPost(
+      {required String myEmail,
+      required String authorName,
+      required String title,
+      required String body,
+      required String flair,
+      String? imageUrl}) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<String> uploadImage(
+      {required Uint8List bytes,
+      required String contentType,
+      required String extension}) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Stream<void> get updates => Stream<void>.empty();
+  @override
+  bool get supportsRealtime => false;
+  @override
+  Future<void> ensureRealtime(Future<void> Function() onEvent) async {}
+  @override
+  void dispose() {}
+}
 
 void main() {
   group('helpers', () {
@@ -126,6 +178,27 @@ void main() {
   });
 
   group('CommunityScreen modes', () {
+    testWidgets('post button stays visible while the feed hangs',
+        (WidgetTester tester) async {
+      final colors = AppColors.of(AppPalette.skater, false);
+      await tester.pumpWidget(
+        AppScope(
+          colors: colors,
+          palette: AppPalette.skater,
+          child: MaterialApp(
+            home: Scaffold(
+              body: CommunityScreen(service: _HangingService()),
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      // Header (with both Post entry points) renders despite no data yet.
+      expect(find.text(' Post'), findsOneWidget);
+      expect(find.text('Share something with campus…'), findsOneWidget);
+      expect(find.text('r/campus'), findsOneWidget);
+    });
+
     testWidgets('null service shows setup notice, not feed',
         (WidgetTester tester) async {
       final colors = AppColors.of(AppPalette.skater, false);

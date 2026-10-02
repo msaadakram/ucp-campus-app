@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../auth/dashboard_parser.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
@@ -42,6 +43,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool push = true, assign = true, grades = true, community = false, email = true;
   bool lock = false;
   String lang = 'English';
+  String _appVersion = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  /// Real build version (e.g. 1.0.20) so installed APKs are identifiable.
+  /// Falls back silently where package info is unavailable (tests).
+  Future<void> _loadVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() => _appVersion = 'Version ${info.version}');
+    } catch (_) {}
+  }
 
   void _set(ProfilePrefs p) => widget.onPrefs(p);
 
@@ -240,7 +258,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     SettingRow(icon: Icons.storage_outlined, tone: c.dust, label: 'Downloads & storage', sub: '182 MB used'),
                     SettingRow(icon: Icons.help_outline, tone: c.teal, label: 'Help & support'),
-                    SettingRow(icon: Icons.info_outline, tone: c.tealInk, label: 'About', sub: 'Version 1.0.0'),
+                    SettingRow(icon: Icons.info_outline, tone: c.tealInk, label: 'About', sub: _appVersion.isEmpty ? 'Campus app' : _appVersion),
                   ],
                 ),
               ),
