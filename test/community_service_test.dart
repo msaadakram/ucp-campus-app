@@ -199,6 +199,80 @@ void main() {
       expect(find.text('r/campus'), findsOneWidget);
     });
 
+    Future<void> openThread(WidgetTester tester) async {
+      final colors = AppColors.of(AppPalette.skater, false);
+      final svc = FakeCommunityService();
+      await tester.pumpWidget(
+        AppScope(
+          colors: colors,
+          palette: AppPalette.skater,
+          child: MaterialApp(
+            home: Scaffold(
+              body: CommunityScreen(
+                  service: svc, myEmail: 'tester@ucp.edu.pk'),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final title =
+          find.text('Study group for the Data Structures midterm?');
+      await tester.ensureVisible(title);
+      await tester.pumpAndSettle();
+      await tester.tap(title);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('heart likes then unlikes a comment',
+        (WidgetTester tester) async {
+      await openThread(tester);
+      expect(find.byIcon(Icons.favorite), findsNothing);
+      await tester.ensureVisible(find.text(' Like').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(' Like').first);
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.favorite), findsOneWidget);
+      await tester.ensureVisible(find.text(' Like').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(' Like').first);
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.favorite), findsNothing);
+    });
+
+    testWidgets('comment share copies to clipboard',
+        (WidgetTester tester) async {
+      await openThread(tester);
+      await tester.ensureVisible(find.text(' Share').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(' Share').first);
+      await tester.pumpAndSettle();
+      expect(find.text('Copied to clipboard'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 3)); // let snackbar dismiss
+    });
+
+    testWidgets('post share copies to clipboard',
+        (WidgetTester tester) async {
+      final colors = AppColors.of(AppPalette.skater, false);
+      await tester.pumpWidget(
+        AppScope(
+          colors: colors,
+          palette: AppPalette.skater,
+          child: MaterialApp(
+            home: Scaffold(
+              body: CommunityScreen(
+                  service: FakeCommunityService(),
+                  myEmail: 'tester@ucp.edu.pk'),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(' Share').first);
+      await tester.pumpAndSettle();
+      expect(find.text('Copied to clipboard'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 3)); // let snackbar dismiss
+    });
+
     testWidgets('null service shows setup notice, not feed',
         (WidgetTester tester) async {
       final colors = AppColors.of(AppPalette.skater, false);

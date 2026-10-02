@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../community/community_service.dart';
 import '../data/seed.dart';
@@ -220,7 +221,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
         children: [
           _feedHeader(c),
           const SizedBox(height: 12),
-          for (final p in shown) _postCard(c, p, onOpen: () => setState(() => openId = p.id)),
+          for (final p in shown) _postCard(context, c, p, onOpen: () => setState(() => openId = p.id)),
           if (shown.isEmpty) Center(child: Padding(padding: const EdgeInsets.all(40), child: Text('No posts with this flair yet.', style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.5))))),
           const SizedBox(height: 96),
         ],
@@ -358,7 +359,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
       ],
     );
   }
-  Widget _postCard(AppColors c, Post p, {VoidCallback? onOpen}) {
+  Widget _postCard(BuildContext context, AppColors c, Post p, {VoidCallback? onOpen}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -412,7 +413,12 @@ class _CommunityScreenState extends State<CommunityScreen> {
               ),
               const SizedBox(width: 8),
               Flexible(
-                child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: c.dustSoft.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20)), child: const Row(children: [Icon(Icons.share_outlined, size: 15), Flexible(child: Text(' Share', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis))])),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _copyText(context, c,
+                      '${p.title}\n\n${p.body}\n— via campus community'),
+                  child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: c.dustSoft.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20)), child: const Row(children: [Icon(Icons.share_outlined, size: 15), Flexible(child: Text(' Share', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis))])),
+                ),
               ),
               const Spacer(),
               GestureDetector(onTap: () => setState(() => p.saved = !p.saved), child: Container(alignment: Alignment.center, width: 32, height: 32, decoration: BoxDecoration(color: p.saved ? c.board : c.dustSoft.withValues(alpha: 0.7), shape: BoxShape.circle), child: Icon(Icons.bookmark_outline, size: 16, color: p.saved ? c.tealInk : c.tealInk))),
@@ -447,7 +453,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
             child: SingleChildScrollView(
               child: Column(
                 children: [
-                  _postCard(c, post),
+                  _postCard(context, c, post),
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(24)),
@@ -456,7 +462,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                       children: [
                         Text('${countComments(post.comments)} comments'.toUpperCase(), style: TextStyle(fontSize: 12, color: c.tealInk.withValues(alpha: 0.55))),
                         if (post.comments.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No comments yet — start the conversation.')))
-                        else for (final cm in post.comments) _commentTile(c, post, cm, 0),
+                        else for (final cm in post.comments) _commentTile(context, c, post, cm, 0),
                       ],
                     ),
                   ),
@@ -493,7 +499,66 @@ class _CommunityScreenState extends State<CommunityScreen> {
     );
   }
 
-  Widget _commentTile(AppColors c, Post post, CComment cm, int depth) {
+  Future<void> _copyText(
+      BuildContext context, AppColors c, String text) async {
+    // Confirm instantly (never gated on the platform clipboard, which can
+    // hang or be unavailable on some embeds and in tests).
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Copied to clipboard'),
+          backgroundColor: c.tealInk,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+    try {
+      await Clipboard.setData(ClipboardData(text: text))
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {}
+  }
+
+  /// Small pill button for comment actions (like/reply/share).
+  Widget _miniAction(
+    AppColors c, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    bool active = false,
+  }) {
+    final color =
+        active ? c.clay : c.tealInk.withValues(alpha: 0.6);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: active
+              ? c.clay.withValues(alpha: 0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: color),
+            Text(' $label',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _commentTile(
+      BuildContext context, AppColors c, Post post, CComment cm, int depth) {
     return Padding(
       padding: EdgeInsets.only(left: depth == 0 ? 0 : 12, top: 12),
       child: Container(
@@ -502,11 +567,57 @@ class _CommunityScreenState extends State<CommunityScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [CircleAvatar(radius: 12, child: Text(cm.author[0].toUpperCase(), style: const TextStyle(fontSize: 10))), const SizedBox(width: 6), Text('u/${cm.author}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)), Text(' · ${cm.time}', style: TextStyle(fontSize: 12, color: c.tealInk.withValues(alpha: 0.5)))]),
+            Row(children: [
+              CircleAvatar(
+                  radius: 12,
+                  child: Text(cm.author[0].toUpperCase(),
+                      style: const TextStyle(fontSize: 10))),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text('u/${cm.author}',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 12),
+                    overflow: TextOverflow.ellipsis),
+              ),
+              Text(' · ${cm.time}',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: c.tealInk.withValues(alpha: 0.5))),
+            ]),
             const SizedBox(height: 4),
             Text(cm.text, style: const TextStyle(fontSize: 14)),
-            Row(children: [_votes(c, cm.score, cm.vote, (v) => _voteComment(cm, v)), TextButton(onPressed: () => setState(() => replyTo = cm), child: const Text('Reply', style: TextStyle(fontSize: 12)))]),
-            for (final r in cm.replies) _commentTile(c, post, r, depth + 1),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                _votes(c, cm.score, cm.vote, (v) => _voteComment(cm, v)),
+                _miniAction(
+                  c,
+                  icon: cm.vote == 1
+                      ? Icons.favorite
+                      : Icons.favorite_outline,
+                  label: 'Like',
+                  active: cm.vote == 1,
+                  onTap: () => _voteComment(cm, 1),
+                ),
+                _miniAction(
+                  c,
+                  icon: Icons.reply_outlined,
+                  label: 'Reply',
+                  onTap: () => setState(() => replyTo = cm),
+                ),
+                _miniAction(
+                  c,
+                  icon: Icons.share_outlined,
+                  label: 'Share',
+                  onTap: () => _copyText(
+                      context, c, 'u/${cm.author}: ${cm.text}'),
+                ),
+              ],
+            ),
+            for (final r in cm.replies)
+              _commentTile(context, c, post, r, depth + 1),
           ],
         ),
       ),
