@@ -13,6 +13,7 @@ import 'auth/session_monitor.dart';
 import 'auth/session_store.dart';
 import 'community/community_service.dart';
 import 'community/fake_community_service.dart';
+import 'community/node_community_service.dart';
 import 'community/supabase_config.dart';
 import 'community/supabase_service.dart';
 import 'data/seed.dart';
@@ -99,8 +100,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// screen shows a short "Signing you in…" animation instead of the form.
   bool _restoring = false;
 
-  /// Community backend, chosen once: live Supabase when configured,
-  /// seeded fake in widget-test modes, null (= setup notice) otherwise.
+  /// Community backend, chosen once. Priority: Node API (session-verified
+  /// writes) > direct Supabase > seeded fake in widget-test modes >
+  /// null (= setup notice) in unconfigured production.
   CommunityService? _community;
 
   /// Foreground liveness watchdog. Never started in `skipLogin` test mode
@@ -108,11 +110,16 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   SessionMonitor? _monitor;
 
   CommunityService? _communityService() {
-    _community ??= isSupabaseConfigured
-        ? SupabaseCommunityService()
-        : ((widget.skipLogin || widget.authHooks != null)
-            ? FakeCommunityService()
-            : null);
+    _community ??= isNodeConfigured
+        ? NodeCommunityService(
+            baseUrl: nodeApiUrl,
+            sessionOf: () => sessionId,
+          )
+        : isSupabaseConfigured
+            ? SupabaseCommunityService()
+            : ((widget.skipLogin || widget.authHooks != null)
+                ? FakeCommunityService()
+                : null);
     return _community;
   }
 

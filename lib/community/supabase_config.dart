@@ -22,3 +22,16 @@ const supabaseAnonKey = String.fromEnvironment(
 /// True once real credentials are present (build flavor or edited file).
 bool get isSupabaseConfigured =>
     supabaseUrl.startsWith('https://') && supabaseAnonKey.length > 20;
+
+/// Node API base (no trailing slash), e.g. `https://api.ucp.edu.pk` or for
+/// the Android emulator `http://10.0.2.2:3001`. Empty = not configured.
+/// Prefer `--dart-define=NODE_API_URL=...` so it never lands in git.
+const nodeApiUrl = String.fromEnvironment(
+  'NODE_API_URL',
+  defaultValue: '',
+);
+
+/// True when the app should talk to the Node backend (takes precedence
+/// over direct Supabase access).
+bool get isNodeConfigured =>
+    nodeApiUrl.startsWith('http') && nodeApiUrl.length > 10;

@@ -2,9 +2,16 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:ucp/community/community_service.dart';
+import 'package:ucp/community/fake_community_service.dart';
+import 'package:ucp/community/node_community_service.dart';
+import 'package:ucp/community/supabase_service.dart';
 
 import 'package:ucp/community/community_service.dart';
 import 'package:ucp/community/fake_community_service.dart';
+import 'package:ucp/community/node_community_service.dart';
 import 'package:ucp/community/supabase_service.dart';
 import 'package:ucp/screens/community.dart';
 import 'package:ucp/theme/palette.dart';
@@ -236,6 +243,108 @@ void main() {
         find.text('Study group for the Data Structures midterm?'),
         findsOneWidget,
       );
+      svc.dispose();
+    });
+  });
+
+  group('NodeCommunityService (mocked backend)', () {
+    const feedBody = '{"posts": [{'
+        '"id":"p1","author":"sara","flair":"Study","title":"T","body":"B",'
+        '"created_at":"2026-10-01T11:00:00","score":5,"vote":1,'
+        '"image_url":null,'
+        '"comments":['
+        '{"id":"c1","parent_id":null,"author_name":"omar","text":"in!",'
+        '"score":2,"vote":0},'
+        '{"id":"c2","parent_id":"c1","author_name":"sara","text":"nice",'
+        '"score":0,"vote":0}'
+        ']}]}';
+
+    NodeCommunityService service(MockClient client) =>
+        NodeCommunityService(
+          baseUrl: 'https://api.test',
+          sessionOf: () => 'sid-1',
+          client: client,
+        );
+
+    test('feed maps posts and nests embedded comments', () async {
+      final svc = service(MockClient((req) async {
+        expect(req.headers['x-ucp-session'], 'sid-1');
+        expect(req.url.path, '/api/posts');
+        return http.Response(
+          feedBody,
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }));
+      final posts = await svc.fetchPosts(myEmail: 'me@ucp.edu.pk');
+      expect(posts.length, 1);
+      expect(posts.first.title, 'T');
+      expect(posts.first.score, 5);
+      expect(posts.first.vote, 1);
+      expect(posts.first.comments.length, 1);
+      expect(posts.first.comments.first.replies.length, 1);
+      expect(posts.first.comments.first.replies.first.text, 'nice');
+      svc.dispose();
+    });
+
+    test('server error surfaces message', () async {
+      final svc = service(MockClient((_) async => http.Response(
+            '{"error":"portal session expired or missing"}',
+            401,
+          )));
+      await expectLater(
+        svc.fetchPosts(myEmail: 'x'),
+        throwsA(
+          isA<CommunityException>().having(
+            (e) => e.message,
+            'message',
+            contains('portal session expired'),
+          ),
+        ),
+      );
+      svc.dispose();
+    });
+
+    test('vote/create round-trips', () async {
+      final calls = <String>[];
+      final svc = service(MockClient((req) async {
+        calls.add('${req.method} ${req.url.path}');
+        if (req.url.path.endsWith('/vote')) {
+          return http.Response('{"ok":true}', 200);
+        }
+        return http.Response(
+          '{"post":{"id":"p9","author":"me","flair":"Help","title":"Q?",'
+          '"body":"","created_at":"2026-10-01T11:59:00","score":0,"vote":0,'
+          '"image_url":null,"comments":[]}}',
+          201,
+        );
+      }));
+      await svc.setVote(postId: 'p1', myEmail: 'm', value: 1);
+      final post = await svc.createPost(
+        myEmail: 'm',
+        authorName: 'me',
+        title: 'Q?',
+        body: '',
+        flair: 'Help',
+      );
+      expect(post.id, 'p9');
+      expect(calls, ['POST /api/posts/p1/vote', 'POST /api/posts']);
+      svc.dispose();
+    });
+
+    test('upload posts multipart and returns url', () async {
+      String? contentType;
+      final svc = service(MockClient((req) async {
+        contentType = req.headers['content-type'];
+        return http.Response('{"url":"https://cdn/x.jpg"}', 201);
+      }));
+      final url = await svc.uploadImage(
+        bytes: Uint8List.fromList([1, 2, 3]),
+        contentType: 'image/jpeg',
+        extension: 'jpg',
+      );
+      expect(url, 'https://cdn/x.jpg');
+      expect(contentType, contains('multipart/form-data'));
       svc.dispose();
     });
   });
