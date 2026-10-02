@@ -11,11 +11,10 @@ import 'auth/portal_api.dart';
 import 'auth/session_manager.dart';
 import 'auth/session_monitor.dart';
 import 'auth/session_store.dart';
+import 'community/backend_config.dart';
 import 'community/community_service.dart';
 import 'community/fake_community_service.dart';
 import 'community/node_community_service.dart';
-import 'community/supabase_config.dart';
-import 'community/supabase_service.dart';
 import 'data/seed.dart';
 import 'screens/auth_home.dart';
 import 'screens/community.dart';
@@ -115,11 +114,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
             baseUrl: nodeApiUrl,
             sessionOf: () => sessionId,
           )
-        : isSupabaseConfigured
-            ? SupabaseCommunityService()
-            : ((widget.skipLogin || widget.authHooks != null)
-                ? FakeCommunityService()
-                : null);
+        : ((widget.skipLogin || widget.authHooks != null)
+            ? FakeCommunityService()
+            : null);
     return _community;
   }
 

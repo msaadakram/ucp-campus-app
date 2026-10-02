@@ -7,12 +7,10 @@ import 'package:http/testing.dart';
 import 'package:ucp/community/community_service.dart';
 import 'package:ucp/community/fake_community_service.dart';
 import 'package:ucp/community/node_community_service.dart';
-import 'package:ucp/community/supabase_service.dart';
 
 import 'package:ucp/community/community_service.dart';
 import 'package:ucp/community/fake_community_service.dart';
 import 'package:ucp/community/node_community_service.dart';
-import 'package:ucp/community/supabase_service.dart';
 import 'package:ucp/screens/community.dart';
 import 'package:ucp/theme/palette.dart';
 import 'package:ucp/widgets/common.dart';
@@ -124,81 +122,6 @@ void main() {
       expect(events, 1);
       await sub.cancel();
       svc.dispose();
-    });
-  });
-
-  group('SupabaseCommunityService mappers (no network)', () {
-    final now = DateTime(2026, 10, 1, 12);
-
-    test('mapPostList aggregates scores excluding my vote', () {
-      final posts = SupabaseCommunityService.mapPostList(
-        rows: [
-          {
-            'id': 'p1',
-            'author_name': 'sara',
-            'flair': 'Study',
-            'title': 'T',
-            'body': 'B',
-            'image_url': 'https://cdn/x.jpg',
-            'created_at': '2026-10-01T11:48:00',
-          },
-        ],
-        votes: [
-          {'post_id': 'p1', 'author_email': 'other@x', 'value': 1},
-          {'post_id': 'p1', 'author_email': 'other@x', 'value': 1},
-          {'post_id': 'p1', 'author_email': 'me@ucp.edu.pk', 'value': -1},
-        ],
-        comments: const [],
-        commentVotes: const [],
-        myEmail: 'me@ucp.edu.pk',
-        now: now,
-      );
-      expect(posts.length, 1);
-      expect(posts.first.score, 2); // 2 + (-1) total, minus my -1
-      expect(posts.first.vote, -1);
-      expect(posts.first.time, '12m');
-      expect(posts.first.imageUrl, 'https://cdn/x.jpg');
-    });
-
-    test('buildCommentTree nests replies, orphans to roots', () {
-      final tree = SupabaseCommunityService.buildCommentTree(
-        rows: [
-          {
-            'id': 'c1',
-            'post_id': 'p',
-            'parent_id': null,
-            'author_name': 'a',
-            'text': 'top',
-            'created_at': '2026-10-01T11:00:00'
-          },
-          {
-            'id': 'c2',
-            'post_id': 'p',
-            'parent_id': 'c1',
-            'author_name': 'b',
-            'text': 'reply',
-            'created_at': '2026-10-01T11:05:00'
-          },
-          {
-            'id': 'c3',
-            'post_id': 'p',
-            'parent_id': 'missing',
-            'author_name': 'c',
-            'text': 'orphan',
-            'created_at': '2026-10-01T11:06:00'
-          },
-        ],
-        commentVotes: [
-          {'comment_id': 'c1', 'author_email': 'me@ucp.edu.pk', 'value': 1},
-        ],
-        myEmail: 'me@ucp.edu.pk',
-        now: now,
-      );
-      expect(tree.length, 2); // c1 + orphan c3
-      expect(tree.first.replies.length, 1);
-      expect(tree.first.replies.first.text, 'reply');
-      expect(tree.first.score, 0); // my +1 excluded
-      expect(tree.first.vote, 1);
     });
   });
 

@@ -1,9 +1,15 @@
 # Community backend setup (Supabase) — owner guide
 
-The Community tab is live: posts, votes, nested comments and photo uploads
-run on Supabase. The app ships with empty credentials, so until you do the
-steps below it shows a "backend not connected" notice (tests use seeded
-fake data and are unaffected).
+> Current architecture: the app talks ONLY to the Node API in `backend/`
+> (direct app→Supabase access was retired). This Supabase project still
+> provides the database, realtime-less storage and the image bucket — the
+> Node server holds the keys. Keep this project; the app needs nothing
+> from it directly anymore.
+
+The Community tab is live through the Node API: posts, votes, nested
+comments and photo uploads. Until the Node URL is baked in, the tab shows
+a "backend not connected" notice (tests use seeded fake data and are
+unaffected).
 
 You need: a free Supabase account (https://supabase.com) — ~15 minutes.
 
@@ -30,18 +36,19 @@ You need: a free Supabase account (https://supabase.com) — ~15 minutes.
 enabled (the SQL does this; verify the toggles are on, otherwise live
 updates won't push and the app falls back to refetch-on-open).
 
-## 5. Give the keys to the app (pick ONE)
-- **Option A — no secrets in git (recommended):** build with
-  ```
-  flutter build apk --release \
-    --dart-define=SUPABASE_URL=https://xyzcompany.supabase.co \
-    --dart-define=SUPABASE_ANON_KEY=eyJhbG...
-  ```
-- **Option B — bake into source:** edit
-  `lib/community/supabase_config.dart` defaults (anyone with the APK can
-  read them back — acceptable for the anon key, it is public by design).
+## 5. Give the keys to the backend (NOT the app)
+Put them in the Node server's `.env` (see `backend/README.md`) —
+`SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` — then give the *app* only
+the Node public base URL (next section). Rebuild + reinstall. Open
+Community → post something → watch it appear.
 
-Rebuild + reinstall. Open Community → post something → watch it appear.
+## 5b. Point the app at your Node server
+Build with your server's public HTTPS URL (or run a local one for tests):
+```
+flutter build apk --release --dart-define=NODE_API_URL=https://api.yourdomain.xyz
+```
+For the Android emulator against a laptop server: `http://10.0.2.2:3001`.
+Deploy, verify and troubleshoot steps live in `backend/README.md`.
 
 ## 6. Verify it end to end
 1. Post from the app (with and without a photo).
