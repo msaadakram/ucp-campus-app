@@ -356,6 +356,63 @@ void main() {
     expect(find.text('Data Structures'), findsNothing);
   });
 
+  testWidgets('home UP NEXT shows next class plus following ones',
+      (WidgetTester tester) async {
+    const data = DashboardData(studentName: 'Test Student');
+    const slots = [
+      TimetableSlot(
+          day: 'Monday',
+          start: '08:00',
+          end: '08:55',
+          subject: 'Alpha Class',
+          teacher: 'T A',
+          section: 'S1',
+          room: 'R1'),
+      TimetableSlot(
+          day: 'Monday',
+          start: '10:00',
+          end: '10:55',
+          subject: 'Beta Class',
+          teacher: 'T B',
+          section: 'S2',
+          room: 'R2'),
+      TimetableSlot(
+          day: 'Wednesday',
+          start: '09:00',
+          end: '09:55',
+          subject: 'Gamma Class',
+          teacher: 'T C',
+          section: 'S3',
+          room: 'R3'),
+    ];
+    final colors = AppColors.of(AppPalette.skater, false);
+    await tester.pumpWidget(
+      AppScope(
+        colors: colors,
+        palette: AppPalette.skater,
+        child: MaterialApp(
+          home: Scaffold(
+            body: HomeScreen(
+              onOpen: (_) {},
+              toProfile: () {},
+              onMenu: () {},
+              onGpa: () {},
+              onBoard: (_) {},
+              dashboard: data,
+              timetableSlots: slots,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // Hero shows the soonest class; the next two appear as follow-ups.
+    expect(find.text('Alpha Class'), findsOneWidget);
+    expect(find.text('Beta Class'), findsWidgets);
+    expect(find.text('Gamma Class'), findsWidgets);
+    expect(find.textContaining('UP NEXT'), findsOneWidget);
+  });
+
   testWidgets('course detail shows live weekly classes',
       (WidgetTester tester) async {
     const course = Course(

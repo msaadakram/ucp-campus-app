@@ -387,9 +387,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 20),
           Builder(builder: (_) {
-            final next = widget.timetableSlots.isEmpty
-                ? null
-                : nextClass(widget.timetableSlots, DateTime.now());
+            final upcoming = widget.timetableSlots.isEmpty
+                ? const <TimetableSlot>[]
+                : upcomingClasses(
+                    widget.timetableSlots, DateTime.now(), 3);
+            final next = upcoming.isEmpty ? null : upcoming.first;
+            final then = upcoming.length > 1
+                ? upcoming.sublist(1)
+                : const <TimetableSlot>[];
             final upTitle = next?.subject ?? 'Data Structures';
             final upTime = next != null ? '${next.day} · ${next.start}' : '09:00';
             final upBits = [
@@ -421,6 +426,36 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: body(c,
                           size: 14,
                           color: Colors.white.withValues(alpha: 0.8))),
+                  for (final s in then) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Text('${s.day.substring(0, 3)} · ${s.start}',
+                              style: body(c,
+                                  size: 12,
+                                  weight: FontWeight.w700,
+                                  color: Colors.white)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(s.subject,
+                                style: body(c,
+                                    size: 12,
+                                    color:
+                                        Colors.white.withValues(alpha: 0.85)),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             );

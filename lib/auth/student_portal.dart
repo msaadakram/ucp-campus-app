@@ -207,7 +207,18 @@ List<TimetableSlot> slotsForCourse(
 /// earliest slot on the following days (wraps around the week). Null when
 /// there are no slots at all.
 TimetableSlot? nextClass(List<TimetableSlot> slots, DateTime now) {
-  if (slots.isEmpty) return null;
+  final up = upcomingClasses(slots, now, 1);
+  return up.isEmpty ? null : up.first;
+}
+
+/// The next [count] upcoming classes in chronological order: today's
+/// remaining slots first, then the following days (wraps the week).
+/// Empty when there are no slots at all.
+List<TimetableSlot> upcomingClasses(
+    List<TimetableSlot> slots, DateTime now, [
+  int count = 3,
+]) {
+  if (slots.isEmpty || count <= 0) return const [];
   const order = [
     'Monday',
     'Tuesday',
@@ -220,18 +231,23 @@ TimetableSlot? nextClass(List<TimetableSlot> slots, DateTime now) {
   String hm(DateTime t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   final today = order[(now.weekday - 1).clamp(0, 6)];
-  final laterToday = slots
-      .where((s) => s.day == today && s.start.compareTo(hm(now)) > 0)
-      .toList()
-    ..sort((a, b) => a.start.compareTo(b.start));
-  if (laterToday.isNotEmpty) return laterToday.first;
-  for (var d = 1; d <= 7; d++) {
+  final out = <TimetableSlot>[];
+  out.addAll(
+      slots.where((s) => s.day == today && s.start.compareTo(hm(now)) > 0));
+  for (var d = 1; d <= 7 && out.length < count; d++) {
     final name = order[(order.indexOf(today) + d) % 7];
-    final daySlots = slots.where((s) => s.day == name).toList()
-      ..sort((a, b) => a.start.compareTo(b.start));
-    if (daySlots.isNotEmpty) return daySlots.first;
+    out.addAll(slots.where((s) => s.day == name));
   }
-  return slots.first;
+  out.sort((a, b) {
+    // Today's leftovers first, then day order, then start time.
+    int rank(TimetableSlot s) {
+      if (s.day == today && s.start.compareTo(hm(now)) > 0) return -8;
+      return (order.indexOf(s.day) - order.indexOf(today) + 7) % 7;
+    }
+    final r = rank(a).compareTo(rank(b));
+    return r != 0 ? r : a.start.compareTo(b.start);
+  });
+  return out.take(count).toList();
 }
 
 class PortalRoutes {

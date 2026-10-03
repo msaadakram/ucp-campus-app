@@ -174,6 +174,43 @@ void main() {
       expect(nextClass([], DateTime(2026, 9, 28)), isNull);
     });
 
+    test('upcomingClasses returns the next few in order', () {
+      final week = [
+        TimetableSlot(
+            day: 'Monday',
+            start: '08:00',
+            end: '08:55',
+            subject: 'A',
+            teacher: '',
+            section: '',
+            room: ''),
+        TimetableSlot(
+            day: 'Monday',
+            start: '10:00',
+            end: '10:55',
+            subject: 'A2',
+            teacher: '',
+            section: '',
+            room: ''),
+        TimetableSlot(
+            day: 'Wednesday',
+            start: '09:00',
+            end: '09:55',
+            subject: 'B',
+            teacher: '',
+            section: '',
+            room: ''),
+      ];
+      // Monday 07:00 -> A, A2, B.
+      final three = upcomingClasses(week, DateTime(2026, 9, 28, 7, 0), 3);
+      expect(three.map((s) => s.subject).toList(), ['A', 'A2', 'B']);
+      // Monday 09:00 -> A2, B (count caps it).
+      final two = upcomingClasses(week, DateTime(2026, 9, 28, 9, 0), 2);
+      expect(two.map((s) => s.subject).toList(), ['A2', 'B']);
+      expect(upcomingClasses([], DateTime(2026, 9, 28)), isEmpty);
+      expect(upcomingClasses(week, DateTime(2026, 9, 28, 7, 0), 0), isEmpty);
+    });
+
     test('garbage never throws', () {
       expect(parseCourses(''), isEmpty);
       expect(parseCourses('<div>none'), isEmpty);

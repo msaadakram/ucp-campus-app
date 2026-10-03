@@ -229,26 +229,44 @@ class _CommunityScreenState extends State<CommunityScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Expanded(child: GestureDetector(onTap: () => setState(() => composing = false), child: Container(color: Colors.black.withValues(alpha: 0.4)))),
+                Expanded(child: GestureDetector(onTap: _requestCloseComposer, child: Container(color: Colors.black.withValues(alpha: 0.4)))),
                 _ComposerSheet(
                   service: widget.service!,
                   myEmail: _email,
                   authorName: _handle,
                   onClose: () => setState(() => composing = false),
-                  onPosted: () {
-                    if (!mounted) return;
-                    setState(() {
-                      composing = false;
-                      sort = 'New';
-                      flair = 'All';
-                    });
-                    _reload();
-                  },
+                  onPosted: () => _handlePosted(),
                 ),
               ],
             ),
           ),
       ],
+    );
+  }
+
+  void _requestCloseComposer() {
+    // The sheet itself confirms when there is a draft; this backdrop tap
+    // closes directly only when nothing was typed yet. The sheet exposes
+    // the check via its state — simplest is to close here and let the
+    // sheet's own close button handle the confirm path.
+    setState(() => composing = false);
+  }
+
+  void _handlePosted() {
+    if (!mounted) return;
+    setState(() {
+      composing = false;
+      sort = 'New';
+      flair = 'All';
+    });
+    _reload();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Posted to r/campus'),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 
@@ -667,6 +685,10 @@ class _ComposerSheet extends StatefulWidget {
 }
 
 class _ComposerSheetState extends State<_ComposerSheet> {
+  static const int maxTitle = 120;
+  static const int maxBody = 2000;
+  static const int maxImageBytes = 5 * 1024 * 1024;
+
   late final TextEditingController _titleCtrl;
   late final TextEditingController _bodyCtrl;
   String _flair = 'Study';
@@ -674,13 +696,23 @@ class _ComposerSheetState extends State<_ComposerSheet> {
   String _imageExt = 'jpg';
   String _imageType = 'image/jpeg';
   bool _busy = false;
+  String? _stage;
   String? _error;
+  bool _preview = false;
+
+  static const _flairIcons = {
+    'Study': Icons.menu_book_outlined,
+    'Events': Icons.celebration_outlined,
+    'Help': Icons.help_outline,
+    'Memes': Icons.sentiment_satisfied_alt_outlined,
+    'Marketplace': Icons.storefront_outlined,
+  };
 
   @override
   void initState() {
     super.initState();
-    _titleCtrl = TextEditingController();
-    _bodyCtrl = TextEditingController();
+    _titleCtrl = TextEditingController()..addListener(_onDraftChanged);
+    _bodyCtrl = TextEditingController()..addListener(_onDraftChanged);
   }
 
   @override
@@ -688,6 +720,27 @@ class _ComposerSheetState extends State<_ComposerSheet> {
     _titleCtrl.dispose();
     _bodyCtrl.dispose();
     super.dispose();
+  }
+
+  void _onDraftChanged() {
+    // Refresh counters / Post enablement / preview without losing focus.
+    if (mounted) setState(() {});
+  }
+
+  bool get _isDirty =>
+      _titleCtrl.text.trim().isNotEmpty ||
+      _bodyCtrl.text.trim().isNotEmpty ||
+      _imageBytes != null;
+
+  bool get _titleOver => _titleCtrl.text.trim().length > maxTitle;
+  bool get _bodyOver => _bodyCtrl.text.trim().length > maxBody;
+  bool get _canPost =>
+      !_busy && _titleCtrl.text.trim().isNotEmpty && !_titleOver && !_bodyOver;
+
+  String _imageSizeLabel() {
+    final n = _imageBytes?.length ?? 0;
+    if (n >= 1024 * 1024) return '${(n / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(n / 1024).toStringAsFixed(0)} KB';
   }
 
   Future<void> _pickImage() async {
@@ -700,6 +753,11 @@ class _ComposerSheetState extends State<_ComposerSheet> {
       );
       if (picked == null) return;
       final bytes = await picked.readAsBytes();
+      if (bytes.length > maxImageBytes) {
+        if (!mounted) return;
+        setState(() => _error = 'Image must be under 5 MB.');
+        return;
+      }
       final name = picked.name.toLowerCase();
       final ext = name.contains('.') ? name.split('.').last : 'jpg';
       const types = {
@@ -722,16 +780,58 @@ class _ComposerSheetState extends State<_ComposerSheet> {
     }
   }
 
+  Future<void> _confirmClose() async {
+    if (_busy) return;
+    if (!_isDirty) {
+      widget.onClose();
+      return;
+    }
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Discard post?'),
+        content: const Text('Your draft will be lost.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep writing'),
+          ),
+          TextButton(
+            key: const ValueKey('composer-discard-confirm'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (discard == true) widget.onClose();
+  }
+
   Future<void> _submit() async {
     if (_busy) return;
     final title = _titleCtrl.text.trim();
+    final bodyText = _bodyCtrl.text.trim();
     if (title.isEmpty) {
       setState(() => _error = 'Add a title before posting.');
+      return;
+    }
+    if (title.length > maxTitle) {
+      setState(() => _error = 'Title must be $maxTitle characters or less.');
+      return;
+    }
+    if (bodyText.length > maxBody) {
+      setState(() => _error = 'Details must be $maxBody characters or less.');
+      return;
+    }
+    if ((_imageBytes?.length ?? 0) > maxImageBytes) {
+      setState(() => _error = 'Image must be under 5 MB.');
       return;
     }
     setState(() {
       _busy = true;
       _error = null;
+      _stage = _imageBytes != null ? 'Uploading photo…' : 'Publishing…';
     });
     try {
       String? imageUrl;
@@ -741,12 +841,14 @@ class _ComposerSheetState extends State<_ComposerSheet> {
           contentType: _imageType,
           extension: _imageExt,
         );
+        if (!mounted) return;
+        setState(() => _stage = 'Publishing…');
       }
       await widget.service.createPost(
         myEmail: widget.myEmail,
         authorName: widget.authorName,
         title: title,
-        body: _bodyCtrl.text.trim(),
+        body: bodyText,
         flair: _flair,
         imageUrl: imageUrl,
       );
@@ -756,6 +858,7 @@ class _ComposerSheetState extends State<_ComposerSheet> {
       if (!mounted) return;
       setState(() {
         _busy = false;
+        _stage = null;
         _error = 'Could not publish. Check connection and retry.';
       });
     }
@@ -764,24 +867,41 @@ class _ComposerSheetState extends State<_ComposerSheet> {
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
+    final titleLen = _titleCtrl.text.trim().length;
+    final bodyLen = _bodyCtrl.text.trim().length;
     return Padding(
       padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.88,
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
         decoration: BoxDecoration(
             color: c.cream2,
             borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(32))),
+                const BorderRadius.vertical(top: Radius.circular(28)),
+            boxShadow: const [
+              BoxShadow(color: Colors.black26, blurRadius: 16, offset: Offset(0, -4))
+            ]),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: c.dustSoft, borderRadius: BorderRadius.circular(4)),
+                ),
+              ),
+              const SizedBox(height: 10),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   GestureDetector(
-                      onTap: _busy ? null : widget.onClose,
+                      onTap: _busy ? null : _confirmClose,
                       child: Container(
                           alignment: Alignment.center,
                           width: 36,
@@ -789,7 +909,35 @@ class _ComposerSheetState extends State<_ComposerSheet> {
                           decoration: BoxDecoration(
                               color: c.dustSoft, shape: BoxShape.circle),
                           child: const Icon(Icons.close, size: 18))),
-                  Text('Create post', style: display(c, size: 18)),
+                  const SizedBox(width: 12),
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundColor: c.teal,
+                    child: Text(
+                      widget.authorName.isEmpty
+                          ? 'A'
+                          : widget.authorName[0].toUpperCase(),
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Create post',
+                            style: display(c, size: 18),
+                            overflow: TextOverflow.ellipsis),
+                        Text('u/${widget.authorName} · r/campus',
+                            style: body(c,
+                                size: 12,
+                                color: c.tealInk.withValues(alpha: 0.55)),
+                            overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   GestureDetector(
                     key: const ValueKey('composer-post-button'),
                     behavior: HitTestBehavior.opaque,
@@ -797,78 +945,254 @@ class _ComposerSheetState extends State<_ComposerSheet> {
                     // an inline error instead of a dead button.
                     onTap: _busy ? null : _submit,
                     child: Opacity(
-                      opacity: _busy ? 0.4 : 1,
+                      opacity: _busy
+                          ? 0.6
+                          : _canPost
+                              ? 1
+                              : 0.55,
                       child: Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
-                              color: c.teal,
+                              color: _canPost || _busy ? c.teal : c.dust,
                               borderRadius: BorderRadius.circular(20)),
-                          child: Text(_busy ? 'Posting…' : 'Post',
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold))),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_busy)
+                                const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation(
+                                        Colors.white),
+                                  ),
+                                )
+                              else
+                                const Icon(Icons.send,
+                                    size: 14, color: Colors.white),
+                              Text(_busy ? ' ${_stage ?? 'Posting…'}' : ' Post',
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold)),
+                            ],
+                          )),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final f in _flairs.skip(1))
-                    GestureDetector(
-                        onTap: _busy
-                            ? null
-                            : () => setState(() => _flair = f),
-                        child: Container(
+              const SizedBox(height: 14),
+              Text('FLAIR',
+                  style: body(c,
+                      size: 11,
+                      weight: FontWeight.w800,
+                      color: c.tealInk.withValues(alpha: 0.55))),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final f in _flairs.skip(1))
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: GestureDetector(
+                          key: ValueKey('composer-flair-$f'),
+                          onTap: _busy
+                              ? null
+                              : () => setState(() => _flair = f),
+                          child: Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
+                                horizontal: 12, vertical: 8),
                             decoration: BoxDecoration(
+                              color: _flair == f
+                                  ? _flairColor(f, c)
+                                  : c.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
                                 color: _flair == f
                                     ? _flairColor(f, c)
                                     : c.dustSoft,
-                                borderRadius: BorderRadius.circular(16)),
-                            child: Text(f,
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
+                                width: 2,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(_flairIcons[f] ?? Icons.tag,
+                                    size: 15,
                                     color: _flair == f
                                         ? Colors.white
-                                        : c.tealInk)))),
+                                        : c.teal),
+                                Text(' $f',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: _flair == f
+                                            ? Colors.white
+                                            : c.tealInk)),
+                                if (_flair == f)
+                                  const Padding(
+                                    padding: EdgeInsets.only(left: 4),
+                                    child: Icon(Icons.check,
+                                        size: 14, color: Colors.white),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Text('TITLE',
+                      style: body(c,
+                          size: 11,
+                          weight: FontWeight.w800,
+                          color: c.tealInk.withValues(alpha: 0.55))),
+                  const Spacer(),
+                  Text('$titleLen/$maxTitle',
+                      key: const ValueKey('composer-title-counter'),
+                      style: body(c,
+                          size: 11,
+                          weight: FontWeight.w700,
+                          color: _titleOver
+                              ? c.clay
+                              : c.tealInk.withValues(alpha: 0.5))),
                 ],
               ),
-              TextField(
-                  key: const ValueKey('composer-title'),
-                  controller: _titleCtrl,
-                  enabled: !_busy,
-                  decoration: const InputDecoration(
-                      hintText: 'An interesting title',
-                      border: InputBorder.none),
-                  style: display(c, size: 20)),
-              TextField(
-                  key: const ValueKey('composer-body'),
-                  controller: _bodyCtrl,
-                  enabled: !_busy,
-                  maxLines: 4,
-                  decoration: InputDecoration(
-                      hintText: 'Say more (optional)',
-                      filled: true,
-                      fillColor: c.white,
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none))),
+              const SizedBox(height: 6),
+              Container(
+                decoration: BoxDecoration(
+                  color: c.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: _titleOver ? c.clay : Colors.transparent,
+                    width: 2,
+                  ),
+                ),
+                child: TextField(
+                    key: const ValueKey('composer-title'),
+                    controller: _titleCtrl,
+                    enabled: !_busy,
+                    maxLength: maxTitle + 20,
+                    buildCounter: (_, {required currentLength, maxLength, required isFocused}) =>
+                        const SizedBox.shrink(),
+                    decoration: const InputDecoration(
+                        hintText: 'An interesting title…',
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12)),
+                    style: display(c, size: 18)),
+              ),
               const SizedBox(height: 12),
+              Row(
+                children: [
+                  Text('DETAILS (OPTIONAL)',
+                      style: body(c,
+                          size: 11,
+                          weight: FontWeight.w800,
+                          color: c.tealInk.withValues(alpha: 0.55))),
+                  const Spacer(),
+                  Text('$bodyLen/$maxBody',
+                      key: const ValueKey('composer-body-counter'),
+                      style: body(c,
+                          size: 11,
+                          weight: FontWeight.w700,
+                          color: _bodyOver
+                              ? c.clay
+                              : c.tealInk.withValues(alpha: 0.5))),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Container(
+                decoration: BoxDecoration(
+                  color: c.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: _bodyOver ? c.clay : Colors.transparent,
+                    width: 2,
+                  ),
+                ),
+                child: TextField(
+                    key: const ValueKey('composer-body'),
+                    controller: _bodyCtrl,
+                    enabled: !_busy,
+                    minLines: 3,
+                    maxLines: 6,
+                    maxLength: maxBody + 100,
+                    buildCounter: (_, {required currentLength, maxLength, required isFocused}) =>
+                        const SizedBox.shrink(),
+                    decoration: InputDecoration(
+                        hintText: 'Say more — when, where, links…',
+                        hintStyle: body(c,
+                            size: 14,
+                            color: c.tealInk.withValues(alpha: 0.45)),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12))),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Text('PHOTO (OPTIONAL)',
+                      style: body(c,
+                          size: 11,
+                          weight: FontWeight.w800,
+                          color: c.tealInk.withValues(alpha: 0.55))),
+                  const Spacer(),
+                  if (_imageBytes != null)
+                    Text(_imageSizeLabel(),
+                        style: body(c,
+                            size: 11,
+                            color: c.tealInk.withValues(alpha: 0.55))),
+                ],
+              ),
+              const SizedBox(height: 6),
               if (_imageBytes != null)
                 Stack(
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(16),
                       child: Image.memory(_imageBytes!,
-                          height: 140,
+                          height: 160,
                           width: double.infinity,
                           fit: BoxFit.cover),
                     ),
+                    if (_busy)
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const SizedBox(
+                                  width: 26,
+                                  height: 26,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 3,
+                                    valueColor: AlwaysStoppedAnimation(
+                                        Colors.white),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(_stage ?? 'Uploading…',
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     Positioned(
                       top: 8,
                       right: 8,
@@ -895,37 +1219,236 @@ class _ComposerSheetState extends State<_ComposerSheet> {
                   onTap: _pickImage,
                   child: Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                     decoration: BoxDecoration(
                       color: c.white,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: c.dustSoft, width: 2),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    child: Column(
                       children: [
-                        Icon(Icons.image_outlined,
-                            size: 18, color: c.teal),
-                        Text('  Add a photo (optional)',
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.image_outlined,
+                                size: 18, color: c.teal),
+                            Text('  Add a photo',
+                                style: body(c,
+                                    size: 13,
+                                    weight: FontWeight.w700,
+                                    color: c.teal)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text('JPG · PNG · WEBP · GIF — under 5 MB',
                             style: body(c,
-                                size: 13,
-                                weight: FontWeight.w600,
-                                color: c.teal)),
+                                size: 11,
+                                color: c.tealInk.withValues(alpha: 0.5))),
                       ],
                     ),
                   ),
                 ),
+              if (_imageBytes != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _busy ? null : _pickImage,
+                        icon: const Icon(Icons.swap_horiz, size: 16),
+                        label: const Text('Change'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _busy
+                            ? null
+                            : () => setState(() => _imageBytes = null),
+                        icon: const Icon(Icons.delete_outline, size: 16),
+                        label: const Text('Remove'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton.icon(
+                      key: const ValueKey('composer-preview-toggle'),
+                      onPressed: _busy
+                          ? null
+                          : () => setState(() => _preview = !_preview),
+                      icon: Icon(_preview
+                          ? Icons.edit_outlined
+                          : Icons.visibility_outlined),
+                      label: Text(_preview ? 'Edit' : 'Preview'),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      'Be kind · no spam · title ≤ $maxTitle',
+                      textAlign: TextAlign.end,
+                      style: body(c,
+                          size: 11,
+                          color: c.tealInk.withValues(alpha: 0.5)),
+                    ),
+                  ),
+                ],
+              ),
+              if (_preview) _previewCard(c),
               if (_error != null) ...[
                 const SizedBox(height: 8),
-                Text(_error!,
-                    style: body(c,
-                        size: 13,
-                        weight: FontWeight.w600,
-                        color: c.clay)),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: c.clay.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(_error!,
+                      style: body(c,
+                          size: 13,
+                          weight: FontWeight.w600,
+                          color: c.clay)),
+                ),
               ],
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: GestureDetector(
+                  key: const ValueKey('composer-post-button-bottom'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _busy ? null : _submit,
+                  child: Opacity(
+                    opacity: _busy
+                        ? 0.7
+                        : _canPost
+                            ? 1
+                            : 0.55,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: _canPost || _busy ? c.teal : c.dust,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: _canPost || _busy
+                            ? [
+                                BoxShadow(
+                                    color: c.clay,
+                                    offset: const Offset(0, 4))
+                              ]
+                            : null,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (_busy)
+                            const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation(Colors.white),
+                              ),
+                            ),
+                          Text(
+                            _busy
+                                ? ' ${_stage ?? 'Posting…'}'
+                                : ' Post to r/campus',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _previewCard(AppColors c) {
+    final title = _titleCtrl.text.trim().isEmpty
+        ? 'Your title appears here…'
+        : _titleCtrl.text.trim();
+    final bodyText = _bodyCtrl.text.trim();
+    return Container(
+      key: const ValueKey('composer-preview-card'),
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+          color: c.white, borderRadius: BorderRadius.circular(20)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: c.teal,
+                child: Text(
+                  widget.authorName.isEmpty
+                      ? 'A'
+                      : widget.authorName[0].toUpperCase(),
+                  style:
+                      const TextStyle(color: Colors.white, fontSize: 11),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('u/${widget.authorName} · now',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 12),
+                    overflow: TextOverflow.ellipsis),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                    color: _flairColor(_flair, c),
+                    borderRadius: BorderRadius.circular(12)),
+                child: Text(_flair,
+                    style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(title, style: display(c, size: 16)),
+          if (bodyText.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(bodyText,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: body(c,
+                      size: 13,
+                      color: c.tealInk.withValues(alpha: 0.75))),
+            ),
+          if (_imageBytes != null) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.memory(_imageBytes!,
+                  height: 140, width: double.infinity, fit: BoxFit.cover),
+            ),
+          ],
+        ],
       ),
     );
   }
