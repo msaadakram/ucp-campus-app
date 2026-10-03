@@ -11,6 +11,7 @@ import 'auth/portal_api.dart';
 import 'auth/session_manager.dart';
 import 'auth/session_monitor.dart';
 import 'auth/session_store.dart';
+import 'auth/student_portal.dart';
 import 'community/backend_config.dart';
 import 'community/community_service.dart';
 import 'community/fake_community_service.dart';
@@ -78,6 +79,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   String? authError;
   String tab = 'home';
   Course? course;
+  bool courseLive = false;
   Course boardOf = courses[0];
   ProfilePrefs prefs = ProfilePrefs();
   bool picker = false;
@@ -96,6 +98,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// load failed); Home falls back to bundled sample content meanwhile.
   DashboardData? dashboard;
   int _dashRun = 0;
+  /// Weekly class slots backing Home's real course cards.
+  List<TimetableSlot> timetableSlots = const [];
 
   /// True while the cold-start auto-login attempt is running: the login
   /// screen shows a short "Signing you in…" animation instead of the form.
@@ -264,20 +268,30 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-  /// Pulls `/student/dashboard` with the live session and parses it for
-  /// Home. Saves a fresh snapshot to the phone on success. Never throws:
-  /// on any failure the previous data (or the bundled sample content)
-  /// stays on screen. Stale runs are discarded.
+  /// Pulls `/student/dashboard` (+ timetable for course schedules) with
+  /// the live session and parses them for Home. Saves a fresh snapshot to
+  /// the phone on success. Never throws: on any failure the previous data
+  /// (or the bundled sample content) stays on screen. Stale runs discarded.
   Future<void> _loadDashboard() async {
     final sid = sessionId;
     if (sid == null || !mounted) return;
     final run = ++_dashRun;
     try {
-      final html = await PortalApi().fetchDashboard(sid);
+      final api = PortalApi();
+      final results = await Future.wait([
+        api.fetchDashboard(sid),
+        api.fetchPage(PortalRoutes.timetable, sid).catchError((_) => ''),
+      ]);
       if (!mounted || run != _dashRun) return;
-      final parsed = parseDashboard(html);
+      final parsed = parseDashboard(results[0] as String);
       if (parsed.isEmpty) return;
-      setState(() => dashboard = parsed);
+      final slots = (results[1] as String).isEmpty
+          ? const <TimetableSlot>[]
+          : parseTimetable(results[1] as String).slots;
+      setState(() {
+        dashboard = parsed;
+        timetableSlots = slots;
+      });
       unawaited(_backend.saveDashboard(jsonEncode(parsed.toJson())));
     } catch (_) {
       // Keep previous data / sample fallback; next login or resume retries.
@@ -358,7 +372,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     }
   }
 
-  void go(String t) => setState(() { tab = t; course = null; picker = false; menu = false; chat = null; });
+  void go(String t) => setState(() { tab = t; course = null; courseLive = false; picker = false; menu = false; chat = null; });
 
   /// The watchdog proved the portal session dead and silent renewal failed:
   /// show the "someone logged in elsewhere?" popup instead of silently
@@ -413,6 +427,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       _expiredCode = null;
       _expiredForSid = null;
       dashboard = null;
+      timetableSlots = const [];
       tab = 'home';
       menu = false;
     });
@@ -428,11 +443,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     if (chat != null) {
       screen = GroupChatScreen(group: chat!, back: () => setState(() => chat = null));
     } else if (course != null) {
-      screen = DetailScreen(course: course!, back: () => setState(() => course = null));
+      screen = DetailScreen(course: course!, slots: timetableSlots, isLive: courseLive, back: () => setState(() { course = null; courseLive = false; }));
     } else {
       switch (tab) {
         case 'home':
-          screen = HomeScreen(onOpen: (c) => setState(() { course = c; }), toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; tab = 'board'; }); }, dashboard: dashboard, onAttend: () => go('attendance'));
+          screen = HomeScreen(onOpen: (c) => setState(() { course = c; courseLive = dashboard != null && dashboard!.courses.isNotEmpty; }), toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; tab = 'board'; }); }, dashboard: dashboard, timetableSlots: timetableSlots, onAttend: () => go('attendance'));
           break;
         case 'material':
           screen = const MaterialsScreen();

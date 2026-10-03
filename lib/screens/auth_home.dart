@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../auth/dashboard_parser.dart';
+import '../auth/student_portal.dart';
 import '../data/seed.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
+import '../widgets/loading.dart';
 
 /// Time-of-day greeting: night <5, morning <12, afternoon <17,
 /// evening <21, else night.
@@ -251,17 +253,7 @@ class _LoginScreenState extends State<LoginScreen>
                         size: 14,
                         color: c.tealInk.withValues(alpha: 0.6))),
                 const SizedBox(height: 24),
-                SizedBox(
-                  width: 220,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: LinearProgressIndicator(
-                      backgroundColor: c.dustSoft,
-                      valueColor: AlwaysStoppedAnimation(c.teal),
-                      minHeight: 6,
-                    ),
-                  ),
-                ),
+                const ModernLoader(),
               ],
             ),
           ),
@@ -279,7 +271,9 @@ class HomeScreen extends StatefulWidget {  final ValueChanged<Course> onOpen;
   final VoidCallback? onAttend;
   /// Live portal data. Null while loading/failed → bundled sample content.
   final DashboardData? dashboard;
-  const HomeScreen({super.key, required this.onOpen, required this.toProfile, required this.onMenu, required this.onGpa, required this.onBoard, this.dashboard, this.onAttend});
+  /// Real weekly slots, used to enrich portal courses with rooms/times.
+  final List<TimetableSlot> timetableSlots;
+  const HomeScreen({super.key, required this.onOpen, required this.toProfile, required this.onMenu, required this.onGpa, required this.onBoard, this.dashboard, this.onAttend, this.timetableSlots = const []});
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -290,9 +284,23 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
     final hero = AppScope.paletteOf(context).heroAsset;
-    final list = filter == 'All' ? courses : courses.where((x) => filter == 'Ongoing' ? x.progress < 80 : x.progress >= 80).toList();
-    final greeting = greetingForHour(DateTime.now().hour);
     final live = widget.dashboard;
+    // Real enrolled courses when the portal provided them; mock sample
+    // content otherwise (offline, tests).
+    final baseCourses = (live != null && live.courses.isNotEmpty)
+        ? [
+            for (int i = 0; i < live.courses.length; i++)
+              portalCourseToCourse(
+                  live.courses[i], widget.timetableSlots, i),
+          ]
+        : courses;
+    final list = filter == 'All'
+        ? baseCourses
+        : baseCourses
+            .where((x) =>
+                filter == 'Ongoing' ? x.progress < 80 : x.progress >= 80)
+            .toList();
+    final greeting = greetingForHour(DateTime.now().hour);
     final liveTiles = live == null
         ? <List<String>>[]
         : [
@@ -378,18 +386,77 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 20),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: c.teal, borderRadius: BorderRadius.circular(24)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('UP NEXT · 09:00', style: body(c, size: 12, weight: FontWeight.w600, color: c.cream.withValues(alpha: 0.8))),
-                const SizedBox(height: 4),
-                Text('Data Structures', style: display(c, size: 24, color: Colors.white)),
-                Text('Block C · 204 — Dr. Amina Qureshi', style: body(c, size: 14, color: Colors.white.withValues(alpha: 0.8))),
-              ],
+          Builder(builder: (_) {
+            final next = widget.timetableSlots.isEmpty
+                ? null
+                : nextClass(widget.timetableSlots, DateTime.now());
+            final upTitle = next?.subject ?? 'Data Structures';
+            final upTime = next != null ? '${next.day} · ${next.start}' : '09:00';
+            final upBits = [
+              if ((next?.room ?? '').isNotEmpty) next!.room,
+              if ((next?.teacher ?? '').isNotEmpty) next!.teacher,
+            ];
+            final upSub = upBits.isEmpty
+                ? 'Block C · 204 — Dr. Amina Qureshi'
+                : upBits.join(' — ');
+            return Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                  color: c.teal, borderRadius: BorderRadius.circular(24)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('UP NEXT · $upTime',
+                      style: body(c,
+                          size: 12,
+                          weight: FontWeight.w600,
+                          color: c.cream.withValues(alpha: 0.8))),
+                  const SizedBox(height: 4),
+                  Text(upTitle,
+                      style: display(c, size: 24, color: Colors.white),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2),
+                  Text(upSub,
+                      style: body(c,
+                          size: 14,
+                          color: Colors.white.withValues(alpha: 0.8))),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 12),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onGpa,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: c.tealInk,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [BoxShadow(color: c.clay, offset: const Offset(0, 6))],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44, height: 44,
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(14)),
+                    child: const Icon(Icons.calculate_outlined, color: Colors.white, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('GPA calculator · merit planner', style: body(c, size: 14, weight: FontWeight.w800, color: Colors.white)),
+                        Text('Relative + absolute modes · target CGPA', style: body(c, size: 12, color: Colors.white.withValues(alpha: 0.7))),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, color: Colors.white70),
+                ],
+              ),
             ),
           ),
           if (live?.todayClasses != null) ...[
@@ -528,11 +595,34 @@ class _HomeScreenState extends State<HomeScreen> {
 class DetailScreen extends StatelessWidget {
   final Course course;
   final VoidCallback back;
-  const DetailScreen({super.key, required this.course, required this.back});
+  /// Real weekly slots + whether this is a portal course (vs sample data).
+  final List<TimetableSlot> slots;
+  final bool isLive;
+  const DetailScreen(
+      {super.key,
+      required this.course,
+      required this.back,
+      this.slots = const [],
+      this.isLive = false});
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
     final bg = toneBg(course.tone, c);
+    final weekClasses =
+        isLive ? slotsForCourse(course.title, slots) : <TimetableSlot>[];
+    final infoTiles = isLive
+        ? [
+            ['Attendance', '${course.progress}%'],
+            ['Credits', '${course.credits} cr'],
+            ['Schedule', course.time],
+            ['Room', course.room],
+          ]
+        : [
+            ['Current grade', course.grade],
+            ['Progress', '${course.progress}%'],
+            ['Schedule', course.time],
+            ['Room', course.room],
+          ];
     return SingleChildScrollView(
       primary: false,
       child: Column(
@@ -561,20 +651,56 @@ class DetailScreen extends StatelessWidget {
                 crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
                 crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 1.6,
                 children: [
-                  for (final kv in [['Current grade', course.grade], ['Progress', '${course.progress}%'], ['Schedule', course.time], ['Room', course.room]])
+                  for (final kv in infoTiles)
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(16)),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [Text(kv[0], style: body(c, size: 12, color: c.tealInk.withValues(alpha: 0.55))), const SizedBox(height: 4), Text(kv[1], style: display(c, size: 16))],
+                        children: [Text(kv[0], style: body(c, size: 12, color: c.tealInk.withValues(alpha: 0.55))), const SizedBox(height: 4), Text(kv[1], style: display(c, size: 16), overflow: TextOverflow.ellipsis, maxLines: 2)],
                       ),
                     ),
                 ],
               ),
               const SizedBox(height: 24),
-              Text('Upcoming', style: display(c, size: 20)),
+              Text(isLive ? 'This week' : 'Upcoming', style: display(c, size: 20)),
               const SizedBox(height: 12),
+              if (isLive && weekClasses.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(16)),
+                  child: Text('No classes scheduled this week.',
+                      textAlign: TextAlign.center,
+                      style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.55))),
+                ),
+              if (isLive)
+                for (final s in weekClasses)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(16)),
+                    child: Row(
+                      children: [
+                        Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: s.isLab ? c.clay : c.teal)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                            child: Text('${s.day} · ${s.start} – ${s.end}',
+                                style: body(c,
+                                    size: 15, weight: FontWeight.w600))),
+                        Text(s.room,
+                            style: body(c,
+                                size: 13,
+                                color: c.tealInk.withValues(alpha: 0.55))),
+                      ],
+                    ),
+                  ),
+              if (!isLive)
               for (final u in const [['Assignment 3', 'Due Oct 4', 0], ['Quiz · Week 6', 'Oct 8', 1], ['Midterm exam', 'Oct 21', 2]])
                 Container(
                   margin: const EdgeInsets.only(bottom: 12),

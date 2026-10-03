@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ucp/app.dart';
 import 'package:ucp/auth/dashboard_parser.dart';
 import 'package:ucp/auth/session_manager.dart';
+import 'package:ucp/auth/student_portal.dart';
+import 'package:ucp/data/seed.dart';
 import 'package:ucp/screens/auth_home.dart';
 import 'package:ucp/screens/materials_web.dart';
 import 'package:ucp/screens/profile.dart';
@@ -288,5 +290,111 @@ void main() {
     expect(find.text('Test '), findsOneWidget);
     expect(find.text('3.90'), findsOneWidget);
     expect(find.text('LIVE'), findsOneWidget);
+  });
+
+  testWidgets('home shows real portal courses from dashboard',
+      (WidgetTester tester) async {
+    const data = DashboardData(
+      studentName: 'Test Student',
+      stats: [
+        DashboardStat('CGPA', '3.13'),
+        DashboardStat('Earned Cr', '30.0'),
+        DashboardStat('Total Cr', '0.0'),
+      ],
+      courses: [
+        PortalCourse(
+            name: 'Object Oriented Programming',
+            teacher: 'Aasma Abdul Waheed',
+            code: 'CP223',
+            credits: 3.0,
+            attendance: 67.0,
+            infoUrl: '/student/course/info/x'),
+        PortalCourse(
+            name: 'Multivariable Calculus',
+            teacher: 'Seema Mazhar',
+            code: 'MAT243',
+            credits: 3.0,
+            attendance: 33.0,
+            infoUrl: '/student/course/info/y'),
+      ],
+    );
+    const slots = [
+      TimetableSlot(
+          day: 'Monday',
+          start: '08:00',
+          end: '08:55',
+          subject: 'Object Oriented Programming - Lab',
+          teacher: 'S X',
+          section: 'CP221',
+          room: 'B-CL203 ( Lab )'),
+    ];
+    final colors = AppColors.of(AppPalette.skater, false);
+    await tester.pumpWidget(
+      AppScope(
+        colors: colors,
+        palette: AppPalette.skater,
+        child: MaterialApp(
+          home: Scaffold(
+            body: HomeScreen(
+              onOpen: (_) {},
+              toProfile: () {},
+              onMenu: () {},
+              onGpa: () {},
+              onBoard: (_) {},
+              dashboard: data,
+              timetableSlots: slots,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Object Oriented Programming'), findsOneWidget);
+    expect(find.text('Multivariable Calculus'), findsOneWidget);
+    expect(find.text('LIVE'), findsOneWidget);
+    // No mock course cards leak through.
+    expect(find.text('Data Structures'), findsNothing);
+  });
+
+  testWidgets('course detail shows live weekly classes',
+      (WidgetTester tester) async {
+    const course = Course(
+      code: 'CP223',
+      title: 'Object Oriented Programming',
+      prof: 'Aasma Abdul Waheed',
+      room: 'B-CL203 ( Lab )',
+      time: 'Mon 08:00',
+      credits: 3,
+      progress: 67,
+      grade: '–',
+      tone: CourseTone.teal,
+    );
+    const slots = [
+      TimetableSlot(
+          day: 'Monday',
+          start: '08:00',
+          end: '08:55',
+          subject: 'Object Oriented Programming - Lab',
+          teacher: 'S X',
+          section: 'CP221',
+          room: 'B-CL203 ( Lab )'),
+    ];
+    final colors = AppColors.of(AppPalette.skater, false);
+    await tester.pumpWidget(
+      AppScope(
+        colors: colors,
+        palette: AppPalette.skater,
+        child: MaterialApp(
+          home: Scaffold(
+            body: DetailScreen(
+                course: course, slots: slots, isLive: true, back: () {}),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('This week'), findsOneWidget);
+    expect(find.textContaining('Monday'), findsWidgets);
+    expect(find.text('Assignment 3'), findsNothing);
   });
 }

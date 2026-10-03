@@ -1,6 +1,8 @@
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
 
+import 'student_portal.dart';
+
 /// Parsed view of the Horizon student dashboard.
 ///
 /// Selector mapping was reverse-engineered from the real
@@ -34,6 +36,7 @@ class DashboardData {
   final List<DashboardStat> stats;
   final String? todayClasses;
   final List<String> news;
+  final List<PortalCourse> courses;
   const DashboardData({
     this.studentName,
     this.studentId,
@@ -41,6 +44,7 @@ class DashboardData {
     this.stats = const [],
     this.todayClasses,
     this.news = const [],
+    this.courses = const [],
   });
 
   bool get isEmpty =>
@@ -48,7 +52,8 @@ class DashboardData {
       studentId == null &&
       stats.isEmpty &&
       todayClasses == null &&
-      news.isEmpty;
+      news.isEmpty &&
+      courses.isEmpty;
 
   Map<String, dynamic> toJson() => {
         'name': studentName,
@@ -59,6 +64,7 @@ class DashboardData {
         ],
         'today': todayClasses,
         'news': news,
+        'courses': [for (final c in courses) c.toJson()],
       };
 
   factory DashboardData.fromJson(Map<String, dynamic> json) {
@@ -81,6 +87,16 @@ class DashboardData {
       final s = v?.toString() ?? '';
       return s.isEmpty ? null : s;
     }
+    final rawCourses = json['courses'];
+    final courses = <PortalCourse>[];
+    if (rawCourses is List) {
+      for (final e in rawCourses) {
+        if (e is Map<String, dynamic>) {
+          final pc = PortalCourse.fromJson(e);
+          if (pc.name.isNotEmpty) courses.add(pc);
+        }
+      }
+    }
 
     return DashboardData(
       studentName: str(json['name']),
@@ -89,6 +105,7 @@ class DashboardData {
       stats: stats,
       todayClasses: str(json['today']),
       news: newsOf(json['news']),
+      courses: courses,
     );
   }
 }
@@ -187,6 +204,7 @@ DashboardData parseDashboard(String html) {
     stats: exact.stats.isNotEmpty ? exact.stats : _findStats(doc),
     todayClasses: exact.todayClasses,
     news: exact.news,
+    courses: parseCourses(html),
   );
 }
 

@@ -23,12 +23,216 @@
 /// Every parser is total: unknown markup yields empty data, never throws.
 library;
 
+import '../data/seed.dart';
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
 
 String _clean(String? s) => (s ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
 
-/// ------------------------------- routes -------------------------------
+/// ------------------------------- courses -------------------------------
+/// The dashboard's "Classes, Grades and Attendance" section holds one
+/// linked card per enrolled course:
+/// `<a href="/student/course/info/<id>">` > `.card` > `.card-header`
+/// (name) + `.card-body` > `h6.card-title` (teacher),
+/// `span.sub-heading` (code), `Credits : <n>`, `Attendance: <pct>%`.
+
+class PortalCourse {
+  final String name;
+  final String teacher;
+  final String code;
+  final double credits;
+  final double attendance;
+  final String infoUrl;
+  const PortalCourse({
+    required this.name,
+    required this.teacher,
+    required this.code,
+    required this.credits,
+    required this.attendance,
+    required this.infoUrl,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'teacher': teacher,
+        'code': code,
+        'credits': credits,
+        'attendance': attendance,
+        'infoUrl': infoUrl,
+      };
+
+  factory PortalCourse.fromJson(Map<String, dynamic> json) => PortalCourse(
+        name: '${json['name'] ?? ''}',
+        teacher: '${json['teacher'] ?? ''}',
+        code: '${json['code'] ?? ''}',
+        credits: (json['credits'] is num)
+            ? (json['credits'] as num).toDouble()
+            : double.tryParse('${json['credits']}') ?? 0,
+        attendance: (json['attendance'] is num)
+            ? (json['attendance'] as num).toDouble()
+            : double.tryParse('${json['attendance']}') ?? 0,
+        infoUrl: '${json['infoUrl'] ?? ''}',
+      );
+}
+
+String _subjectBase(String s) =>
+    s.replaceAll(RegExp(r'\s*-\s*Lab\s*$'), '').trim().toLowerCase();
+
+/// Maps a portal course (+ timetable slots) onto the Home course card
+/// model: ring shows live attendance, room/time come from the real weekly
+/// schedule, tone cycles the palette. Pure and unit-tested.
+Course portalCourseToCourse(
+  PortalCourse pc,
+  List<TimetableSlot> slots,
+  int index,
+) {
+  final mine = slots
+      .where((s) => _subjectBase(s.subject) == _subjectBase(pc.name))
+      .toList()
+    ..sort((a, b) {
+      const order = [
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+        'Sunday'
+      ];
+      final day = order.indexOf(a.day).compareTo(order.indexOf(b.day));
+      return day != 0 ? day : a.start.compareTo(b.start);
+    });
+  final rooms = <String>{};
+  for (final s in mine) {
+    if (s.room.isNotEmpty) rooms.add(s.room);
+  }
+  String time;
+  if (mine.isEmpty) {
+    time = 'See timetable';
+  } else {
+    final first = mine.first;
+    final days = <String>[];
+    for (final s in mine) {
+      final abbr = s.day.length >= 3 ? s.day.substring(0, 3) : s.day;
+      if (!days.contains(abbr)) days.add(abbr);
+    }
+    time = '${days.join(' · ')} ${first.start}';
+  }
+
+  const tones = [
+    CourseTone.teal,
+    CourseTone.clay,
+    CourseTone.board,
+    CourseTone.dust,
+  ];
+  return Course(
+    code: pc.code.isEmpty ? '—' : pc.code,
+    title: pc.name,
+    prof: pc.teacher.isEmpty ? 'TBA' : pc.teacher,
+    room: rooms.isEmpty ? 'See timetable' : rooms.join(' · '),
+    time: time,
+    credits: pc.credits.round(),
+    progress: pc.attendance.clamp(0, 100).round(),
+    grade: '–',
+    tone: tones[index % tones.length],
+  );
+}
+
+List<PortalCourse> parseCourses(String html) {
+  final Document doc;
+  try {
+    doc = html_parser.parse(html);
+  } catch (_) {
+    return const [];
+  }
+  final out = <PortalCourse>[];
+  final seen = <String>{};
+  for (final a in doc.querySelectorAll('a[href*="/student/course/info/"]')) {
+    final card = a.querySelector('.card');
+    if (card == null) continue;
+    final name =
+        _clean(card.querySelector('.card-header span')?.text);
+    if (name.isEmpty || !seen.add(name)) continue;
+    final teacher = _clean(card.querySelector('h6.card-title')?.text);
+    final subs = card
+        .querySelectorAll('span.sub-heading')
+        .map((e) => _clean(e.text))
+        .where((t) => t.isNotEmpty)
+        .toList();
+    final code = subs.isNotEmpty ? subs.first : '';
+    final bodyText = _clean(card.querySelector('.card-body')?.text);
+    final credits = RegExp(r'Credits\s*:\s*([0-9]+\.?[0-9]*)')
+            .firstMatch(bodyText)
+            ?.group(1) ??
+        '0';
+    final att = RegExp(r'Attendance:\s*([0-9]+\.?[0-9]*)')
+            .firstMatch(bodyText)
+            ?.group(1) ??
+        '0';
+    out.add(PortalCourse(
+      name: name,
+      teacher: teacher,
+      code: code,
+      credits: double.tryParse(credits) ?? 0,
+      attendance: double.tryParse(att) ?? 0,
+      infoUrl: a.attributes['href'] ?? '',
+    ));
+  }
+  return out;
+}
+
+/// Weekly slots belonging to a course title (matches "X" and "X - Lab").
+List<TimetableSlot> slotsForCourse(
+    String title, List<TimetableSlot> slots) {
+  final base = _subjectBase(title);
+  return slots
+      .where((s) => _subjectBase(s.subject) == base)
+      .toList()
+    ..sort((a, b) {
+      const order = [
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+        'Sunday'
+      ];
+      final day = order.indexOf(a.day).compareTo(order.indexOf(b.day));
+      return day != 0 ? day : a.start.compareTo(b.start);
+    });
+}
+
+/// Next upcoming class: today's next slot by start time, else the
+/// earliest slot on the following days (wraps around the week). Null when
+/// there are no slots at all.
+TimetableSlot? nextClass(List<TimetableSlot> slots, DateTime now) {
+  if (slots.isEmpty) return null;
+  const order = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday'
+  ];
+  String hm(DateTime t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  final today = order[(now.weekday - 1).clamp(0, 6)];
+  final laterToday = slots
+      .where((s) => s.day == today && s.start.compareTo(hm(now)) > 0)
+      .toList()
+    ..sort((a, b) => a.start.compareTo(b.start));
+  if (laterToday.isNotEmpty) return laterToday.first;
+  for (var d = 1; d <= 7; d++) {
+    final name = order[(order.indexOf(today) + d) % 7];
+    final daySlots = slots.where((s) => s.day == name).toList()
+      ..sort((a, b) => a.start.compareTo(b.start));
+    if (daySlots.isNotEmpty) return daySlots.first;
+  }
+  return slots.first;
+}
 
 class PortalRoutes {
   static const dashboard = '/student/dashboard';

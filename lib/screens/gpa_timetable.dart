@@ -22,7 +22,27 @@ const _scale = [
   ['B-', -0.5, 2.67], ['C+', -1.0, 2.33], ['C', -1.5, 2.0], ['D', -2.0, 1.0], ['F', -999.0, 0.0],
 ];
 
+/// Grading mode: relative (curved on class mean, UCP default) vs
+/// absolute (fixed marks thresholds, for what-if planning).
+enum GpaMode { relative, absolute }
+
 List<dynamic> _gradeOf(double z) => _scale.firstWhere((e) => z >= (e[1] as double));
+
+/// Absolute marks -> grade. Common Pakistan scale used for planning:
+/// 85+ A+, 80+ A, 75+ A-, 70+ B+, 65+ B, 60+ B-, 55+ C+, 50+ C, 40+ D, else F.
+List<dynamic> _gradeOfAbsolute(int marks) {
+  if (marks >= 85) return ['A+', 2.0, 4.0];
+  if (marks >= 80) return ['A', 1.5, 4.0];
+  if (marks >= 75) return ['A-', 1.0, 3.67];
+  if (marks >= 70) return ['B+', 0.5, 3.33];
+  if (marks >= 65) return ['B', 0.0, 3.0];
+  if (marks >= 60) return ['B-', -0.5, 2.67];
+  if (marks >= 55) return ['C+', -1.0, 2.33];
+  if (marks >= 50) return ['C', -1.5, 2.0];
+  if (marks >= 40) return ['D', -2.0, 1.0];
+  return ['F', -999.0, 0.0];
+}
+
 double _zOf(GpaRow r) => (r.marks - r.mean) / (r.sd == 0 ? 0.1 : r.sd.toDouble());
 
 Color _tone(String g, AppColors c) {
@@ -50,14 +70,36 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
   int? open = 1;
   bool help = false;
   int uid = 10;
+  GpaMode mode = GpaMode.relative;
+  double targetCgpa = 3.50;
+
+  List<dynamic> _gradeFor(GpaRow r) =>
+      mode == GpaMode.relative ? _gradeOf(_zOf(r)) : _gradeOfAbsolute(r.marks);
+
+  void _reset() => setState(() {
+        rows = [
+          GpaRow(id: 1, name: 'CS 214 · Data Structures', cr: 4, marks: 78, mean: 64, sd: 11),
+          GpaRow(id: 2, name: 'MA 201 · Linear Algebra', cr: 3, marks: 61, mean: 58, sd: 12),
+          GpaRow(id: 3, name: 'DS 150 · Design Thinking', cr: 2, marks: 88, mean: 74, sd: 8),
+          GpaRow(id: 4, name: 'EN 110 · Academic Writing', cr: 2, marks: 69, mean: 71, sd: 9),
+        ];
+        prevCgpa = 3.45;
+        prevCr = 36;
+        targetCgpa = 3.50;
+        open = 1;
+        uid = 10;
+      });
 
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
     final credits = rows.fold(0, (s, r) => s + r.cr);
-    final pts = rows.fold(0.0, (s, r) => s + (_gradeOf(_zOf(r))[2] as double) * r.cr);
+    final pts = rows.fold(0.0, (s, r) => s + (_gradeFor(r)[2] as double) * r.cr);
     final sgpa = credits == 0 ? 0 : pts / credits;
     final cgpa = (prevCr + credits) == 0 ? 0.0 : (prevCgpa * prevCr + pts) / (prevCr + credits);
+    final requiredSgpa = credits == 0
+        ? 0.0
+        : (targetCgpa * (prevCr + credits) - prevCgpa * prevCr) / credits;
     return UHead(
       height: 112,
       child: Column(
@@ -70,7 +112,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('GPA calculator', style: display(c, size: 26, color: Colors.white), overflow: TextOverflow.ellipsis),
-                    Text('Relative grading · curved on class mean', style: body(c, size: 13, color: Colors.white.withValues(alpha: 0.78)), overflow: TextOverflow.ellipsis),
+                    Text(mode == GpaMode.relative ? 'Relative grading · curved on class mean' : 'Absolute grading · fixed thresholds', style: body(c, size: 13, color: Colors.white.withValues(alpha: 0.78)), overflow: TextOverflow.ellipsis),
                   ],
                 ),
               ),
@@ -79,6 +121,34 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
             ],
           ),
           const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(30)),
+            child: Row(
+              children: [
+                for (final m in GpaMode.values)
+                  Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => setState(() => mode = m),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(color: mode == m ? c.white : Colors.transparent, borderRadius: BorderRadius.circular(24)),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(m == GpaMode.relative ? Icons.show_chart_outlined : Icons.rule_outlined, size: 16, color: mode == m ? c.tealInk : Colors.white70),
+                            const SizedBox(width: 6),
+                            Text(m == GpaMode.relative ? 'Relative' : 'Absolute', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: mode == m ? c.tealInk : Colors.white70)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
@@ -105,8 +175,12 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('How relative grading works', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const Text('Your grade depends on where your marks sit against the class: z = (your marks − class mean) ÷ std. deviation.', style: TextStyle(fontSize: 13)),
+                  Text(mode == GpaMode.relative ? 'How relative grading works' : 'How absolute grading works', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text(
+                      mode == GpaMode.relative
+                          ? 'Your grade depends on where your marks sit against the class: z = (your marks − class mean) ÷ std. deviation.'
+                          : 'Your grade depends only on your marks: 85+ A+, 80+ A, 75+ A-, 70+ B+, 65+ B, 60+ B-, 55+ C+, 50+ C, 40+ D, else F.',
+                      style: const TextStyle(fontSize: 13)),
                   const SizedBox(height: 12),
                   GridView.count(
                     crossAxisCount: 5, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
@@ -129,7 +203,17 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Previous record', style: TextStyle(fontWeight: FontWeight.bold)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Previous record', style: TextStyle(fontWeight: FontWeight.bold)),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _reset,
+                      child: const Row(children: [Icon(Icons.refresh, size: 14), Text(' Reset', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))]),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -138,10 +222,51 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                     Expanded(child: _numBoxInt(c, 'CREDITS DONE', prevCr, 200, (v) => setState(() => prevCr = v))),
                   ],
                 ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(child: _numBox(c, 'TARGET CGPA', targetCgpa, 4, (v) => setState(() => targetCgpa = v))),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(color: c.tealInk, borderRadius: BorderRadius.circular(12)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('NEED SGPA', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white70)),
+                            Text(
+                              credits == 0 ? '—' : requiredSgpa.toStringAsFixed(2),
+                              style: display(c, size: 18, color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  credits == 0
+                      ? 'Add a course below to plan your target.'
+                      : requiredSgpa > 4.0
+                          ? 'Target ${targetCgpa.toStringAsFixed(2)} needs SGPA ${requiredSgpa.toStringAsFixed(2)} — not possible this term.'
+                          : requiredSgpa <= 0
+                              ? 'Target ${targetCgpa.toStringAsFixed(2)} already secured even with 0.00 this term.'
+                              : 'You need SGPA ${requiredSgpa.toStringAsFixed(2)} across $credits credits to reach ${targetCgpa.toStringAsFixed(2)}. Quality points so far: ${pts.toStringAsFixed(2)}.',
+                  style: TextStyle(fontSize: 12, color: c.tealInk.withValues(alpha: 0.65)),
+                ),
+                if (sgpa >= 3.5 && credits > 0)
+                  Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(color: c.teal.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
+                    child: const Row(children: [Icon(Icons.emoji_events_outlined, size: 14), SizedBox(width: 6), Text("Dean's List pace · SGPA ≥ 3.50", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))]),
+                  ),
               ],
             ),
           ),
-          const SizedBox(height: 96),
+          const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -157,7 +282,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
           for (final r in rows)
             Builder(builder: (_) {
               final z = _zOf(r);
-              final g = _gradeOf(z);
+              final g = _gradeFor(r);
               final on = open == r.id;
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -173,7 +298,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                           children: [
                             Container(width: 48, height: 48, decoration: BoxDecoration(color: _tone(g[0] as String, c), borderRadius: BorderRadius.circular(16)), child: Center(child: Text(g[0] as String, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)))),
                             const SizedBox(width: 12),
-                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(r.name, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis), Text('${r.cr} cr · ${r.marks} marks · z ${z >= 0 ? '+' : ''}${z.toStringAsFixed(2)} · ${(g[2] as double).toStringAsFixed(2)} pts', style: TextStyle(fontSize: 12, color: c.tealInk.withValues(alpha: 0.55)))])),
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(r.name, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis), Text(mode == GpaMode.relative ? '${r.cr} cr · ${r.marks} marks · z ${z >= 0 ? '+' : ''}${z.toStringAsFixed(2)} · ${(g[2] as double).toStringAsFixed(2)} pts' : '${r.cr} cr · ${r.marks} marks · ${(g[2] as double).toStringAsFixed(2)} pts', style: TextStyle(fontSize: 12, color: c.tealInk.withValues(alpha: 0.55)))])),
                           ],
                         ),
                       ),
@@ -190,27 +315,43 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                               onChanged: (v) => r.name = v, decoration: InputDecoration(border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: c.dustSoft, width: 2)), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8))),
                             const SizedBox(height: 12),
                             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Your marks', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)), Text('${r.marks} / 100', style: TextStyle(color: c.teal, fontWeight: FontWeight.bold, fontSize: 12))]),
-                            Slider(value: r.marks.toDouble(), min: 0, max: 100, activeColor: c.teal, onChanged: (v) => setState(() => r.marks = v.round())),
-                            Row(
-                              children: [
-                                Expanded(child: _numBoxInt(c, 'CLASS MEAN', r.mean, 100, (v) => setState(() => r.mean = v), keyVal: 'mean-${r.id}')),
-                                const SizedBox(width: 8),
-                                Expanded(child: _numBoxInt(c, 'STD. DEV', r.sd, 50, (v) => setState(() => r.sd = v), keyVal: 'sd-${r.id}')),
-                                const SizedBox(width: 8),
-                                Expanded(child: _numBoxInt(c, 'CREDITS', r.cr, 6, (v) => setState(() => r.cr = v), keyVal: 'cr-${r.id}')),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(color: c.cream, borderRadius: BorderRadius.circular(16)),
-                              child: Column(
+                            Slider(value: r.marks.clamp(0, 100).toDouble(), min: 0, max: 100, activeColor: c.teal, onChanged: (v) => setState(() => r.marks = v.round())),
+                            if (mode == GpaMode.relative)
+                              Row(
                                 children: [
-                                  SizedBox(height: 64, child: CustomPaint(painter: _CurvePainter(z: z, teal: c.teal, clay: c.clay), size: const Size(double.infinity, 64))),
-                                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: const [Text('−3σ', style: TextStyle(fontSize: 10)), Text('+3σ', style: TextStyle(fontSize: 10))]),
+                                  Expanded(child: _numBoxInt(c, 'CLASS MEAN', r.mean, 100, (v) => setState(() => r.mean = v), keyVal: 'mean-${r.id}')),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: _numBoxInt(c, 'STD. DEV', r.sd, 50, (v) => setState(() => r.sd = v), keyVal: 'sd-${r.id}')),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: _numBoxInt(c, 'CREDITS', r.cr, 6, (v) => setState(() => r.cr = v), keyVal: 'cr-${r.id}')),
+                                ],
+                              )
+                            else
+                              Row(
+                                children: [
+                                  Expanded(child: _numBoxInt(c, 'CREDITS', r.cr, 6, (v) => setState(() => r.cr = v), keyVal: 'cr-${r.id}')),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(color: c.dustSoft.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(12)),
+                                      child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('FIXED SCALE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)), Text('85/80/75…', style: TextStyle(fontSize: 14))]),
+                                    ),
+                                  ),
                                 ],
                               ),
-                            ),
+                            const SizedBox(height: 12),
+                            if (mode == GpaMode.relative)
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(color: c.cream, borderRadius: BorderRadius.circular(16)),
+                                child: Column(
+                                  children: [
+                                    SizedBox(height: 64, child: CustomPaint(painter: _CurvePainter(z: z, teal: c.teal, clay: c.clay), size: const Size(double.infinity, 64))),
+                                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: const [Text('−3σ', style: TextStyle(fontSize: 10)), Text('+3σ', style: TextStyle(fontSize: 10))]),
+                                  ],
+                                ),
+                              ),
                             Align(
                               alignment: Alignment.centerLeft,
                               child: TextButton.icon(onPressed: () => setState(() => rows.remove(r)), icon: Icon(Icons.delete_outline, size: 14, color: c.clay), label: Text('Remove course', style: TextStyle(fontSize: 12, color: c.clay, fontWeight: FontWeight.bold))),
@@ -239,7 +380,11 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
           TextFormField(
             key: ValueKey(keyVal ?? label),
             initialValue: v.toString(),
-            keyboardType: TextInputType.number,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (s) {
+              final p = double.tryParse(s);
+              if (p != null) set(p.clamp(0, max).toDouble());
+            },
             onFieldSubmitted: (s) => set(double.tryParse(s)?.clamp(0, max) ?? v),
             decoration: const InputDecoration(border: InputBorder.none, isDense: true),
             style: display(c, size: 18),
@@ -261,6 +406,10 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
             key: ValueKey(keyVal ?? label),
             initialValue: '$v',
             keyboardType: TextInputType.number,
+            onChanged: (s) {
+              final p = int.tryParse(s);
+              if (p != null) set(p.clamp(0, max));
+            },
             onFieldSubmitted: (s) => set(int.tryParse(s)?.clamp(0, max) ?? v),
             decoration: const InputDecoration(border: InputBorder.none, isDense: true),
             style: display(c, size: 18),

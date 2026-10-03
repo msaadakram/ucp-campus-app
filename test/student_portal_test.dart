@@ -91,6 +91,95 @@ void main() {
     });
   });
 
+
+  group('portal courses (real markup)', () {
+    const html = '<a style="" data-savepage-href="/student/course/info/pBG3ykar5ZOkdJ8v4NYV" href="https://horizon.ucp.edu.pk/student/course/info/pBG3ykar5ZOkdJ8v4NYV"> <div class="card text-dark bg-light mb-1" style="max-width: 22rem;"> <div style="background-color:#112B4F !important;color:white" class="card-header bg-primary"><span style="">Data Structures</span> </div> <div class="card-body"> <h6 class="card-title">Dr. Test Tutor</h6> <div class="card-text"> <span class="sub-heading md-color-blue-grey-600 ">CP223</span> <b class="uk-text-small md-color-blue-grey-600">Credits :</b> <span class="md-list-heading md-color-blue-grey-600">3.0</span> <span class="md-color-blue-grey-600">Active Class</span> </div> <div class="uk-text-small">Attendance: <span>67.0</span>% <span class="uk-progress uk-progress-mini uk-progress-danger uk-margin-remove"> </span> <span class="uk-text-small">Fall 2026 </span> </div> </div> </div></a> <a style="" data-savepage-href="/student/course/info/epqR6wKgKeW8LJ1jnO2y" href="https://horizon.ucp.edu.pk/student/course/info/epqR6wKgKeW8LJ1jnO2y"> <div class="card text-dark bg-light mb-1" style="max-width: 22rem;"> <div style="background-color:#112B4F !important;color:white" class="card-header bg-primary"><span style="">Data Structures - Lab</span> </div> <div class="card-body"> <h6 class="card-title">Syeda Eshmal Arshad</h6> <div class="card-text"> <span class="sub-heading md-color-blue-grey-600 ">CP221</span> <b class="uk-text-small md-color-blue-grey-600">Credits :</b> <span class="md-list-heading md-color-blue-grey-600">1.0</span> <span class="md-color-blue-grey-600">Active Class</span> </div> <div class="uk-text-small">Attendance: <span>100.0</span>% <span class="uk-progress uk-progress-mini uk-progress-success uk-margin-remove"> </span> <span class="uk-text-small">Fall 2026 </span> </div> </div> </div></a>';
+
+    test('all fields incl. credits, attendance and info url', () {
+      final list = parseCourses(html);
+      expect(list.length, 2);
+      expect(list[0].name, 'Data Structures');
+      expect(list[0].teacher, 'Dr. Test Tutor');
+      expect(list[0].code, 'CP223');
+      expect(list[0].credits, 3.0);
+      expect(list[0].attendance, 67.0);
+      expect(list[0].infoUrl, contains('/student/course/info/'));
+      expect(list[1].name, contains('Lab'));
+      expect(list[1].attendance, 100.0);
+    });
+
+    test('mapping onto home cards with timetable enrichment', () {
+      const pc = PortalCourse(
+        name: 'Object Oriented Programming',
+        teacher: 'Aasma Abdul Waheed',
+        code: 'CP223',
+        credits: 3.0,
+        attendance: 67.0,
+        infoUrl: '/student/course/info/x',
+      );
+      const slots = [
+        TimetableSlot(
+            day: 'Monday',
+            start: '08:00',
+            end: '08:55',
+            subject: 'Object Oriented Programming - Lab',
+            teacher: 'S X',
+            section: 'CP221',
+            room: 'B-CL203 ( Lab )'),
+        TimetableSlot(
+            day: 'Wednesday',
+            start: '09:00',
+            end: '09:55',
+            subject: 'Object Oriented Programming',
+            teacher: 'Aasma Abdul Waheed',
+            section: 'CP223',
+            room: 'C-301'),
+      ];
+      final c = portalCourseToCourse(pc, slots, 0);
+      expect(c.title, 'Object Oriented Programming');
+      expect(c.prof, 'Aasma Abdul Waheed');
+      expect(c.progress, 67);
+      expect(c.credits, 3);
+      expect(c.room, contains('B-CL203'));
+      expect(c.time, contains('Mon'));
+      // Lab-only subject still matches its base course (both slots).
+      final lab = slotsForCourse('Object Oriented Programming - Lab', slots);
+      expect(lab.length, 2);
+      expect(slotsForCourse('Nope 101', slots), isEmpty);
+    });
+
+    test('nextClass picks today then wraps the week', () {
+      final week = [
+        TimetableSlot(
+            day: 'Monday',
+            start: '08:00',
+            end: '08:55',
+            subject: 'A',
+            teacher: '',
+            section: '',
+            room: ''),
+        TimetableSlot(
+            day: 'Wednesday',
+            start: '09:00',
+            end: '09:55',
+            subject: 'B',
+            teacher: '',
+            section: '',
+            room: ''),
+      ];
+      // Monday 07:00 -> Monday 08:00.
+      expect(nextClass(week, DateTime(2026, 9, 28, 7, 0))?.subject, 'A');
+      // Monday 09:00 -> Wednesday (next day with classes).
+      expect(nextClass(week, DateTime(2026, 9, 28, 9, 0))?.subject, 'B');
+      expect(nextClass([], DateTime(2026, 9, 28)), isNull);
+    });
+
+    test('garbage never throws', () {
+      expect(parseCourses(''), isEmpty);
+      expect(parseCourses('<div>none'), isEmpty);
+    });
+  });
+
   group('PLO table (real markup)', () {
     const html = '<table class="uk-table table_tree"><tr> <th class="uk-width-1-10 ">Code</th> <th class="uk-width-1-10 uk-text-center ">PLO Points</th> <th class="uk-width-1-10 uk-text-center ">PLO Level</th> <th class="uk-width-1-10 uk-text-center ">Attainment</th> <th class="uk-width-1-10 uk-text-center ">Description</th> </tr><tr> <td> PLO-1 </td> <td> 510.3809523809524 </td> <td> 10.0 </td> <td> 51.03809523809524 </td> <td> Academic Education </td> </tr><tr> <td> PLO-2 </td> <td> 2425.3153769841274 </td> <td> 32.0 </td> <td> 75.79110553075398 </td> <td> Knowledge for Solving Computing Problems </td> </tr></table>';
 

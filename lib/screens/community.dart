@@ -8,6 +8,7 @@ import '../community/community_service.dart';
 import '../data/seed.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
+import '../widgets/loading.dart';
 
 const _flairs = ['All', 'Study', 'Events', 'Help', 'Memes', 'Marketplace'];
 
@@ -156,11 +157,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _feedHeader(c),
-            const SizedBox(height: 24),
-            const Center(
-                child: Padding(
-                    padding: EdgeInsets.all(40),
-                    child: CircularProgressIndicator())),
+            const CommunityFeedSkeleton(),
           ],
         ),
       );

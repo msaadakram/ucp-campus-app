@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/palette.dart';
 import '../widgets/common.dart';
+import 'loading.dart';
 
 /// Loading / error states shared by the portal-backed screens (timetable,
 /// attendance, fees, results). Each screen fetches its own page; these keep
@@ -13,23 +14,10 @@ class PortalLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppScope.colorsOf(context);
-    return UHead(
-      height: 112,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: display(c, size: 28, color: Colors.white)),
-          Text(subtitle,
-              style: body(c,
-                  size: 14, color: Colors.white.withValues(alpha: 0.78))),
-          const SizedBox(height: 24),
-          const Center(
-              child: Padding(
-                  padding: EdgeInsets.all(40),
-                  child: CircularProgressIndicator())),
-        ],
-      ),
+    return PortalListSkeleton(
+      title: title,
+      subtitle: subtitle,
+      heroCard: true,
     );
   }
 }
