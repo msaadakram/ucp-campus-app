@@ -444,6 +444,13 @@ class _TimetableScreenState extends State<TimetableScreen> {
       ..sort((a, b) => a.start.compareTo(b.start));
     final hours = list.fold<double>(
         0, (n, s) => n + (_toH(s.end) - _toH(s.start)));
+    final todayName = _todayName();
+    final nowH =
+        TimeOfDay.now().hour + TimeOfDay.now().minute / 60;
+    final termLine = [
+      if (tt.term.isNotEmpty) tt.term,
+      if (tt.month.isNotEmpty) tt.month,
+    ].join(' · ');
     return UHead(
       height: 184,
       child: Column(
@@ -458,11 +465,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                     Text('Timetable',
                         style: display(c, size: 28, color: Colors.white)),
                     Text(
-                        [
-                          if (tt.term.isNotEmpty) tt.term,
-                          if (tt.month.isNotEmpty) tt.month
-                        ].join(' · ',
-                        ),
+                        termLine.isEmpty ? 'Class Schedule' : termLine,
                         style: body(c,
                             size: 14,
                             color: Colors.white.withValues(alpha: 0.78))),
@@ -512,16 +515,36 @@ class _TimetableScreenState extends State<TimetableScreen> {
                           Text(days[i].substring(0, 3),
                               style: TextStyle(
                                   fontSize: 11,
+                                  fontWeight: FontWeight.w600,
                                   color: day == days[i]
                                       ? c.tealInk.withValues(alpha: 0.75)
                                       : Colors.white70)),
-                          Text('${12 + _weekOrder.indexOf(days[i]) % 7}',
+                          const SizedBox(height: 2),
+                          Text(
+                              '${tt.slots.where((s) => s.day == days[i]).length}',
                               style: TextStyle(
                                   fontWeight: FontWeight.w800,
-                                  fontSize: 18,
+                                  fontSize: 16,
                                   color: day == days[i]
                                       ? c.tealInk
                                       : Colors.white)),
+                          Text('classes',
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: day == days[i]
+                                      ? c.tealInk.withValues(alpha: 0.55)
+                                      : Colors.white70)),
+                          const SizedBox(height: 4),
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: days[i] == todayName
+                                  ? c.clay
+                                  : Colors.transparent,
+                            ),
+                          ),
                         ]),
                       ),
                     ),
@@ -534,13 +557,16 @@ class _TimetableScreenState extends State<TimetableScreen> {
             _gridView(c, days)
           else ...[
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(day,
-                    style: display(c, size: 20)),
+                Expanded(
+                  child: Text(day,
+                      style: display(c, size: 20),
+                      overflow: TextOverflow.ellipsis),
+                ),
+                const SizedBox(width: 8),
                 Text('${list.length} classes · ${hours.toStringAsFixed(1)}h',
                     style: body(c,
-                        size: 14,
+                        size: 13,
                         color: c.tealInk.withValues(alpha: 0.55))),
               ],
             ),
@@ -563,20 +589,33 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 final id = '${s.day}-${s.start}';
                 final on = remind.contains(id);
                 final tone = s.isLab ? c.clay : c.teal;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Row(
+                final live = day == todayName &&
+                    nowH >= _toH(s.start) &&
+                    nowH < _toH(s.end);
+                final past = day != todayName
+                    ? _weekOrder.indexOf(day) <
+                        _weekOrder.indexOf(todayName)
+                    : nowH >= _toH(s.end);
+                return Opacity(
+                  opacity: past && !live ? 0.55 : 1,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Column(children: [
+                        const SizedBox(height: 4),
                         Container(
                             width: 14,
                             height: 14,
                             decoration: BoxDecoration(
-                                color: tone,
+                                color: live ? c.clay : tone,
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                    color: c.cream2, width: 3))),
+                                    color: live
+                                        ? c.clay.withValues(alpha: 0.3)
+                                        : c.cream2,
+                                    width: live ? 4 : 3))),
                       ]),
                       const SizedBox(width: 12),
                       Expanded(
@@ -585,10 +624,30 @@ class _TimetableScreenState extends State<TimetableScreen> {
                           children: [
                             Row(children: [
                               const Icon(Icons.schedule_outlined, size: 13),
-                              Text(' ${s.start} – ${s.end}',
-                                  style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold)),
+                              Flexible(
+                                child: Text(
+                                    ' ${s.start} – ${s.end}',
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold),
+                                    overflow: TextOverflow.ellipsis),
+                              ),
+                              if (live)
+                                Container(
+                                  margin:
+                                      const EdgeInsets.only(left: 6),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                      color: c.clay,
+                                      borderRadius:
+                                          BorderRadius.circular(10)),
+                                  child: const Text('NOW',
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white)),
+                                ),
                               const SizedBox(width: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(
@@ -668,7 +727,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                       ),
                     ],
                   ),
-                );
+                ),
+              );
               }),
           ],
           const SizedBox(height: 24),
@@ -769,7 +829,9 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                           style: const TextStyle(
                                               fontSize: 9,
                                               fontWeight: FontWeight.bold,
-                                              color: Colors.white))),
+                                              color: Colors.white),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 4)),
                                 ),
                               );
                             }),

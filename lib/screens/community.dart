@@ -233,7 +233,21 @@ class _CommunityScreenState extends State<CommunityScreen> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 Expanded(child: GestureDetector(onTap: () => setState(() => composing = false), child: Container(color: Colors.black.withValues(alpha: 0.4)))),
-                _composer(c),
+                _ComposerSheet(
+                  service: widget.service!,
+                  myEmail: _email,
+                  authorName: _handle,
+                  onClose: () => setState(() => composing = false),
+                  onPosted: () {
+                    if (!mounted) return;
+                    setState(() {
+                      composing = false;
+                      sort = 'New';
+                      flair = 'All';
+                    });
+                    _reload();
+                  },
+                ),
               ],
             ),
           ),
@@ -624,183 +638,298 @@ class _CommunityScreenState extends State<CommunityScreen> {
     );
   }
 
-  Widget _composer(AppColors c) {
-    String title = '';
-    String bdy = '';
-    String fl = 'Study';
-    Uint8List? imageBytes;
-    String imageExt = 'jpg';
-    String imageType = 'image/jpeg';
-    bool busy = false;
-    String? composerError;
-    return StatefulBuilder(builder: (ctx, setS) {
-      Future<void> pickImage() async {
-        try {
-          final picked = await ImagePicker().pickImage(
-            source: ImageSource.gallery,
-            maxWidth: 1600,
-            imageQuality: 85,
-          );
-          if (picked == null) return;
-          final bytes = await picked.readAsBytes();
-          final name = picked.name.toLowerCase();
-          final ext = name.contains('.') ? name.split('.').last : 'jpg';
-          const types = {
-            'jpg': 'image/jpeg',
-            'jpeg': 'image/jpeg',
-            'png': 'image/png',
-            'webp': 'image/webp',
-            'gif': 'image/gif',
-          };
-          setS(() {
-            imageBytes = bytes;
-            imageExt = types.containsKey(ext) ? ext : 'jpg';
-            imageType = types[imageExt]!;
-            composerError = null;
-          });
-        } catch (_) {
-          setS(() => composerError = 'Could not read that image.');
-        }
-      }
+}
 
-      Future<void> submit() async {
-        final svc = widget.service;
-        if (svc == null || title.trim().isEmpty || busy) return;
-        setS(() {
-          busy = true;
-          composerError = null;
-        });
-        try {
-          String? imageUrl;
-          if (imageBytes != null) {
-            imageUrl = await svc.uploadImage(
-              bytes: imageBytes!,
-              contentType: imageType,
-              extension: imageExt,
-            );
-          }
-          await svc.createPost(
-            myEmail: _email,
-            authorName: _handle,
-            title: title.trim(),
-            body: bdy.trim(),
-            flair: fl,
-            imageUrl: imageUrl,
-          );
-          if (!mounted) return;
-          setState(() {
-            composing = false;
-            sort = 'New';
-            flair = 'All';
-          });
-          await _reload();
-        } catch (_) {
-          if (mounted) {
-            setS(() {
-              busy = false;
-              composerError = 'Could not publish. Check connection and retry.';
-            });
-          }
-        }
-      }
+/// Create-post sheet with its OWN State so a parent feed refresh
+/// (realtime tick, vote, retry) can never wipe the in-progress draft.
+///
+/// Previous implementation kept `title`/`body`/`imageBytes` as locals of
+/// `_composer()` + `StatefulBuilder`. Every parent `setState` re-ran
+/// `_composer()`, resetting those locals to empty while the visible
+/// `TextField` kept its text internally. Result: the UI showed text but
+/// `title.trim().isEmpty` was true, so the Post button's `onTap` was null
+/// and tapping it did nothing — exactly the reported "type text + add
+/// photo, Post not working" bug. Hoisting draft state into this widget's
+/// State fixes it: the Element (and its controllers) survive parent
+/// rebuilds.
+class _ComposerSheet extends StatefulWidget {
+  final CommunityService service;
+  final String myEmail;
+  final String authorName;
+  final VoidCallback onClose;
+  final VoidCallback onPosted;
+  const _ComposerSheet({
+    required this.service,
+    required this.myEmail,
+    required this.authorName,
+    required this.onClose,
+    required this.onPosted,
+  });
+  @override
+  State<_ComposerSheet> createState() => _ComposerSheetState();
+}
 
-      return Container(
+class _ComposerSheetState extends State<_ComposerSheet> {
+  late final TextEditingController _titleCtrl;
+  late final TextEditingController _bodyCtrl;
+  String _flair = 'Study';
+  Uint8List? _imageBytes;
+  String _imageExt = 'jpg';
+  String _imageType = 'image/jpeg';
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleCtrl = TextEditingController();
+    _bodyCtrl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _bodyCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    if (_busy) return;
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      final name = picked.name.toLowerCase();
+      final ext = name.contains('.') ? name.split('.').last : 'jpg';
+      const types = {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'webp': 'image/webp',
+        'gif': 'image/gif',
+      };
+      if (!mounted) return;
+      setState(() {
+        _imageBytes = bytes;
+        _imageExt = types.containsKey(ext) ? ext : 'jpg';
+        _imageType = types[_imageExt]!;
+        _error = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _error = 'Could not read that image.');
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_busy) return;
+    final title = _titleCtrl.text.trim();
+    if (title.isEmpty) {
+      setState(() => _error = 'Add a title before posting.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      String? imageUrl;
+      if (_imageBytes != null) {
+        imageUrl = await widget.service.uploadImage(
+          bytes: _imageBytes!,
+          contentType: _imageType,
+          extension: _imageExt,
+        );
+      }
+      await widget.service.createPost(
+        myEmail: widget.myEmail,
+        authorName: widget.authorName,
+        title: title,
+        body: _bodyCtrl.text.trim(),
+        flair: _flair,
+        imageUrl: imageUrl,
+      );
+      if (!mounted) return;
+      widget.onPosted();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = 'Could not publish. Check connection and retry.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppScope.colorsOf(context);
+    return Padding(
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
         padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(color: c.cream2, borderRadius: const BorderRadius.vertical(top: Radius.circular(32))),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                GestureDetector(onTap: () => setState(() => composing = false), child: Container(alignment: Alignment.center, width: 36, height: 36, decoration: BoxDecoration(color: c.dustSoft, shape: BoxShape.circle), child: const Icon(Icons.close, size: 18))),
-                Text('Create post', style: display(c, size: 18)),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: (title.trim().isEmpty || busy) ? null : submit,
-                  child: Opacity(
-                    opacity: (title.trim().isEmpty || busy) ? 0.4 : 1,
-                    child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(color: c.teal, borderRadius: BorderRadius.circular(20)),
-                        child: Text(busy ? 'Posting…' : 'Post',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              children: [
-                for (final f in _flairs.skip(1))
-                  GestureDetector(onTap: () => setS(() => fl = f), child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: fl == f ? _flairColor(f, c) : c.dustSoft, borderRadius: BorderRadius.circular(16)), child: Text(f, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: fl == f ? Colors.white : c.tealInk)))),
-              ],
-            ),
-            TextField(onChanged: (v) { title = v; setS(() {}); }, decoration: const InputDecoration(hintText: 'An interesting title', border: InputBorder.none), style: display(c, size: 20)),
-            TextField(onChanged: (v) => bdy = v, maxLines: 4, decoration: InputDecoration(hintText: 'Say more (optional)', filled: true, fillColor: c.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none))),
-            const SizedBox(height: 12),
-            if (imageBytes != null)
-              Stack(
+        decoration: BoxDecoration(
+            color: c.cream2,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(32))),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.memory(imageBytes!,
-                        height: 140,
-                        width: double.infinity,
-                        fit: BoxFit.cover),
-                  ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: GestureDetector(
-                      onTap: () => setS(() => imageBytes = null),
+                  GestureDetector(
+                      onTap: _busy ? null : widget.onClose,
                       child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: const BoxDecoration(
-                            color: Colors.black54, shape: BoxShape.circle),
-                        child: const Icon(Icons.close,
-                            size: 16, color: Colors.white),
-                      ),
+                          alignment: Alignment.center,
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                              color: c.dustSoft, shape: BoxShape.circle),
+                          child: const Icon(Icons.close, size: 18))),
+                  Text('Create post', style: display(c, size: 18)),
+                  GestureDetector(
+                    key: const ValueKey('composer-post-button'),
+                    behavior: HitTestBehavior.opaque,
+                    // Always tappable (unless busy) so validation can show
+                    // an inline error instead of a dead button.
+                    onTap: _busy ? null : _submit,
+                    child: Opacity(
+                      opacity: _busy ? 0.4 : 1,
+                      child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                              color: c.teal,
+                              borderRadius: BorderRadius.circular(20)),
+                          child: Text(_busy ? 'Posting…' : 'Post',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold))),
                     ),
                   ),
                 ],
-              )
-            else
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: pickImage,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: c.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: c.dustSoft, width: 2),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.image_outlined,
-                          size: 18, color: c.teal),
-                      Text('  Add a photo (optional)',
-                          style: body(c,
-                              size: 13,
-                              weight: FontWeight.w600,
-                              color: c.teal)),
-                    ],
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final f in _flairs.skip(1))
+                    GestureDetector(
+                        onTap: _busy
+                            ? null
+                            : () => setState(() => _flair = f),
+                        child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                                color: _flair == f
+                                    ? _flairColor(f, c)
+                                    : c.dustSoft,
+                                borderRadius: BorderRadius.circular(16)),
+                            child: Text(f,
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: _flair == f
+                                        ? Colors.white
+                                        : c.tealInk)))),
+                ],
+              ),
+              TextField(
+                  key: const ValueKey('composer-title'),
+                  controller: _titleCtrl,
+                  enabled: !_busy,
+                  decoration: const InputDecoration(
+                      hintText: 'An interesting title',
+                      border: InputBorder.none),
+                  style: display(c, size: 20)),
+              TextField(
+                  key: const ValueKey('composer-body'),
+                  controller: _bodyCtrl,
+                  enabled: !_busy,
+                  maxLines: 4,
+                  decoration: InputDecoration(
+                      hintText: 'Say more (optional)',
+                      filled: true,
+                      fillColor: c.white,
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none))),
+              const SizedBox(height: 12),
+              if (_imageBytes != null)
+                Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.memory(_imageBytes!,
+                          height: 140,
+                          width: double.infinity,
+                          fit: BoxFit.cover),
+                    ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: GestureDetector(
+                        onTap: _busy
+                            ? null
+                            : () => setState(() => _imageBytes = null),
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: const BoxDecoration(
+                              color: Colors.black54,
+                              shape: BoxShape.circle),
+                          child: const Icon(Icons.close,
+                              size: 16, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              else
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _pickImage,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: c.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: c.dustSoft, width: 2),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.image_outlined,
+                            size: 18, color: c.teal),
+                        Text('  Add a photo (optional)',
+                            style: body(c,
+                                size: 13,
+                                weight: FontWeight.w600,
+                                color: c.teal)),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            if (composerError != null) ...[
-              const SizedBox(height: 8),
-              Text(composerError!,
-                  style: body(c, size: 13, weight: FontWeight.w600, color: c.clay)),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(_error!,
+                    style: body(c,
+                        size: 13,
+                        weight: FontWeight.w600,
+                        color: c.clay)),
+              ],
             ],
-          ],
+          ),
         ),
-      );
-    });
+      ),
+    );
   }
 }
