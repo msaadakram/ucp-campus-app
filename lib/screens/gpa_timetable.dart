@@ -980,21 +980,18 @@ class _TimetableScreenState extends State<TimetableScreen> {
               ),
             for (final s in list)
               Builder(builder: (_) {
-                final id = '${s.day}-${s.start}';
+                final id = '${s.day}-${s.start}-${s.subject}';
                 final on = remind.contains(id);
                 final tone = s.isLab ? c.clay : c.teal;
                 final live = day == todayName &&
                     nowH >= _toH(s.start) &&
                     nowH < _toH(s.end);
-                final past = day != todayName
-                    ? _weekOrder.indexOf(day) <
-                        _weekOrder.indexOf(todayName)
-                    : nowH >= _toH(s.end);
-                return Opacity(
-                  opacity: past && !live ? 0.55 : 1,
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: Row(
+                // Only dim the timeline dot for finished classes today.
+                // Never fade the whole card: full-opacity text stays crisp.
+                final past = day == todayName && nowH >= _toH(s.end);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Column(children: [
@@ -1003,7 +1000,11 @@ class _TimetableScreenState extends State<TimetableScreen> {
                             width: 14,
                             height: 14,
                             decoration: BoxDecoration(
-                                color: live ? c.clay : tone,
+                                color: live
+                                    ? c.clay
+                                    : past
+                                        ? tone.withValues(alpha: 0.45)
+                                        : tone,
                                 shape: BoxShape.circle,
                                 border: Border.all(
                                     color: live
@@ -1041,6 +1042,24 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                           fontSize: 10,
                                           fontWeight: FontWeight.bold,
                                           color: Colors.white)),
+                                ),
+                              if (!live && past)
+                                Container(
+                                  margin:
+                                      const EdgeInsets.only(left: 6),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                      color: c.tealInk
+                                          .withValues(alpha: 0.12),
+                                      borderRadius:
+                                          BorderRadius.circular(10)),
+                                  child: Text('Done',
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: c.tealInk.withValues(
+                                              alpha: 0.6))),
                                 ),
                               const SizedBox(width: 6),
                               Container(
@@ -1121,8 +1140,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                       ),
                     ],
                   ),
-                ),
-              );
+                );
               }),
           ],
           const SizedBox(height: 24),
@@ -1147,8 +1165,9 @@ class _TimetableScreenState extends State<TimetableScreen> {
   Widget _gridView(AppColors c, List<String> days) {
     const startH = 8;
     const endH = 22;
-    const cellH = 44.0;
+    const cellH = 56.0;
     final tones = [c.teal, c.clay, c.board, c.dust, c.tealDeep];
+    final totalH = (endH - startH) * cellH;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1166,13 +1185,15 @@ class _TimetableScreenState extends State<TimetableScreen> {
           ]),
           const SizedBox(height: 8),
           SizedBox(
-            height: (endH - startH) * cellH,
+            height: totalH,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(
                     width: 40,
                     child: Stack(children: [
+                      // Hour grid lines extend across via per-column stack below;
+                      // labels stay fixed on the left gutter.
                       for (int i = 0; i <= endH - startH; i++)
                         Positioned(
                             top: i * cellH - 6,
@@ -1190,47 +1211,117 @@ class _TimetableScreenState extends State<TimetableScreen> {
                       decoration: BoxDecoration(
                           color: c.dustSoft.withValues(alpha: 0.4),
                           borderRadius: BorderRadius.circular(12)),
-                      child: Stack(
-                        children: [
-                          for (final s in data!.slots
-                              .where((x) => x.day == days[d]))
-                            Builder(builder: (_) {
-                              final top =
-                                  (_toH(s.start) - startH) * cellH;
-                              final h = ((_toH(s.end) - _toH(s.start)) *
-                                      cellH) -
-                                  2;
-                              final tone = tones[d % tones.length];
-                              return Positioned(
-                                top: top < 0 ? 0 : top,
-                                height: h <= 10 ? 42 : h,
-                                left: 2,
-                                right: 2,
-                                child: GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: () => setState(() {
-                                    day = days[d];
-                                    grid = false;
-                                  }),
-                                  child: Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(
-                                          color: tone,
-                                          borderRadius:
-                                              BorderRadius.circular(8)),
-                                      child: Text(
-                                          '${s.subject}\n${s.start}',
-                                          style: const TextStyle(
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white),
-                                          overflow: TextOverflow.ellipsis,
-                                          maxLines: 4)),
-                                ),
-                              );
-                            }),
-                        ],
-                      ),
+                      child: LayoutBuilder(builder: (ctx, cons) {
+                        final daySlots = data!.slots
+                            .where((x) => x.day == days[d])
+                            .toList()
+                          ..sort((a, b) =>
+                              _toH(a.start).compareTo(_toH(b.start)));
+                        // Assign overlap lanes: slots overlapping in time
+                        // share the column width side-by-side instead of
+                        // stacking fully on top of each other.
+                        final lanes = <List<TimetableSlot>>[];
+                        final laneOf = <TimetableSlot, int>{};
+                        for (final s in daySlots) {
+                          final s0 = _toH(s.start);
+                          final s1 = _toH(s.end);
+                          var placed = false;
+                          for (var li = 0; li < lanes.length; li++) {
+                            final clash = lanes[li].any((o) =>
+                                s0 < _toH(o.end) && _toH(o.start) < s1);
+                            if (!clash) {
+                              lanes[li].add(s);
+                              laneOf[s] = li;
+                              placed = true;
+                              break;
+                            }
+                          }
+                          if (!placed) {
+                            lanes.add([s]);
+                            laneOf[s] = lanes.length - 1;
+                          }
+                        }
+                        final laneCount =
+                            lanes.isEmpty ? 1 : lanes.length;
+                        return Stack(
+                          children: [
+                            for (int i = 0; i <= endH - startH; i++)
+                              Positioned(
+                                top: i * cellH,
+                                left: 0,
+                                right: 0,
+                                child: Container(
+                                    height: 1,
+                                    color: c.tealInk
+                                        .withValues(alpha: 0.08)),
+                              ),
+                            for (final s in daySlots)
+                              Builder(builder: (_) {
+                                final rawTop =
+                                    (_toH(s.start) - startH) * cellH;
+                                final rawH =
+                                    ((_toH(s.end) - _toH(s.start)) *
+                                            cellH) -
+                                        3;
+                                final h = rawH < 34 ? 34.0 : rawH;
+                                final top = rawTop
+                                    .clamp(0, (totalH - h).clamp(0, totalH))
+                                    .toDouble();
+                                final tone = tones[d % tones.length];
+                                final li = laneOf[s] ?? 0;
+                                // Split width only when lanes actually overlap.
+                                final w = laneCount > 1
+                                    ? (cons.maxWidth - 4) / laneCount
+                                    : cons.maxWidth - 4;
+                                final left = 2 + li * w;
+                                return Positioned(
+                                  top: top,
+                                  height: h,
+                                  left: left,
+                                  width: w - 2,
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () => setState(() {
+                                      day = days[d];
+                                      grid = false;
+                                    }),
+                                    child: Container(
+                                        padding:
+                                            const EdgeInsets.all(5),
+                                        decoration: BoxDecoration(
+                                            color: tone,
+                                            borderRadius:
+                                                BorderRadius.circular(8)),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisSize:
+                                              MainAxisSize.min,
+                                          children: [
+                                            Text(s.subject,
+                                                style: const TextStyle(
+                                                    fontSize: 9,
+                                                    fontWeight:
+                                                        FontWeight.bold,
+                                                    color: Colors.white),
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                                maxLines: 2),
+                                            Text(s.start,
+                                                style: const TextStyle(
+                                                    fontSize: 8,
+                                                    color: Colors.white70),
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                                maxLines: 1),
+                                          ],
+                                        )),
+                                  ),
+                                );
+                              }),
+                          ],
+                        );
+                      }),
                     ),
                   ),
               ],
@@ -1298,9 +1389,16 @@ class _TimetableScreenState extends State<TimetableScreen> {
   }
 
   static double _toH(String hm) {
-    final parts = hm.split(':');
-    if (parts.length != 2) return 0;
-    return (int.tryParse(parts[0]) ?? 0) +
-        (int.tryParse(parts[1]) ?? 0) / 60.0;
+    final t = hm.trim().toUpperCase();
+    // Accepts "08:00", "08:00:00", "8:00 AM/PM".
+    final m = RegExp(r'^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AP]M)?$')
+        .firstMatch(t);
+    if (m == null) return 0;
+    var h = int.tryParse(m.group(1)!) ?? 0;
+    final min = int.tryParse(m.group(2)!) ?? 0;
+    final ap = m.group(3);
+    if (ap == 'AM' && h == 12) h = 0;
+    if (ap == 'PM' && h < 12) h += 12;
+    return h + min / 60.0;
   }
 }

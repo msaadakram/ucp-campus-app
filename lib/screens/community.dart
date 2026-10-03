@@ -48,6 +48,15 @@ class _CommunityScreenState extends State<CommunityScreen> {
   /// Kept across feed failures so the header never flickers back to fake.
   CommunityStats? stats;
 
+  /// Comment input controller (cleared on send so the box never keeps the
+  /// sent text). `draft` mirrors it for the send guard.
+  late final TextEditingController _commentCtrl;
+  bool _sendingComment = false;
+
+  /// In-flight like guards so rapid taps never fire duplicate requests.
+  final Set<String> _likingPosts = {};
+  final Set<String> _likingComments = {};
+
   String get _email => widget.myEmail;
   String get _handle => handleForEmail(
       _email.isEmpty ? 'ayaan.w@ucp.edu.pk' : _email);
@@ -55,6 +64,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
   @override
   void initState() {
     super.initState();
+    _commentCtrl = TextEditingController();
     if (widget.service == null) {
       loading = false;
       return;
@@ -68,6 +78,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
   @override
   void dispose() {
+    _commentCtrl.dispose();
     _sub?.cancel();
     super.dispose();
   }
@@ -75,20 +86,31 @@ class _CommunityScreenState extends State<CommunityScreen> {
   Future<void> _reload() async {
     final svc = widget.service;
     if (svc == null || !mounted) return;
+    // Posts + stats in parallel so a slow/missing stats endpoint can never
+    // hold the feed hostage (the old sequential await stuck the header on
+    // "Connecting…" when /api/stats 404'd on older backends).
     try {
-      final fresh = await svc.fetchPosts(myEmail: _email);
-      CommunityStats? live;
-      try {
-        live = await svc.fetchStats();
-      } catch (_) {
-        live = null; // stats must never break the feed
-      }
+      final results = await Future.wait([
+        svc.fetchPosts(myEmail: _email),
+        svc.fetchStats().then<CommunityStats?>((s) => s).catchError((_) => null),
+      ]);
       if (!mounted) return;
+      final fresh = results[0] as List<Post>;
+      var live = results[1] as CommunityStats?;
+      // Fallback: derive real numbers from the loaded feed itself.
+      if (live == null || live.members == 0) {
+        final prevOnline = stats?.online ?? 1;
+        final derived = localStatsFromPosts(fresh, online: prevOnline);
+        live = CommunityStats(
+          members: live != null && live.members > 0 ? live.members : derived.members,
+          online: live != null && live.online > 0 ? live.online : derived.online,
+        );
+      }
       setState(() {
         posts = fresh;
         loading = false;
         error = null;
-        if (live != null) stats = live;
+        stats = live;
         if (openId != null && !fresh.any((p) => p.id == openId)) {
           openId = null;
           replyTo = null;
@@ -100,6 +122,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
       try {
         live = await svc.fetchStats();
       } catch (_) {}
+      live ??= stats ?? (posts.isNotEmpty ? localStatsFromPosts(posts) : null);
       if (!mounted) return;
       setState(() {
         loading = false;
@@ -118,37 +141,103 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
   Future<void> _votePost(Post p, int v) async {
     final svc = widget.service;
-    if (svc == null) return;
-    await svc.setVote(
-        postId: p.id, myEmail: _email, value: p.vote == v ? null : v);
-    await _reload();
+    if (svc == null || _likingPosts.contains(p.id)) return;
+    // Like-only UI: v is always 1 here. Toggle off when already liked.
+    final next = p.vote == 1 ? null : 1;
+    final prev = p.vote;
+    _likingPosts.add(p.id);
+    // Optimistic: heart fills instantly, no waiting for the network.
+    setState(() => p.vote = next ?? 0);
+    try {
+      await svc.setVote(postId: p.id, myEmail: _email, value: next);
+      await _reload();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => p.vote = prev); // revert on failure
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not save like. Try again.'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } finally {
+      _likingPosts.remove(p.id);
+    }
   }
 
   Future<void> _voteComment(CComment cm, int v) async {
     final svc = widget.service;
-    if (svc == null) return;
-    // Comment id is unique across the feed in both backends.
-    await svc.setCommentVote(
-        commentId: cm.id, myEmail: _email, value: cm.vote == v ? null : v);
-    await _reload();
+    if (svc == null || _likingComments.contains(cm.id)) return;
+    final next = cm.vote == 1 ? null : 1;
+    final prev = cm.vote;
+    _likingComments.add(cm.id);
+    setState(() => cm.vote = next ?? 0);
+    try {
+      await svc.setCommentVote(commentId: cm.id, myEmail: _email, value: next);
+      await _reload();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => cm.vote = prev);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not save like. Try again.'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } finally {
+      _likingComments.remove(cm.id);
+    }
   }
 
   Future<void> _sendComment(Post post) async {
     final svc = widget.service;
-    if (svc == null || draft.trim().isEmpty) return;
-    await svc.addComment(
-      postId: post.id,
-      parentId: replyTo?.id,
-      myEmail: _email,
-      authorName: _handle,
-      text: draft.trim(),
-    );
-    if (!mounted) return;
+    final text = _commentCtrl.text.trim();
+    if (svc == null || text.isEmpty || _sendingComment) return;
+    final isReply = replyTo != null;
     setState(() {
-      draft = '';
-      replyTo = null;
+      _sendingComment = true;
+      draft = text;
     });
-    await _reload();
+    // Clear the box immediately so the sent text never lingers.
+    _commentCtrl.clear();
+    draft = '';
+    try {
+      await svc.addComment(
+        postId: post.id,
+        parentId: replyTo?.id,
+        myEmail: _email,
+        authorName: _handle,
+        text: text,
+      );
+      if (!mounted) return;
+      setState(() {
+        replyTo = null;
+        _sendingComment = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isReply ? 'Reply posted' : 'Comment posted'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      await _reload();
+    } catch (_) {
+      if (!mounted) return;
+      // Restore so nothing the user typed is lost.
+      _commentCtrl.text = text;
+      draft = text;
+      setState(() => _sendingComment = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not post. Check connection and retry.'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   List<Post> get shown {
@@ -448,7 +537,12 @@ class _CommunityScreenState extends State<CommunityScreen> {
           const SizedBox(height: 12),
           Row(
             children: [
-              _votes(c, p.score, p.vote, (v) => _votePost(p, v)),
+              _likeButton(
+                c,
+                count: p.score + p.vote,
+                liked: p.vote == 1,
+                onTap: () => _votePost(p, 1),
+              ),
               const SizedBox(width: 8),
               Flexible(
                 child: GestureDetector(
@@ -475,15 +569,41 @@ class _CommunityScreenState extends State<CommunityScreen> {
     );
   }
 
-  Widget _votes(AppColors c, int score, int vote, ValueChanged<int> onVote) {
-    return Container(
-      decoration: BoxDecoration(color: c.dustSoft.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20)),
-      child: Row(
-        children: [
-          IconButton(icon: Icon(Icons.arrow_circle_up_outlined, color: vote == 1 ? c.clay : c.tealInk.withValues(alpha: 0.6)), onPressed: () => onVote(1), iconSize: 20, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
-          Text('${score + vote}', style: TextStyle(fontWeight: FontWeight.bold, color: vote == 1 ? c.clay : vote == -1 ? c.teal : c.tealInk)),
-          IconButton(icon: Icon(Icons.arrow_circle_down_outlined, color: vote == -1 ? c.teal : c.tealInk.withValues(alpha: 0.6)), onPressed: () => onVote(-1), iconSize: 20, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
-        ],
+  /// Like-only button (replaces the old up/down arrows): heart fills
+  /// instantly via the optimistic vote above, count = score + my like.
+  Widget _likeButton(
+    AppColors c, {
+    required int count,
+    required bool liked,
+    required VoidCallback onTap,
+    bool small = false,
+  }) {
+    final color = liked ? c.clay : c.tealInk.withValues(alpha: 0.6);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(
+            horizontal: small ? 10 : 12, vertical: small ? 5 : 6),
+        decoration: BoxDecoration(
+          color: liked
+              ? c.clay.withValues(alpha: 0.15)
+              : c.dustSoft.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(liked ? Icons.favorite : Icons.favorite_outline,
+                size: small ? 15 : 16, color: color),
+            const SizedBox(width: 4),
+            Text('$count',
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: small ? 12 : 13,
+                    color: color)),
+          ],
+        ),
       ),
     );
   }
@@ -522,19 +642,98 @@ class _CommunityScreenState extends State<CommunityScreen> {
             child: Container(
               padding: EdgeInsets.fromLTRB(12, 12, 12, 12 + MediaQuery.of(context).viewInsets.bottom),
               decoration: BoxDecoration(color: c.cream2, border: Border(top: BorderSide(color: c.dustSoft))),
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: TextField(
-                      onChanged: (v) => draft = v,
-                      decoration: InputDecoration(hintText: replyTo != null ? 'Write a reply…' : 'Add a comment…', filled: true, fillColor: c.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(horizontal: 16)),
+                  if (replyTo != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: c.teal.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Text(
+                                'Replying to u/${replyTo!.author}',
+                                overflow: TextOverflow.ellipsis,
+                                style: body(c,
+                                    size: 12,
+                                    weight: FontWeight.w600,
+                                    color: c.teal),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => setState(() => replyTo = null),
+                            child: Container(
+                              alignment: Alignment.center,
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                  color: c.dustSoft, shape: BoxShape.circle),
+                              child: const Icon(Icons.close, size: 14),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => _sendComment(post),
-                    child: Container(alignment: Alignment.center, width: 44, height: 44, decoration: BoxDecoration(color: c.teal, shape: BoxShape.circle), child: const Icon(Icons.send, color: Colors.white, size: 18)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          key: const ValueKey('comment-field'),
+                          controller: _commentCtrl,
+                          enabled: !_sendingComment,
+                          onChanged: (v) => draft = v,
+                          onSubmitted: (_) => _sendComment(post),
+                          decoration: InputDecoration(
+                              hintText: replyTo != null
+                                  ? 'Write a reply…'
+                                  : 'Add a comment…',
+                              filled: true,
+                              fillColor: c.white,
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                  borderSide: BorderSide.none),
+                              contentPadding:
+                                  const EdgeInsets.symmetric(horizontal: 16)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        key: const ValueKey('comment-send'),
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _sendingComment ? null : () => _sendComment(post),
+                        child: Opacity(
+                          opacity: _sendingComment ? 0.6 : 1,
+                          child: Container(
+                              alignment: Alignment.center,
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                  color: c.teal, shape: BoxShape.circle),
+                              child: _sendingComment
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation(
+                                            Colors.white),
+                                      ),
+                                    )
+                                  : const Icon(Icons.send,
+                                      color: Colors.white, size: 18)),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -637,14 +836,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
               runSpacing: 4,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                _votes(c, cm.score, cm.vote, (v) => _voteComment(cm, v)),
-                _miniAction(
+                _likeButton(
                   c,
-                  icon: cm.vote == 1
-                      ? Icons.favorite
-                      : Icons.favorite_outline,
-                  label: 'Like',
-                  active: cm.vote == 1,
+                  count: cm.score + cm.vote,
+                  liked: cm.vote == 1,
+                  small: true,
                   onTap: () => _voteComment(cm, 1),
                 ),
                 _miniAction(

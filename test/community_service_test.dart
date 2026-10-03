@@ -227,16 +227,20 @@ void main() {
         (WidgetTester tester) async {
       await openThread(tester);
       expect(find.byIcon(Icons.favorite), findsNothing);
-      await tester.ensureVisible(find.text(' Like').first);
+      expect(find.byIcon(Icons.favorite_outline), findsWidgets);
+      await tester.ensureVisible(find.byIcon(Icons.favorite_outline).first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text(' Like').first);
+      // Optimistic: heart fills instantly on tap.
+      await tester.tap(find.byIcon(Icons.favorite_outline).first);
+      await tester.pump();
+      expect(find.byIcon(Icons.favorite), findsWidgets);
       await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.favorite), findsOneWidget);
-      await tester.ensureVisible(find.text(' Like').first);
+      await tester.ensureVisible(find.byIcon(Icons.favorite).first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text(' Like').first);
-      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.favorite).first);
+      await tester.pump();
       expect(find.byIcon(Icons.favorite), findsNothing);
+      await tester.pumpAndSettle();
     });
 
     testWidgets('comment share copies to clipboard',

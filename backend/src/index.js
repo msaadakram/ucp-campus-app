@@ -14,6 +14,7 @@ const events = require('./events');
 const postsRoutes = require('./routes/posts');
 const commentsRoutes = require('./routes/comments');
 const uploadRoutes = require('./routes/upload');
+const statsRoutes = require('./routes/stats');
 
 function createApp({
   config,
@@ -68,6 +69,7 @@ function createApp({
   app.use('/api', postsRoutes.routes({ config, requireUser }));
   app.use('/api', commentsRoutes.routes({ config, requireUser }));
   app.use('/api', uploadRoutes.routes({ config, requireUser }));
+  app.use('/api', statsRoutes.routes({ config }));
 
   /* Server-sent events: one line per mutation; clients refetch on any. */
   app.get('/api/stream', (req, res) => {

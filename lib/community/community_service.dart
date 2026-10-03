@@ -11,14 +11,15 @@ abstract class CommunityService {
   /// viewer's own vote, and its full comment tree.
   Future<List<Post>> fetchPosts({required String myEmail});
 
-  /// Toggle my vote on a post: 1 = up, -1 = down, null = remove.
+  /// Toggle my like on a post: 1 = liked, null = unliked.
+  /// The backend still accepts -1 for compat, but the UI is like-only now.
   Future<void> setVote({
     required String postId,
     required String myEmail,
     required int? value,
   });
 
-  /// Toggle my vote on a comment. Same contract as [setVote].
+  /// Toggle my like on a comment. Same contract as [setVote].
   Future<void> setCommentVote({
     required String commentId,
     required String myEmail,
@@ -99,6 +100,29 @@ String formatCommunityStats(CommunityStats? stats) {
   final students = members == 1 ? '1 student' : '$members students';
   final live = shownOnline == 1 ? '1 online' : '$shownOnline online';
   return '$students · $live';
+}
+
+/// Local fallback when `/api/stats` is missing (old backend) or fails:
+/// distinct post + comment authors from the already-loaded feed. 100% real,
+/// never hardcoded, so the header can never stick on "Connecting…".
+CommunityStats localStatsFromPosts(List<Post> posts, {int online = 1}) {
+  final members = <String>{};
+  void walk(List<CComment> list) {
+    for (final c in list) {
+      if (c.author.trim().isNotEmpty) {
+        members.add(c.author.trim().toLowerCase());
+      }
+      walk(c.replies);
+    }
+  }
+
+  for (final p in posts) {
+    if (p.author.trim().isNotEmpty) {
+      members.add(p.author.trim().toLowerCase());
+    }
+    walk(p.comments);
+  }
+  return CommunityStats(members: members.length, online: online);
 }
 /// Human "12m / 3h / 2d" label + sort-age minutes for a timestamp.
 ({String label, int ageMinutes}) timeAgo(DateTime createdAt, DateTime now) {

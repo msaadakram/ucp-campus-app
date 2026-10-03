@@ -247,6 +247,39 @@ describe('upload', () => {
   });
 });
 
+describe('stats', () => {
+  test('counts distinct contributors, online is live SSE count', async () => {
+    const tables = makeRows();
+    tables.community_comments.push(
+      { author_email: 'B@ucp.edu.pk' },
+      { author_email: 'sara@ucp.edu.pk' },
+    );
+    tables.community_votes.push(
+      { author_email: 'c@ucp.edu.pk', post_id: 'x', value: 1 },
+      { author_email: 'SARA@ucp.edu.pk', post_id: 'x', value: 1 },
+    );
+    const app = appWith(tables, authedVerify);
+    const res = await request(app).get('/api/stats').expect(200);
+    // sara (post+comment+vote, case-insensitive) + B + c = 3 members.
+    expect(res.body.members).toBe(3);
+    expect(res.body.online).toBe(0); // no SSE clients in test
+  });
+
+  test('empty backend degrades to zeros, never 500', async () => {
+    const app = appWith(
+      {
+        community_posts: [],
+        community_comments: [],
+        community_votes: [],
+        community_comment_votes: [],
+      },
+      anonVerify,
+    );
+    const res = await request(app).get('/api/stats').expect(200);
+    expect(res.body).toEqual({ members: 0, online: 0 });
+  });
+});
+
 describe('validate helpers', () => {
   const v = require('../src/middleware/validate');
   test('uuids, titles, votes', () => {

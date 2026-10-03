@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'auth/odoo_api.dart';
 import 'auth/microsoft_oauth.dart';
@@ -349,6 +350,64 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   String? _expiredCode;
   String? _expiredForSid;
 
+  /// Last back-press time for double-press-to-exit on the home root.
+  DateTime? _lastBackPress;
+
+  /// In-app back stack: overlays → detail → tab → double-press exit.
+  /// Returns true when the press was consumed and the app must stay open.
+  bool _onBackPressed(BuildContext ctx) {
+    if (_expiredMessage != null) {
+      setState(() => _expiredMessage = null);
+      return true;
+    }
+    if (picker) {
+      setState(() => picker = false);
+      return true;
+    }
+    if (menu) {
+      setState(() => menu = false);
+      return true;
+    }
+    if (chat != null) {
+      setState(() => chat = null);
+      return true;
+    }
+    if (course != null) {
+      setState(() {
+        course = null;
+        courseLive = false;
+      });
+      return true;
+    }
+    if (!authed) {
+      if (oauthEmail != null) {
+        setState(() {
+          oauthEmail = null;
+          authError = null;
+        });
+        return true;
+      }
+      return false;
+    }
+    if (tab != 'home') {
+      go('home');
+      return true;
+    }
+    final now = DateTime.now();
+    if (_lastBackPress == null ||
+        now.difference(_lastBackPress!) > const Duration(seconds: 2)) {
+      _lastBackPress = now;
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(
+          content: Text('Press back again to exit'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return true;
+    }
+    return false;
+  }
+
   /// Mounts the hidden `prompt=none` WebView and resolves with the renewed
   /// `session_id`, or null when the user must sign in interactively.
   Future<String?> _renewViaWebView(String email) {
@@ -539,7 +598,13 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           final scaled = prefs.big ? mq.copyWith(textScaler: const TextScaler.linear(1.08)) : mq;
           return MediaQuery(
             data: scaled,
-            child: Scaffold(
+            child: PopScope(
+              canPop: false,
+              onPopInvokedWithResult: (didPop, result) {
+                if (didPop) return;
+                if (!_onBackPressed(ctx)) SystemNavigator.pop();
+              },
+              child: Scaffold(
               backgroundColor: colors.cream2,
               resizeToAvoidBottomInset: true,
               body: Center(
@@ -822,6 +887,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                       ),
                     )
                   : null,
+              ),
             ),
           );
         }),
