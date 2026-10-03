@@ -16,6 +16,7 @@ import 'community/community_service.dart';
 import 'community/fake_community_service.dart';
 import 'community/node_community_service.dart';
 import 'data/seed.dart';
+import 'screens/attendance.dart';
 import 'screens/auth_home.dart';
 import 'screens/community.dart';
 import 'screens/fee_board.dart';
@@ -24,6 +25,7 @@ import 'screens/groups_chat.dart';
 import 'screens/materials_web.dart';
 import 'screens/oauth_webview.dart';
 import 'screens/profile.dart';
+import 'screens/results.dart';
 import 'screens/silent_renew_webview.dart';
 import 'widgets/session_expired_dialog.dart';
 import 'theme/palette.dart';
@@ -430,7 +432,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     } else {
       switch (tab) {
         case 'home':
-          screen = HomeScreen(onOpen: (c) => setState(() { course = c; }), toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; tab = 'board'; }); }, dashboard: dashboard);
+          screen = HomeScreen(onOpen: (c) => setState(() { course = c; }), toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; tab = 'board'; }); }, dashboard: dashboard, onAttend: () => go('attendance'));
           break;
         case 'material':
           screen = const MaterialsScreen();
@@ -448,10 +450,28 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           screen = const GpaCalcScreen();
           break;
         case 'timetable':
-          screen = const TimetableScreen();
+          screen = TimetableScreen(
+            sessionId: sessionId,
+            onSessionExpired: () => _monitor?.checkNow(),
+          );
+          break;
+        case 'attendance':
+          screen = AttendanceScreen(
+            sessionId: sessionId,
+            onSessionExpired: () => _monitor?.checkNow(),
+          );
+          break;
+        case 'results':
+          screen = ResultsScreen(
+            sessionId: sessionId,
+            onSessionExpired: () => _monitor?.checkNow(),
+          );
           break;
         case 'fee':
-          screen = const FeeChallanScreen();
+          screen = FeeChallanScreen(
+            sessionId: sessionId,
+            onSessionExpired: () => _monitor?.checkNow(),
+          );
           break;
         case 'board':
           screen = LeaderboardScreen(start: boardOf.code, back: () => go('home'));
@@ -636,7 +656,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                   child: ListView(
                                     padding: const EdgeInsets.all(12),
                                     children: [
-                                      for (final it in [['home', 'Home', Icons.home_outlined], ['timetable', 'Timetable', Icons.calendar_month_outlined], ['material', 'Course material', Icons.book_outlined], ['gpa', 'GPA calculator', Icons.calculate_outlined], ['fee', 'Fee challan', Icons.receipt_outlined], ['community', 'Community', Icons.forum_outlined], ['groups', 'Groups & chats', Icons.group_outlined], ['web', 'Web view', Icons.language_outlined], ['profile', 'Profile & settings', Icons.person_outline]])
+                                      for (final it in [['home', 'Home', Icons.home_outlined], ['timetable', 'Timetable', Icons.calendar_month_outlined], ['attendance', 'Attendance', Icons.fact_check_outlined], ['material', 'Course material', Icons.book_outlined], ['gpa', 'GPA calculator', Icons.calculate_outlined], ['fee', 'Fee challan', Icons.receipt_outlined], ['results', 'Results', Icons.workspace_premium_outlined], ['community', 'Community', Icons.forum_outlined], ['groups', 'Groups & chats', Icons.group_outlined], ['web', 'Web view', Icons.language_outlined], ['profile', 'Profile & settings', Icons.person_outline]])
                                         GestureDetector(
                                           behavior: HitTestBehavior.opaque,
                                           onTap: () => go(it[0] as String),

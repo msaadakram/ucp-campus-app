@@ -56,19 +56,39 @@ void main() {
       await tester.tap(find.byIcon(Icons.menu).first, warnIfMissed: false);
       await tester.pumpAndSettle();
     }
-    await openDrawer();
-    for (final label in ['Timetable', 'GPA calculator', 'Fee challan']) {
+
+    Future<void> tapDrawerItem(String label) async {
+      final drawerList = find.ancestor(
+        of: find.text('Timetable'),
+        matching: find.byType(ListView),
+      );
+      for (var i = 0; i < 6; i++) {
+        if (find.text(label).evaluate().isNotEmpty) break;
+        await tester.drag(drawerList, const Offset(0, -200));
+        await tester.pumpAndSettle();
+      }
       final item = find.text(label).first;
       await tester.ensureVisible(item);
       await tester.pumpAndSettle();
       await tester.tap(item, warnIfMissed: false);
       await tester.pumpAndSettle();
+    }
+
+    await openDrawer();
+    for (final label in [
+      'Timetable',
+      'Attendance',
+      'GPA calculator',
+      'Fee challan',
+      'Results'
+    ]) {
+      await tapDrawerItem(label);
       // reopen drawer for next page (menu lives on Home)
-      if (label != 'Fee challan') {
+      if (label != 'Results') {
         await openDrawer();
       }
     }
-    expect(find.text('Fee challan'), findsOneWidget);
+    expect(find.text('Results'), findsWidgets);
   });
 
   testWidgets('UI walkthrough: course detail + leaderboard', (WidgetTester tester) async {

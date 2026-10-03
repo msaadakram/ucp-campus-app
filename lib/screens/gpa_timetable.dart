@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import '../auth/odoo_api.dart';
+import '../auth/portal_api.dart';
+import '../auth/student_portal.dart';
 import '../data/seed.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
+import '../widgets/portal_state.dart';
 
 class GpaRow {
   final int id;
@@ -309,24 +313,137 @@ class _CurvePainter extends CustomPainter {
   bool shouldRepaint(covariant _CurvePainter old) => old.z != z;
 }
 
+
+const _weekOrder = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday'
+];
+
 class TimetableScreen extends StatefulWidget {
-  const TimetableScreen({super.key});
+  final String? sessionId;
+  final VoidCallback? onSessionExpired;
+  /// Test seam: canned page HTML per path (skips all network).
+  final Future<String> Function(String path)? fetchHtml;
+  const TimetableScreen(
+      {super.key, this.sessionId, this.onSessionExpired, this.fetchHtml});
   @override
   State<TimetableScreen> createState() => _TimetableScreenState();
 }
 
 class _TimetableScreenState extends State<TimetableScreen> {
-  int day = (DateTime.now().weekday - 1).clamp(0, 4);
+  TimetableData? data;
+  DatesheetData? datesheet;
+  bool loading = true;
+  bool expired = false;
+  String? error;
+  late String day;
   bool grid = false;
   final Set<String> remind = {};
+
+  @override
+  void initState() {
+    super.initState();
+    day = _todayName();
+    _load();
+  }
+
+  static String _todayName() {
+    const names = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday'
+    ];
+    return names[(DateTime.now().weekday - 1).clamp(0, 6)];
+  }
+
+  Future<String> _fetch(String path) {
+    if (widget.fetchHtml != null) return widget.fetchHtml!(path);
+    final sid = widget.sessionId;
+    if (sid == null || sid.isEmpty) {
+      return Future.error(OdooApiException('no portal session'));
+    }
+    return PortalApi().fetchPage(path, sid);
+  }
+
+  Future<void> _load() async {
+    if (!mounted) return;
+    setState(() {
+      loading = true;
+      error = null;
+      expired = false;
+    });
+    try {
+      final results = await Future.wait([
+        _fetch(PortalRoutes.timetable),
+        _fetch(PortalRoutes.datesheet),
+      ]);
+      if (!mounted) return;
+      final tt = parseTimetable(results[0] as String);
+      final ds = parseDatesheet(results[1] as String);
+      final days = [
+        for (final d in _weekOrder)
+          if (tt.slots.any((s) => s.day == d)) d
+      ];
+      setState(() {
+        data = tt;
+        datesheet = ds;
+        loading = false;
+        if (!days.contains(day) && days.isNotEmpty) day = days.first;
+      });
+    } on OdooApiException catch (e) {
+      if (!mounted) return;
+      final dead = e.message.contains('expired') ||
+          e.message.contains('login') ||
+          e.message.contains('no portal session');
+      setState(() {
+        loading = false;
+        expired = dead;
+        error = dead ? null : e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = 'Could not load the class schedule. Check connection.';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
-    final today = (DateTime.now().weekday - 1).clamp(0, 4);
-    final nowH = TimeOfDay.now().hour + TimeOfDay.now().minute / 60;
-    final list = slots.where((s) => s.day == day).toList()..sort((a, b) => a.start.compareTo(b.start));
-    final hours = list.fold(0.0, (s, x) => s + x.end - x.start);
-    Course sub(String code) => courses.firstWhere((s) => s.code == code);
+    if (loading) {
+      return const PortalLoading(
+          title: 'Timetable', subtitle: 'Loading your class schedule…');
+    }
+    if (error != null || expired) {
+      return PortalError(
+        title: 'Timetable',
+        message: expired
+            ? 'Your portal session expired — sign in again to reload the schedule.'
+            : error!,
+        onRetry: _load,
+        onRelogin: expired ? widget.onSessionExpired : null,
+      );
+    }
+    final tt = data!;
+    final days = [
+      for (final d in _weekOrder)
+        if (tt.slots.any((s) => s.day == d)) d
+    ];
+    final list = tt.slots.where((s) => s.day == day).toList()
+      ..sort((a, b) => a.start.compareTo(b.start));
+    final hours = list.fold<double>(
+        0, (n, s) => n + (_toH(s.end) - _toH(s.start)));
     return UHead(
       height: 184,
       child: Column(
@@ -335,131 +452,399 @@ class _TimetableScreenState extends State<TimetableScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Timetable', style: display(c, size: 28, color: Colors.white)), Text('Fall 2026 · Week 7', style: body(c, size: 14, color: Colors.white.withValues(alpha: 0.78)))]),
-              GestureDetector(onTap: () => setState(() => grid = !grid), child: Container(alignment: Alignment.center, width: 44, height: 44, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(16)), child: Icon(grid ? Icons.list : Icons.grid_view_outlined, color: Colors.white))),
+              Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Timetable',
+                        style: display(c, size: 28, color: Colors.white)),
+                    Text(
+                        [
+                          if (tt.term.isNotEmpty) tt.term,
+                          if (tt.month.isNotEmpty) tt.month
+                        ].join(' · ',
+                        ),
+                        style: body(c,
+                            size: 14,
+                            color: Colors.white.withValues(alpha: 0.78))),
+                  ]),
+              GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => setState(() => grid = !grid),
+                  child: Container(
+                      alignment: Alignment.center,
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(16)),
+                      child: Icon(
+                          grid ? Icons.list : Icons.grid_view_outlined,
+                          color: Colors.white))),
             ],
           ),
           const SizedBox(height: 20),
           Row(
             children: [
-              for (int i = 0; i < 5; i++)
+              for (int i = 0; i < days.length; i++)
                 Expanded(
                   child: Padding(
-                    padding: EdgeInsets.only(right: i == 4 ? 0 : 8),
+                    padding: EdgeInsets.only(right: i == days.length - 1 ? 0 : 8),
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() { day = i; grid = false; }),
+                      onTap: () =>
+                          setState(() => day = days[i]),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        decoration: BoxDecoration(color: day == i && !grid ? c.white : Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(16), boxShadow: day == i && !grid ? [BoxShadow(color: c.clay, offset: const Offset(0, 4))] : null),
-                        child: Column(children: [Text(days[i], style: TextStyle(fontSize: 11, color: day == i && !grid ? c.tealInk.withValues(alpha: 0.75) : Colors.white70)), Text('${12 + i}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: day == i && !grid ? c.tealInk : Colors.white)), if (i == today) Container(width: 6, height: 6, decoration: BoxDecoration(color: day == i && !grid ? c.clay : c.board, shape: BoxShape.circle))]),
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                            color: day == days[i]
+                                ? c.white
+                                : Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: day == days[i]
+                                ? [
+                                    BoxShadow(
+                                        color: c.clay,
+                                        offset: const Offset(0, 4))
+                                  ]
+                                : null),
+                        child: Column(children: [
+                          Text(days[i].substring(0, 3),
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: day == days[i]
+                                      ? c.tealInk.withValues(alpha: 0.75)
+                                      : Colors.white70)),
+                          Text('${12 + _weekOrder.indexOf(days[i]) % 7}',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 18,
+                                  color: day == days[i]
+                                      ? c.tealInk
+                                      : Colors.white)),
+                        ]),
                       ),
                     ),
                   ),
                 ),
             ],
           ),
-          const SizedBox(height: 96),
+          const SizedBox(height: 24),
           if (grid)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(24)),
-              child: Column(
-                children: [
-                  Row(children: [const SizedBox(width: 40), for (int i = 0; i < 5; i++) Expanded(child: Center(child: Text(days[i], style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: i == today ? c.teal : c.tealInk.withValues(alpha: 0.55))))) ]),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 9 * 44,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(width: 40, child: Stack(children: [for (int i = 0; i < 9; i++) Positioned(top: i * 44.0 - 6, child: Text(fmtHour((9 + i).toDouble()), style: TextStyle(fontSize: 10, color: c.tealInk.withValues(alpha: 0.45))))])),
-                        for (int d = 0; d < 5; d++)
-                          Expanded(
-                            child: Container(
-                              margin: const EdgeInsets.only(right: 4),
-                              decoration: BoxDecoration(color: c.dustSoft.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(12)),
-                              child: Stack(
-                                children: [
-                                  for (final s in slots.where((x) => x.day == d))
-                                    Positioned(
-                                      top: (s.start - 9) * 44, height: (s.end - s.start) * 44 - 2, left: 2, right: 2,
-                                      child: GestureDetector(
-                                        behavior: HitTestBehavior.opaque,
-                                        onTap: () => setState(() { day = d; grid = false; }),
-                                        child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: toneBg(sub(s.code).tone, c), borderRadius: BorderRadius.circular(8)), child: Text('${s.code}\n${s.kind}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white))),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            )
+            _gridView(c, days)
           else ...[
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Flexible(child: Text(dayLong[day], style: display(c, size: 20), overflow: TextOverflow.ellipsis)),
-                const SizedBox(width: 8),
-                Text('${list.length} classes · ${hours}h', style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.55))),
+                Text(day,
+                    style: display(c, size: 20)),
+                Text('${list.length} classes · ${hours.toStringAsFixed(1)}h',
+                    style: body(c,
+                        size: 14,
+                        color: c.tealInk.withValues(alpha: 0.55))),
               ],
             ),
             const SizedBox(height: 16),
+            if (list.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                    color: c.white,
+                    borderRadius: BorderRadius.circular(24)),
+                child: Text('No classes scheduled.',
+                    textAlign: TextAlign.center,
+                    style: body(c,
+                        size: 14,
+                        color: c.tealInk.withValues(alpha: 0.55))),
+              ),
             for (final s in list)
               Builder(builder: (_) {
-                final cc = sub(s.code);
-                final live = day == today && nowH >= s.start && nowH < s.end;
-                final past = day < today || (day == today && nowH >= s.end);
                 final id = '${s.day}-${s.start}';
                 final on = remind.contains(id);
-                return Opacity(
-                  opacity: past ? 0.55 : 1,
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Column(children: [Container(width: 14, height: 14, decoration: BoxDecoration(color: live ? c.clay : c.teal, shape: BoxShape.circle, border: Border.all(color: c.cream2, width: 3)))]),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(children: [const Icon(Icons.schedule_outlined, size: 13), Text(' ${fmtHour(s.start)} – ${fmtHour(s.end)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)), if (live) Container(margin: const EdgeInsets.only(left: 6), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: c.clay, borderRadius: BorderRadius.circular(10)), child: const Text('NOW', style: TextStyle(fontSize: 10, color: Colors.white)))]),
-                              const SizedBox(height: 8),
+                final tone = s.isLab ? c.clay : c.teal;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Column(children: [
+                        Container(
+                            width: 14,
+                            height: 14,
+                            decoration: BoxDecoration(
+                                color: tone,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                    color: c.cream2, width: 3))),
+                      ]),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              const Icon(Icons.schedule_outlined, size: 13),
+                              Text(' ${s.start} – ${s.end}',
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold)),
+                              const SizedBox(width: 6),
                               Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(color: toneBg(cc.tone, c), borderRadius: BorderRadius.circular(24)),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${s.code} · ${s.kind}'.toUpperCase(), style: const TextStyle(fontSize: 12, color: Colors.white70)), Text(cc.title, style: display(c, size: 17, color: cc.tone == CourseTone.board ? c.tealInk : Colors.white))])),
-                                        GestureDetector(onTap: () => setState(() => on ? remind.remove(id) : remind.add(id),), child: Container(alignment: Alignment.center, width: 36, height: 36, decoration: BoxDecoration(color: on ? Colors.white : Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle), child: Icon(Icons.notifications_outlined, size: 16, color: on ? c.tealInk : Colors.white))),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text('${cc.room} · ${cc.prof}', style: TextStyle(fontSize: 12, color: (cc.tone == CourseTone.board ? c.tealInk : Colors.white).withValues(alpha: 0.85))),
-                                  ],
-                                ),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                    color: tone.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(10)),
+                                child: Text(
+                                    s.isLab ? 'Lab' : 'Lecture',
+                                    style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: tone)),
                               ),
-                            ],
-                          ),
+                            ]),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                  color: tone,
+                                  borderRadius: BorderRadius.circular(24)),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(s.subject,
+                                            style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 17)),
+                                      ),
+                                      GestureDetector(
+                                          behavior:
+                                              HitTestBehavior.opaque,
+                                          onTap: () => setState(() => on
+                                              ? remind.remove(id)
+                                              : remind.add(id)),
+                                          child: Container(
+                                              width: 36,
+                                              height: 36,
+                                              decoration: BoxDecoration(
+                                                  color: on
+                                                      ? Colors.white
+                                                      : Colors.white
+                                                          .withValues(
+                                                              alpha: 0.2),
+                                                  shape: BoxShape.circle),
+                                              child: Icon(
+                                                  Icons.notifications_outlined,
+                                                  size: 16,
+                                                  color: on
+                                                      ? c.tealInk
+                                                      : Colors.white))),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(s.teacher,
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.white70)),
+                                  const SizedBox(height: 4),
+                                  Wrap(
+                                    spacing: 6,
+                                    children: [
+                                      _chip(s.room),
+                                      if (s.section.isNotEmpty)
+                                        _chip(s.section),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 );
               }),
           ],
           const SizedBox(height: 24),
+          _datesheetCard(c),
+          const SizedBox(height: 96),
         ],
       ),
     );
+  }
+
+  Widget _chip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(12)),
+      child: Text(text,
+          style: const TextStyle(fontSize: 11, color: Colors.white)),
+    );
+  }
+
+  Widget _gridView(AppColors c, List<String> days) {
+    const startH = 8;
+    const endH = 22;
+    const cellH = 44.0;
+    final tones = [c.teal, c.clay, c.board, c.dust, c.tealDeep];
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+          color: c.white, borderRadius: BorderRadius.circular(24)),
+      child: Column(
+        children: [
+          Row(children: [
+            const SizedBox(width: 40),
+            for (final d in days)
+              Expanded(
+                  child: Center(
+                      child: Text(d.substring(0, 3),
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.bold)))),
+          ]),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: (endH - startH) * cellH,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                    width: 40,
+                    child: Stack(children: [
+                      for (int i = 0; i <= endH - startH; i++)
+                        Positioned(
+                            top: i * cellH - 6,
+                            child: Text(
+                                '${(startH + i).toString().padLeft(2, '0')}:00',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    color: c.tealInk
+                                        .withValues(alpha: 0.45)))),
+                    ])),
+                for (int d = 0; d < days.length; d++)
+                  Expanded(
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 4),
+                      decoration: BoxDecoration(
+                          color: c.dustSoft.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(12)),
+                      child: Stack(
+                        children: [
+                          for (final s in data!.slots
+                              .where((x) => x.day == days[d]))
+                            Builder(builder: (_) {
+                              final top =
+                                  (_toH(s.start) - startH) * cellH;
+                              final h = ((_toH(s.end) - _toH(s.start)) *
+                                      cellH) -
+                                  2;
+                              final tone = tones[d % tones.length];
+                              return Positioned(
+                                top: top < 0 ? 0 : top,
+                                height: h <= 10 ? 42 : h,
+                                left: 2,
+                                right: 2,
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: () => setState(() {
+                                    day = days[d];
+                                    grid = false;
+                                  }),
+                                  child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                          color: tone,
+                                          borderRadius:
+                                              BorderRadius.circular(8)),
+                                      child: Text(
+                                          '${s.subject}\n${s.start}',
+                                          style: const TextStyle(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white))),
+                                ),
+                              );
+                            }),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _datesheetCard(AppColors c) {
+    final ds = datesheet;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Exam datesheet', style: display(c, size: 20)),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+              color: c.white, borderRadius: BorderRadius.circular(24)),
+          child: ds == null || ds.isEmpty
+              ? Text(
+                  ds?.notice.isNotEmpty == true
+                      ? ds!.notice
+                      : 'No exam datesheet notified yet.',
+                  style: body(c,
+                      size: 14,
+                      color: c.tealInk.withValues(alpha: 0.6)),
+                )
+              : Column(
+                  children: [
+                    if (ds.headers.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            for (final h in ds.headers)
+                              Expanded(
+                                  child: Text(h,
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold))),
+                          ],
+                        ),
+                      ),
+                    for (final e in ds.exams)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            for (final cell in e.cells)
+                              Expanded(
+                                  child: Text(cell,
+                                      style: const TextStyle(fontSize: 12))),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+
+  static double _toH(String hm) {
+    final parts = hm.split(':');
+    if (parts.length != 2) return 0;
+    return (int.tryParse(parts[0]) ?? 0) +
+        (int.tryParse(parts[1]) ?? 0) / 60.0;
   }
 }

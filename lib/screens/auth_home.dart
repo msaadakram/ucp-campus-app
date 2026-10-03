@@ -276,9 +276,10 @@ class HomeScreen extends StatefulWidget {  final ValueChanged<Course> onOpen;
   final VoidCallback onMenu;
   final VoidCallback onGpa;
   final ValueChanged<Course> onBoard;
+  final VoidCallback? onAttend;
   /// Live portal data. Null while loading/failed → bundled sample content.
   final DashboardData? dashboard;
-  const HomeScreen({super.key, required this.onOpen, required this.toProfile, required this.onMenu, required this.onGpa, required this.onBoard, this.dashboard});
+  const HomeScreen({super.key, required this.onOpen, required this.toProfile, required this.onMenu, required this.onGpa, required this.onBoard, this.dashboard, this.onAttend});
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -354,7 +355,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       padding: EdgeInsets.only(right: i == 2 ? 0 : 8),
                       child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: s[1] == 'GPA' ? widget.onGpa : null,
+                      onTap: s[1] == 'GPA'
+                          ? widget.onGpa
+                          : (s[1].toLowerCase().startsWith('attend')
+                              ? widget.onAttend
+                              : null),
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(16)),
@@ -387,6 +392,34 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
+          if (live?.todayClasses != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(24)),
+              child: Row(
+                children: [
+                  Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(color: c.board.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(14)),
+                      child: Icon(Icons.today_outlined, size: 22, color: c.tealInk)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Today', style: body(c, size: 12, weight: FontWeight.w600, color: c.tealInk.withValues(alpha: 0.55))),
+                        Text(live!.todayClasses!,
+                            style: body(c, size: 15, weight: FontWeight.w700)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,

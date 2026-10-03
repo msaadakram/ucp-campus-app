@@ -1,138 +1,307 @@
 import 'package:flutter/material.dart';
+import '../auth/odoo_api.dart';
+import '../auth/portal_api.dart';
+import '../auth/student_portal.dart';
 import '../data/seed.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
+import '../widgets/portal_state.dart';
+
 
 class FeeChallanScreen extends StatefulWidget {
-  const FeeChallanScreen({super.key});
+  final String? sessionId;
+  final VoidCallback? onSessionExpired;
+  /// Test seam: canned page HTML (skips all network).
+  final String? debugHtml;
+  const FeeChallanScreen(
+      {super.key, this.sessionId, this.onSessionExpired, this.debugHtml});
   @override
   State<FeeChallanScreen> createState() => _FeeChallanScreenState();
 }
 
 class _FeeChallanScreenState extends State<FeeChallanScreen> {
-  bool paid = false;
-  String method = 'wallet';
-  bool paying = false;
-  bool open = true;
-  void pay() {
-    setState(() => paying = true);
-    Future.delayed(const Duration(milliseconds: 1400), () => mounted ? setState(() { paying = false; paid = true; }) : null);
+  List<Invoice>? invoices;
+  bool loading = true;
+  bool expired = false;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<String> _fetch() {
+    if (widget.debugHtml != null) return Future.value(widget.debugHtml);
+    final sid = widget.sessionId;
+    if (sid == null || sid.isEmpty) {
+      return Future.error(OdooApiException('no portal session'));
+    }
+    return PortalApi().fetchPage(PortalRoutes.invoices, sid);
+  }
+
+  Future<void> _load() async {
+    if (!mounted) return;
+    setState(() {
+      loading = true;
+      error = null;
+      expired = false;
+    });
+    try {
+      final html = await _fetch();
+      if (!mounted) return;
+      setState(() {
+        invoices = parseInvoices(html);
+        loading = false;
+      });
+    } on OdooApiException catch (e) {
+      if (!mounted) return;
+      final dead = e.message.contains('expired') ||
+          e.message.contains('login') ||
+          e.message.contains('no portal session');
+      setState(() {
+        loading = false;
+        expired = dead;
+        error = dead ? null : e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = 'Could not load invoices. Check connection.';
+      });
+    }
+  }
+
+  static double _amount(String raw) {
+    final cleaned = raw.replaceAll(RegExp(r'[^0-9.]'), '');
+    return double.tryParse(cleaned) ?? 0;
+  }
+
+  static String _rs(double n) {
+    final whole = n.round() == n;
+    final digits = whole ? n.toInt().toString() : n.toStringAsFixed(2);
+    final buf = StringBuffer();
+    final chars = digits.split('').reversed.toList();
+    for (var i = 0; i < chars.length; i++) {
+      if (i > 0 && i % 3 == 0) buf.write(',');
+      buf.write(chars[i]);
+    }
+    return 'Rs ${buf.toString().split('').reversed.join()}';
   }
 
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
-    final amt = challanTotal(currentChallan);
-    final allHistory = [...(paid ? [Challan(id: currentChallan.id, term: currentChallan.term, due: currentChallan.due, items: currentChallan.items, paid: 'Today')] : []), ...challanHistory];
+    if (loading) {
+      return const PortalLoading(
+          title: 'Fee challan', subtitle: 'Loading your invoices…');
+    }
+    if (error != null || expired) {
+      return PortalError(
+        title: 'Fee challan',
+        message: expired
+            ? 'Your portal session expired — sign in again to reload invoices.'
+            : error!,
+        onRetry: _load,
+        onRelogin: expired ? widget.onSessionExpired : null,
+      );
+    }
+    final list = invoices!;
+    final due = list.where((i) => !i.isPaid).toList();
+    final dueTotal = due.fold<double>(0, (s, i) => s + _amount(i.amount));
+    final allPaid = list.isNotEmpty && due.isEmpty;
     return UHead(
       height: 144,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Fee challan', style: display(c, size: 28, color: Colors.white)),
-          Text('Check dues, pay and download receipts', style: body(c, size: 14, color: Colors.white.withValues(alpha: 0.78))),
+          Text('Fee challan',
+              style: display(c, size: 28, color: Colors.white)),
+          Text(
+              list.isEmpty
+                  ? 'No invoices published'
+                  : allPaid
+                      ? 'All clear · ${list.length} paid'
+                      : '${due.length} unpaid · ${_rs(dueTotal)} due',
+              style: body(c,
+                  size: 14, color: Colors.white.withValues(alpha: 0.78))),
           const SizedBox(height: 20),
           Container(
-            decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(24)),
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: allPaid ? c.teal : c.tealInk,
+              borderRadius: BorderRadius.circular(24),
+            ),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(color: paid ? c.teal : c.tealInk, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(child: Text(currentChallan.term.toUpperCase(), style: TextStyle(fontSize: 12, color: c.cream.withValues(alpha: 0.7)))),
-                          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: paid ? Colors.white : c.clay, borderRadius: BorderRadius.circular(12)), child: Row(children: [Icon(paid ? Icons.check_circle : Icons.warning_amber_outlined, size: 13, color: paid ? c.teal : Colors.white), Text(paid ? ' Paid' : ' Unpaid', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: paid ? c.teal : Colors.white))])),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(rs(amt), style: display(c, size: 36, color: c.cream)),
-                      Text(paid ? 'Paid today · thank you!' : 'Due ${currentChallan.due} · 15 days left', style: TextStyle(color: c.cream.withValues(alpha: 0.8))),
-                      if (!paid) ...[
-                        const SizedBox(height: 12),
-                        ClipRRect(borderRadius: BorderRadius.circular(8), child: LinearProgressIndicator(value: 0.5, backgroundColor: Colors.white.withValues(alpha: 0.15), valueColor: AlwaysStoppedAnimation(c.board), minHeight: 6)),
-                      ],
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.dustSoft, style: BorderStyle.solid))),
-                  child: Row(children: [Text('Challan #  ', style: body(c, size: 12, color: c.tealInk.withValues(alpha: 0.55))), Expanded(child: Text(currentChallan.id, style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w600, fontSize: 13))), Text('Copy', style: body(c, size: 13, weight: FontWeight.bold, color: c.teal))]),
-                ),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => setState(() => open = !open),
-                  child: Padding(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Fee breakdown', style: TextStyle(fontWeight: FontWeight.bold)), Icon(open ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down)])),
-                ),
-                if (open)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                    child: Column(
-                      children: [
-                        for (final it in currentChallan.items)
-                          Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [Expanded(child: Text(it.key, style: TextStyle(color: c.tealInk.withValues(alpha: 0.65)))), const SizedBox(width: 8), Text(it.value < 0 ? '− ${rs(-it.value)}' : rs(it.value), style: TextStyle(fontWeight: FontWeight.w600, color: it.value < 0 ? c.teal : c.tealInk))])),
-                        Container(padding: const EdgeInsets.only(top: 8), decoration: BoxDecoration(border: Border(top: BorderSide(color: c.dustSoft))), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Payable', style: TextStyle(fontWeight: FontWeight.bold)), Text(rs(amt), style: const TextStyle(fontWeight: FontWeight.bold))])),
-                      ],
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('FEE STATUS',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: c.cream.withValues(alpha: 0.7))),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                          color: allPaid ? Colors.white : c.clay,
+                          borderRadius: BorderRadius.circular(12)),
+                      child: Row(children: [
+                        Icon(
+                            allPaid
+                                ? Icons.check_circle
+                                : Icons.warning_amber_outlined,
+                            size: 13,
+                            color: allPaid ? c.teal : Colors.white),
+                        Text(allPaid ? ' Paid' : ' Dues pending',
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: allPaid ? c.teal : Colors.white)),
+                      ]),
                     ),
-                  ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                    list.isEmpty
+                        ? 'No invoices yet'
+                        : allPaid
+                            ? '${list.length} challans paid'
+                            : _rs(dueTotal),
+                    style: display(c, size: 32, color: c.cream)),
+                Text(
+                    list.isEmpty
+                        ? 'Published challans will appear here.'
+                        : allPaid
+                            ? 'Thank you — nothing outstanding.'
+                            : 'Pay before the earliest due date below.',
+                    style: TextStyle(
+                        fontSize: 14,
+                        color: c.cream.withValues(alpha: 0.8))),
               ],
             ),
           ),
-          if (!paid) ...[
-            const SizedBox(height: 20),
-            Text('Pay with', style: display(c, size: 20)),
-            const SizedBox(height: 12),
-            for (final m in [['bank', 'Bank branch', 'HBL, MCB, Meezan', Icons.account_balance_outlined], ['wallet', 'JazzCash / Easypaisa', 'Pay with mobile wallet', Icons.smartphone_outlined], ['card', 'Debit / credit card', 'Visa, Mastercard', Icons.credit_card_outlined]])
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => method = m[0] as String),
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: c.white, border: Border.all(color: method == m[0] ? c.teal : Colors.transparent, width: 2), borderRadius: BorderRadius.circular(16)),
-                  child: Row(
+          const SizedBox(height: 20),
+          Text('Invoices', style: display(c, size: 20)),
+          const SizedBox(height: 12),
+          if (list.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                  color: c.white,
+                  borderRadius: BorderRadius.circular(24)),
+              child: Text('No challans published for your account.',
+                  textAlign: TextAlign.center,
+                  style: body(c,
+                      size: 14,
+                      color: c.tealInk.withValues(alpha: 0.55))),
+            ),
+          for (final inv in list)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                  color: c.white,
+                  borderRadius: BorderRadius.circular(24)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      Container(alignment: Alignment.center, width: 44, height: 44, decoration: BoxDecoration(color: method == m[0] ? c.teal : c.dustSoft, borderRadius: BorderRadius.circular(12)), child: Icon(m[3] as IconData, color: method == m[0] ? Colors.white : c.tealInk)),
-                      const SizedBox(width: 12),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(m[1] as String, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), Text(m[2] as String, style: TextStyle(fontSize: 12, color: c.tealInk.withValues(alpha: 0.55)))])),
-                      Container(width: 20, height: 20, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: method == m[0] ? c.teal : c.dustSoft, width: 2), color: method == m[0] ? c.teal : null), child: method == m[0] ? const Center(child: SizedBox(width: 8, height: 8, child: DecoratedBox(decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle)))) : null),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('${inv.term} · ${inv.type}',
+                                style: body(c,
+                                    size: 14, weight: FontWeight.w700)),
+                            Text('Challan ${inv.challanId}',
+                                style: TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 12,
+                                    color: c.tealInk
+                                        .withValues(alpha: 0.55))),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                            color: inv.isPaid ? c.teal : c.clay,
+                            borderRadius: BorderRadius.circular(12)),
+                        child: Text(inv.status,
+                            style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white)),
+                      ),
                     ],
                   ),
-                ),
-              ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Container(alignment: Alignment.center, width: 56, height: 56, decoration: BoxDecoration(color: c.dustSoft, borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.download_outlined)),
-                const SizedBox(width: 8),
-                Expanded(child: ClayButton(label: paying ? 'Processing…' : method == 'bank' ? 'Generate bank voucher' : 'Pay ${rs(amt)}', colors: c, onPressed: paying ? null : pay)),
-              ],
-            ),
-          ],
-          const SizedBox(height: 24),
-          Text('History', style: display(c, size: 20)),
-          const SizedBox(height: 12),
-          for (final ch in allHistory)
-            Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(16)),
-              child: Row(
-                children: [
-                  Container(alignment: Alignment.center, width: 44, height: 44, decoration: BoxDecoration(color: c.board.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.receipt_outlined, size: 19)),
-                  const SizedBox(width: 12),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(ch.term, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14), overflow: TextOverflow.ellipsis), Text('Paid ${ch.paid}', style: TextStyle(fontSize: 12, color: (ch.paid ?? '').contains('late') ? c.clay : c.tealInk.withValues(alpha: 0.55)))])),
-                  Text(rs(challanTotal(ch)), style: const TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(width: 8),
-                  Container(alignment: Alignment.center, width: 36, height: 36, decoration: BoxDecoration(color: c.dustSoft, shape: BoxShape.circle), child: const Icon(Icons.download_outlined, size: 16)),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Payable',
+                                style: body(c,
+                                    size: 11,
+                                    color: c.tealInk
+                                        .withValues(alpha: 0.55))),
+                            Text(_rs(_amount(inv.amount)),
+                                style: display(c, size: 20)),
+                          ]),
+                      Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                                inv.isPaid
+                                    ? 'Paid ${inv.paidDate}'
+                                    : 'Due ${inv.due}',
+                                style: body(c,
+                                    size: 12,
+                                    weight: FontWeight.w600,
+                                    color: inv.isPaid
+                                        ? c.tealInk.withValues(alpha: 0.6)
+                                        : c.clay)),
+                            if (inv.scholarship.isNotEmpty &&
+                                inv.scholarship != '0' &&
+                                inv.scholarship != '0.0')
+                              Text('Scholarship ${inv.scholarship}%',
+                                  style: body(c,
+                                      size: 12, color: c.teal)),
+                          ]),
+                    ],
+                  ),
                 ],
               ),
             ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+                color: c.cream, borderRadius: BorderRadius.circular(24)),
+            child: Row(
+              children: [
+                Icon(Icons.account_balance_outlined,
+                    size: 22, color: c.teal),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                      'Download the challan from the Web tab to pay at the bank.',
+                      style: body(c, size: 13)),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 96),
         ],
       ),
