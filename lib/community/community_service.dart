@@ -62,9 +62,44 @@ abstract class CommunityService {
   /// [supportsRealtime] is false.
   Future<void> ensureRealtime(Future<void> Function() onEvent);
 
+  /// Live header numbers. Default returns zeros so older test doubles keep
+  /// compiling; real backends override. UI never fails the feed if this
+  /// throws — it keeps the last good value.
+  Future<CommunityStats> fetchStats() async =>
+      const CommunityStats(members: 0, online: 0);
+
   void dispose();
 }
 
+/// Live campus numbers for the `r/campus` header. Both values are 100%
+/// real: `members` = distinct contributor emails in the backend tables,
+/// `online` = current SSE subscribers (live feed viewers).
+class CommunityStats {
+  final int members;
+  final int online;
+  const CommunityStats({required this.members, required this.online});
+
+  static int _asInt(dynamic v) => v is int ? v : int.tryParse('$v') ?? 0;
+
+  factory CommunityStats.fromJson(Map<String, dynamic> json) =>
+      CommunityStats(
+        members: _asInt(json['members']),
+        online: _asInt(json['online']),
+      );
+}
+
+/// Header subtitle: `12 students · 3 online`. Null (still loading) shows a
+/// truthful connecting state; zero members with a loaded feed falls back to
+/// counting at least yourself as online.
+String formatCommunityStats(CommunityStats? stats) {
+  if (stats == null) return 'Connecting…';
+  final members = stats.members < 0 ? 0 : stats.members;
+  final online = stats.online < 0 ? 0 : stats.online;
+  final shownOnline = members > 0 && online == 0 ? 1 : online;
+  final students = members == 1 ? '1 student' : '$members students';
+  final live = shownOnline == 1 ? '1 online' : '$shownOnline online';
+  return '$students · $live';
+}
 /// Human "12m / 3h / 2d" label + sort-age minutes for a timestamp.
 ({String label, int ageMinutes}) timeAgo(DateTime createdAt, DateTime now) {
   final mins = now.difference(createdAt).inMinutes.clamp(0, 1 << 30);

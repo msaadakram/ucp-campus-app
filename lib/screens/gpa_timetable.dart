@@ -379,9 +379,14 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Previous semesters · from portal', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Expanded(
+                      child: Text('Previous semesters · from portal',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis),
+                    ),
                     if (portalData != null && portalData!.terms.isNotEmpty)
                       Container(
+                        margin: const EdgeInsets.only(left: 8),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(color: c.teal.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
                         child: Text('${portalData!.terms.length} terms', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),

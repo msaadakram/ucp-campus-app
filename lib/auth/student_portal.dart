@@ -205,6 +205,38 @@ List<PortalCourse> parseCourses(String html) {
   return out;
 }
 
+/// Full weekday names, Monday-first (matches [TimetableSlot.day]).
+const weekdayOrder = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday'
+];
+
+/// Weekday name for a date, e.g. `weekdayName(DateTime(2026,9,28))` is
+/// `"Monday"`. Pure and unit-tested.
+String weekdayName(DateTime d) => weekdayOrder[(d.weekday - 1).clamp(0, 6)];
+
+/// Enrolled courses that have at least one class today. Pure, unit-tested.
+List<PortalCourse> coursesToday(
+    List<PortalCourse> courses, List<TimetableSlot> slots, DateTime now) {
+  final today = weekdayName(now);
+  return courses
+      .where((c) => slotsForCourse(c.name, slots).any((s) => s.day == today))
+      .toList();
+}
+
+/// Enrolled courses scheduled at any point this week (the complete weekly
+/// subject list). Pure and unit-tested.
+List<PortalCourse> coursesThisWeek(
+    List<PortalCourse> courses, List<TimetableSlot> slots) {
+  return courses
+      .where((c) => slotsForCourse(c.name, slots).isNotEmpty)
+      .toList();
+}
 /// Weekly slots belonging to a course title (matches "X" and "X - Lab").
 List<TimetableSlot> slotsForCourse(
     String title, List<TimetableSlot> slots) {

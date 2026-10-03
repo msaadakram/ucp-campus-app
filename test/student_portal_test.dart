@@ -282,6 +282,60 @@ void main() {
       expect(formatPercent(0), '0%');
       expect(overallAttendance([]), 0);
     });
+
+    test('coursesToday / coursesThisWeek filter by real schedule', () {
+      const a = PortalCourse(
+          name: 'Alpha',
+          teacher: '',
+          code: 'A101',
+          credits: 3.0,
+          attendance: 90.0,
+          infoUrl: '');
+      const b = PortalCourse(
+          name: 'Beta',
+          teacher: '',
+          code: 'B101',
+          credits: 3.0,
+          attendance: 80.0,
+          infoUrl: '');
+      const c = PortalCourse(
+          name: 'Gamma',
+          teacher: '',
+          code: 'C101',
+          credits: 3.0,
+          attendance: 70.0,
+          infoUrl: '');
+      const slots = [
+        TimetableSlot(
+            day: 'Monday',
+            start: '08:00',
+            end: '08:55',
+            subject: 'Alpha',
+            teacher: '',
+            section: '',
+            room: ''),
+        TimetableSlot(
+            day: 'Wednesday',
+            start: '09:00',
+            end: '09:55',
+            subject: 'Beta',
+            teacher: '',
+            section: '',
+            room: ''),
+      ];
+      expect(weekdayName(DateTime(2026, 9, 28)), 'Monday');
+      final monday = coursesToday([a, b, c], slots, DateTime(2026, 9, 28));
+      expect(monday.map((e) => e.name).toList(), ['Alpha']);
+      final wed = coursesToday([a, b, c], slots, DateTime(2026, 9, 30));
+      expect(wed.map((e) => e.name).toList(), ['Beta']);
+      // Saturday: nothing scheduled.
+      expect(
+          coursesToday([a, b, c], slots, DateTime(2026, 10, 3)), isEmpty);
+      // Whole week: scheduled subjects only (Gamma has no slots).
+      final week = coursesThisWeek([a, b, c], slots);
+      expect(week.map((e) => e.name).toList(), ['Alpha', 'Beta']);
+      expect(coursesThisWeek([a], []), isEmpty);
+    });
   });
 
   group('PLO table (real markup)', () {

@@ -287,19 +287,38 @@ class _HomeScreenState extends State<HomeScreen> {
     final live = widget.dashboard;
     // Real enrolled courses when the portal provided them; mock sample
     // content otherwise (offline, tests).
-    final baseCourses = (live != null && live.courses.isNotEmpty)
-        ? [
-            for (int i = 0; i < live.courses.length; i++)
-              portalCourseToCourse(
-                  live.courses[i], widget.timetableSlots, i),
-          ]
-        : courses;
-    final list = filter == 'All'
-        ? baseCourses
-        : baseCourses
-            .where((x) =>
-                filter == 'Ongoing' ? x.progress < 80 : x.progress >= 80)
-            .toList();
+    final liveCourses =
+        (live != null && live.courses.isNotEmpty) ? live.courses : null;
+    Course mapCourse(PortalCourse pc, int i) =>
+        portalCourseToCourse(pc, widget.timetableSlots, i);
+    final baseCourses = liveCourses == null
+        ? courses
+        : [for (int i = 0; i < liveCourses.length; i++) mapCourse(liveCourses[i], i)];
+    // Ongoing = courses with a class TODAY; Almost done = the complete
+    // weekly subject list. Both come from the real timetable when loaded;
+    // offline they fall back to the old progress split.
+    List<Course> applyFilter() {
+      if (filter == 'All') return baseCourses;
+      final useSchedule =
+          liveCourses != null && widget.timetableSlots.isNotEmpty;
+      if (filter == 'Ongoing') {
+        if (!useSchedule) {
+          return baseCourses.where((x) => x.progress < 80).toList();
+        }
+        final today = coursesToday(
+            liveCourses, widget.timetableSlots, DateTime.now());
+        return [
+          for (final pc in today) mapCourse(pc, liveCourses.indexOf(pc))
+        ];
+      }
+      if (!useSchedule) {
+        return baseCourses.where((x) => x.progress >= 80).toList();
+      }
+      final week = coursesThisWeek(liveCourses, widget.timetableSlots);
+      return [for (final pc in week) mapCourse(pc, liveCourses.indexOf(pc))];
+    }
+
+    final list = applyFilter();
     final greeting = greetingForHour(DateTime.now().hour);
     // First two tiles mirror the portal stats (CGPA, Earned Cr). The third
     // tile is the credit-weighted overall attendance parsed from the real
@@ -603,6 +622,21 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          if (list.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                  color: c.white, borderRadius: BorderRadius.circular(20)),
+              child: Text(
+                filter == 'Ongoing'
+                    ? 'No classes today — enjoy the day off 🎉'
+                    : 'No subjects scheduled this week.',
+                textAlign: TextAlign.center,
+                style:
+                    body(c, size: 14, color: c.tealInk.withValues(alpha: 0.55)),
               ),
             ),
           const SizedBox(height: 96),

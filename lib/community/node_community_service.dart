@@ -109,6 +109,22 @@ class NodeCommunityService extends CommunityService {
     return [for (final p in items) mapPostJson(p as Map<String, dynamic>)];
   }
 
+  /// Real header numbers from `GET /api/stats` (members = distinct
+  /// contributors, online = SSE subscribers). Throws on error so the UI can
+  /// keep the last good value.
+  @override
+  Future<CommunityStats> fetchStats() async {
+    final res = await _client
+        .get(
+          Uri.parse('$baseUrl/api/stats'),
+          headers: _headers(),
+        )
+        .timeout(requestTimeout);
+    if (res.statusCode != 200) _throwFor(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return CommunityStats.fromJson(body);
+  }
+
   /// Pure mapping shared by feed posts: server JSON -> UI model.
   static Post mapPostJson(Map<String, dynamic> json) {
     final comments = ((json['comments'] as List?) ?? [])

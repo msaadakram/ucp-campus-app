@@ -44,6 +44,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
   CComment? replyTo;
   StreamSubscription<void>? _sub;
 
+  /// Live header numbers. Null until the first successful `/api/stats`.
+  /// Kept across feed failures so the header never flickers back to fake.
+  CommunityStats? stats;
+
   String get _email => widget.myEmail;
   String get _handle => handleForEmail(
       _email.isEmpty ? 'ayaan.w@ucp.edu.pk' : _email);
@@ -73,11 +77,18 @@ class _CommunityScreenState extends State<CommunityScreen> {
     if (svc == null || !mounted) return;
     try {
       final fresh = await svc.fetchPosts(myEmail: _email);
+      CommunityStats? live;
+      try {
+        live = await svc.fetchStats();
+      } catch (_) {
+        live = null; // stats must never break the feed
+      }
       if (!mounted) return;
       setState(() {
         posts = fresh;
         loading = false;
         error = null;
+        if (live != null) stats = live;
         if (openId != null && !fresh.any((p) => p.id == openId)) {
           openId = null;
           replyTo = null;
@@ -85,9 +96,15 @@ class _CommunityScreenState extends State<CommunityScreen> {
       });
     } catch (_) {
       if (!mounted) return;
+      CommunityStats? live;
+      try {
+        live = await svc.fetchStats();
+      } catch (_) {}
+      if (!mounted) return;
       setState(() {
         loading = false;
         error = 'Could not load the campus feed. Check connection and retry.';
+        if (live != null) stats = live;
       });
     }
   }
@@ -316,7 +333,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('r/campus', style: display(c, size: 28, color: Colors.white), overflow: TextOverflow.ellipsis),
-                    Text('4.2k students · 138 online', style: body(c, size: 14, color: Colors.white.withValues(alpha: 0.78)), overflow: TextOverflow.ellipsis),
+                    Text(formatCommunityStats(stats), key: const ValueKey('community-stats'), style: body(c, size: 14, color: Colors.white.withValues(alpha: 0.78)), overflow: TextOverflow.ellipsis),
                   ],
                 ),
               ),

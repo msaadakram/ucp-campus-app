@@ -111,6 +111,40 @@ class FakeCommunityService extends CommunityService {
     return _posts;
   }
 
+  /// Real member count: distinct contributor emails across posts, comments
+  /// and votes. Online = yourself viewing (1) — the fake has no SSE layer,
+  /// so this is the truthful floor and keeps the header live in tests.
+  @override
+  Future<CommunityStats> fetchStats() async {
+    final members = <String>{};
+    void walkComments(List<CComment> list) {
+      for (final c in list) {
+        // CComment carries author handle, not email; count it as a
+        // contributor key so seed threads still grow the number.
+        if (c.author.trim().isNotEmpty) members.add(c.author.trim().toLowerCase());
+        walkComments(c.replies);
+      }
+    }
+
+    for (final p in _posts) {
+      if (p.author.trim().isNotEmpty) {
+        members.add(p.author.trim().toLowerCase());
+      }
+      walkComments(p.comments);
+    }
+    for (final byUser in _postVotes.values) {
+      for (final e in byUser.keys) {
+        if (e.trim().isNotEmpty) members.add(e.trim().toLowerCase());
+      }
+    }
+    for (final byUser in _commentVotes.values) {
+      for (final e in byUser.keys) {
+        if (e.trim().isNotEmpty) members.add(e.trim().toLowerCase());
+      }
+    }
+    return CommunityStats(members: members.length, online: 1);
+  }
+
   void _applyCommentVotes(List<CComment> list, String myEmail) {
     for (final c in list) {
       c.vote = _commentVotes[c.id]?[myEmail] ?? 0;

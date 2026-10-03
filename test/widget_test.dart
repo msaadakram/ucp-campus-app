@@ -417,6 +417,148 @@ void main() {
     expect(find.textContaining('UP NEXT'), findsOneWidget);
   });
 
+  testWidgets('Ongoing shows today courses, Almost done the whole week',
+      (WidgetTester tester) async {
+    const data = DashboardData(
+      studentName: 'Test Student',
+      courses: [
+        PortalCourse(
+            name: 'Alpha',
+            teacher: 'T A',
+            code: 'A101',
+            credits: 3.0,
+            attendance: 90.0,
+            infoUrl: ''),
+        PortalCourse(
+            name: 'Beta',
+            teacher: 'T B',
+            code: 'B101',
+            credits: 3.0,
+            attendance: 80.0,
+            infoUrl: ''),
+        PortalCourse(
+            name: 'Gamma',
+            teacher: 'T C',
+            code: 'C101',
+            credits: 3.0,
+            attendance: 70.0,
+            infoUrl: ''),
+      ],
+    );
+    // Alpha runs every weekday (so always "today"); Beta only Monday;
+    // Gamma has no slots at all.
+    final slots = [
+      for (final day in [
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+        'Sunday'
+      ])
+        TimetableSlot(
+            day: day,
+            start: '08:00',
+            end: '08:55',
+            subject: 'Alpha',
+            teacher: '',
+            section: '',
+            room: ''),
+      TimetableSlot(
+          day: 'Monday',
+          start: '10:00',
+          end: '10:55',
+          subject: 'Beta',
+          teacher: '',
+          section: '',
+          room: ''),
+    ];
+    final colors = AppColors.of(AppPalette.skater, false);
+    await tester.pumpWidget(
+      AppScope(
+        colors: colors,
+        palette: AppPalette.skater,
+        child: MaterialApp(
+          home: Scaffold(
+            body: HomeScreen(
+              onOpen: (_) {},
+              toProfile: () {},
+              onMenu: () {},
+              onGpa: () {},
+              onBoard: (_) {},
+              dashboard: data,
+              timetableSlots: slots,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // Ongoing -> today's courses: Alpha always, Gamma never.
+    await tester.tap(find.text('Ongoing'));
+    await tester.pumpAndSettle();
+    expect(find.text('Alpha'), findsWidgets);
+    expect(find.text('Gamma'), findsNothing);
+    // Almost done -> complete weekly subjects: Alpha + Beta, never Gamma.
+    await tester.tap(find.text('Almost done'));
+    await tester.pumpAndSettle();
+    expect(find.text('Alpha'), findsWidgets);
+    expect(find.text('Beta'), findsWidgets);
+    expect(find.text('Gamma'), findsNothing);
+  });
+
+  testWidgets('Ongoing with no classes today shows empty state',
+      (WidgetTester tester) async {
+    const data = DashboardData(
+      studentName: 'Test Student',
+      courses: [
+        PortalCourse(
+            name: 'Gamma',
+            teacher: 'T C',
+            code: 'C101',
+            credits: 3.0,
+            attendance: 70.0,
+            infoUrl: ''),
+      ],
+    );
+    const slots = [
+      TimetableSlot(
+          day: 'Monday',
+          start: '08:00',
+          end: '08:55',
+          subject: 'Other',
+          teacher: '',
+          section: '',
+          room: ''),
+    ];
+    final colors = AppColors.of(AppPalette.skater, false);
+    await tester.pumpWidget(
+      AppScope(
+        colors: colors,
+        palette: AppPalette.skater,
+        child: MaterialApp(
+          home: Scaffold(
+            body: HomeScreen(
+              onOpen: (_) {},
+              toProfile: () {},
+              onMenu: () {},
+              onGpa: () {},
+              onBoard: (_) {},
+              dashboard: data,
+              timetableSlots: slots,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ongoing'));
+    await tester.pumpAndSettle();
+    expect(find.text('Gamma'), findsNothing);
+    expect(find.textContaining('No classes today'), findsOneWidget);
+  });
+
   testWidgets('course detail shows live weekly classes',
       (WidgetTester tester) async {
     const course = Course(
