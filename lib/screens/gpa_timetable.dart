@@ -53,7 +53,12 @@ Color _tone(String g, AppColors c) {
 }
 
 class GpaCalcScreen extends StatefulWidget {
-  const GpaCalcScreen({super.key});
+  final String? sessionId;
+  final VoidCallback? onSessionExpired;
+  /// Test seam: canned `/student/results` HTML (skips all network).
+  final String? debugHtml;
+  const GpaCalcScreen(
+      {super.key, this.sessionId, this.onSessionExpired, this.debugHtml});
   @override
   State<GpaCalcScreen> createState() => _GpaCalcScreenState();
 }
@@ -72,6 +77,105 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
   int uid = 10;
   GpaMode mode = GpaMode.relative;
   double targetCgpa = 3.50;
+
+  ResultsData? portalData;
+  bool portalLoading = true;
+  bool portalExpired = false;
+  String? portalError;
+  int portalTermIdx = 0;
+  bool portalAutoImported = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPortal();
+  }
+
+  @override
+  void didUpdateWidget(GpaCalcScreen old) {
+    super.didUpdateWidget(old);
+    if (widget.sessionId != old.sessionId ||
+        widget.debugHtml != old.debugHtml) {
+      _loadPortal();
+    }
+  }
+
+  Future<String> _fetchPortal() {
+    if (widget.debugHtml != null) return Future.value(widget.debugHtml);
+    final sid = widget.sessionId;
+    if (sid == null || sid.isEmpty) {
+      return Future.error(OdooApiException('no portal session'));
+    }
+    return PortalApi().fetchPage(PortalRoutes.results, sid);
+  }
+
+  Future<void> _loadPortal() async {
+    if (!mounted) return;
+    setState(() {
+      portalLoading = true;
+      portalExpired = false;
+      portalError = null;
+    });
+    try {
+      final html = await _fetchPortal();
+      if (!mounted) return;
+      final parsed = parseResults(html);
+      setState(() {
+        portalData = parsed;
+        portalLoading = false;
+        portalTermIdx = parsed.terms.isEmpty ? 0 : parsed.terms.length - 1;
+      });
+      _autoImportBase();
+    } on OdooApiException catch (e) {
+      if (!mounted) return;
+      final dead = e.message.contains('expired') ||
+          e.message.contains('login') ||
+          e.message.contains('no portal session');
+      setState(() {
+        portalLoading = false;
+        portalExpired = dead;
+        portalError = dead ? null : e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        portalLoading = false;
+        portalError = 'Could not load previous results. Check connection.';
+      });
+    }
+  }
+
+  /// First successful load seeds the manual base from the latest portal
+  /// term so SGPA/CGPA planning starts from real data. Manual edits win
+  /// afterwards (runs once).
+  void _autoImportBase() {
+    if (portalAutoImported || portalData == null) return;
+    final (cgpa, cr) = prevBaseFromResults(
+      portalData!,
+      fallbackCgpa: prevCgpa,
+      fallbackCr: prevCr,
+    );
+    if (portalData!.terms.isNotEmpty) {
+      setState(() {
+        prevCgpa = cgpa;
+        prevCr = cr;
+        portalAutoImported = true;
+      });
+    }
+  }
+
+  void _usePortalTerm(ResultTerm t, int idx) {
+    final cgpa = double.tryParse(t.cgpa) ?? prevCgpa;
+    final cr = t.cumChValue > 0
+        ? t.cumChValue.round()
+        : (double.tryParse(t.earned)?.round() ?? prevCr);
+    setState(() {
+      prevCgpa = cgpa.clamp(0, 4).toDouble();
+      prevCr = cr.clamp(0, 200);
+      portalTermIdx = idx;
+      portalAutoImported = true;
+    });
+  }
 
   List<dynamic> _gradeFor(GpaRow r) =>
       mode == GpaMode.relative ? _gradeOf(_zOf(r)) : _gradeOfAbsolute(r.marks);
@@ -263,6 +367,142 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                     decoration: BoxDecoration(color: c.teal.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
                     child: const Row(children: [Icon(Icons.emoji_events_outlined, size: 14), SizedBox(width: 6), Text("Dean's List pace · SGPA ≥ 3.50", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))]),
                   ),
+              ],
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.only(top: 16), padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(24)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Previous semesters · from portal', style: TextStyle(fontWeight: FontWeight.bold)),
+                    if (portalData != null && portalData!.terms.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: c.teal.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
+                        child: Text('${portalData!.terms.length} terms', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text('Parsed live from /student/results — tap a term to use it as your base.',
+                    style: TextStyle(fontSize: 12, color: c.tealInk.withValues(alpha: 0.6))),
+                const SizedBox(height: 12),
+                if (portalLoading)
+                  Row(children: [
+                    SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(c.teal))),
+                    const SizedBox(width: 10),
+                    Text('Loading portal results…', style: TextStyle(fontSize: 13, color: c.tealInk.withValues(alpha: 0.6))),
+                  ])
+                else if (portalExpired)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Portal session expired — sign in again to load previous SGPA.',
+                          style: TextStyle(fontSize: 13, color: c.tealInk.withValues(alpha: 0.7))),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                        Expanded(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _loadPortal,
+                            child: Container(padding: const EdgeInsets.symmetric(vertical: 10), decoration: BoxDecoration(color: c.teal, borderRadius: BorderRadius.circular(12)), child: const Text('Retry', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
+                          ),
+                        ),
+                        if (widget.onSessionExpired != null) ...[
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: widget.onSessionExpired,
+                              child: Container(padding: const EdgeInsets.symmetric(vertical: 10), decoration: BoxDecoration(color: c.tealInk, borderRadius: BorderRadius.circular(12)), child: const Text('Re-login', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
+                            ),
+                          ),
+                        ],
+                      ]),
+                    ],
+                  )
+                else if (portalError != null)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(portalError!, style: TextStyle(fontSize: 13, color: c.tealInk.withValues(alpha: 0.7))),
+                      const SizedBox(height: 10),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _loadPortal,
+                        child: Container(padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16), decoration: BoxDecoration(color: c.teal, borderRadius: BorderRadius.circular(12)), child: const Text('Retry', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
+                      ),
+                    ],
+                  )
+                else if (portalData == null || portalData!.terms.isEmpty)
+                  Text(widget.sessionId == null && widget.debugHtml == null ? 'Sign in to load portal results — using manual values for now.' : 'No results published yet — using manual values for now.',
+                      style: TextStyle(fontSize: 13, color: c.tealInk.withValues(alpha: 0.6)))
+                else
+                  Builder(builder: (_) {
+                    final terms = portalData!.terms;
+                    final idx = portalTermIdx.clamp(0, terms.length - 1);
+                    final t = terms[idx];
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(children: [
+                            for (int i = 0; i < terms.length; i++)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: () => setState(() => portalTermIdx = i),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: portalTermIdx == i ? c.tealInk : c.dustSoft.withValues(alpha: 0.6),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Column(children: [
+                                      Text(terms[i].term, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: portalTermIdx == i ? Colors.white : c.tealInk)),
+                                      Text('SGPA ${terms[i].sgpa}', style: TextStyle(fontSize: 11, color: portalTermIdx == i ? Colors.white70 : c.tealInk.withValues(alpha: 0.6))),
+                                    ]),
+                                  ),
+                                ),
+                              ),
+                          ]),
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: c.cream, borderRadius: BorderRadius.circular(16)),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text('${t.term} · SGPA ${t.sgpa} · CGPA ${t.cgpa}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            const SizedBox(height: 4),
+                            Text('Attempted ${t.attempted} · Earned ${t.earned} · Cumulative ${t.cumCh.isEmpty ? '—' : t.cumCh} CH',
+                                style: TextStyle(fontSize: 12, color: c.tealInk.withValues(alpha: 0.65))),
+                            if (t.courses.isNotEmpty)
+                              Text('${t.courses.length} courses: ${t.courses.take(3).map((e) => '${e.name} ${e.grade}').join(' · ')}${t.courses.length > 3 ? ' …' : ''}',
+                                  style: TextStyle(fontSize: 11, color: c.tealInk.withValues(alpha: 0.55))),
+                          ]),
+                        ),
+                        const SizedBox(height: 10),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => _usePortalTerm(t, idx),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(color: c.tealInk, borderRadius: BorderRadius.circular(14)),
+                            child: Text('Use ${t.term} as base (CGPA ${t.cgpa})', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
               ],
             ),
           ),

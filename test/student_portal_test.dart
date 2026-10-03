@@ -215,6 +215,73 @@ void main() {
       expect(parseCourses(''), isEmpty);
       expect(parseCourses('<div>none'), isEmpty);
     });
+
+    test('overallAttendance weights by credits (8 real Fall courses)', () {
+      const cs = [
+        PortalCourse(
+            name: 'Object Oriented Programming',
+            teacher: '',
+            code: 'CP223',
+            credits: 3.0,
+            attendance: 67.0,
+            infoUrl: ''),
+        PortalCourse(
+            name: 'Object Oriented Programming - Lab',
+            teacher: '',
+            code: 'CP221',
+            credits: 1.0,
+            attendance: 100.0,
+            infoUrl: ''),
+        PortalCourse(
+            name: 'Computer Organization and Assembly Language - Lab',
+            teacher: '',
+            code: 'AR221',
+            credits: 1.0,
+            attendance: 100.0,
+            infoUrl: ''),
+        PortalCourse(
+            name: 'Professional Practices',
+            teacher: '',
+            code: 'SEP203',
+            credits: 2.0,
+            attendance: 100.0,
+            infoUrl: ''),
+        PortalCourse(
+            name: 'Computer Organization and Assembly Language',
+            teacher: '',
+            code: 'AR223',
+            credits: 3.0,
+            attendance: 0.0,
+            infoUrl: ''),
+        PortalCourse(
+            name: 'Fundamentals of Entrepreneurship',
+            teacher: '',
+            code: 'ENT102',
+            credits: 2.0,
+            attendance: 0.0,
+            infoUrl: ''),
+        PortalCourse(
+            name: 'Probability and Statistics',
+            teacher: '',
+            code: 'MAT253',
+            credits: 3.0,
+            attendance: 0.0,
+            infoUrl: ''),
+        PortalCourse(
+            name: 'Multivariable Calculus',
+            teacher: '',
+            code: 'MAT243',
+            credits: 3.0,
+            attendance: 33.0,
+            infoUrl: ''),
+      ];
+      // (201+100+100+200+0+0+0+99)/18 = 38.9, not the naive mean of 50.0.
+      expect(overallAttendance(cs), closeTo(38.9, 0.05));
+      expect(formatPercent(overallAttendance(cs)), '38.9%');
+      expect(formatPercent(50.0), '50%');
+      expect(formatPercent(0), '0%');
+      expect(overallAttendance([]), 0);
+    });
   });
 
   group('PLO table (real markup)', () {

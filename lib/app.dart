@@ -462,7 +462,10 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           screen = GroupsScreen(onChat: (g) => setState(() => chat = g));
           break;
         case 'gpa':
-          screen = const GpaCalcScreen();
+          screen = GpaCalcScreen(
+            sessionId: sessionId,
+            onSessionExpired: () => _monitor?.checkNow(),
+          );
           break;
         case 'timetable':
           screen = TimetableScreen(

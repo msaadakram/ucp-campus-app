@@ -78,6 +78,30 @@ class PortalCourse {
 String _subjectBase(String s) =>
     s.replaceAll(RegExp(r'\s*-\s*Lab\s*$'), '').trim().toLowerCase();
 
+/// Overall attendance across enrolled courses, weighted by credits (a
+/// 3-credit course counts 3x a 1-credit lab). Courses with no credit info
+/// fall back to weight 1. Returns 0-100. Pure and unit-tested.
+double overallAttendance(List<PortalCourse> courses) {
+  if (courses.isEmpty) return 0;
+  var weighted = 0.0;
+  var weights = 0.0;
+  for (final c in courses) {
+    final w = c.credits > 0 ? c.credits : 1.0;
+    weighted += c.attendance.clamp(0, 100) * w;
+    weights += w;
+  }
+  if (weights == 0) return 0;
+  return (weighted / weights).clamp(0, 100);
+}
+
+/// `38.888` -> `38.9%`, `50.0` -> `50%`. Pure and unit-tested.
+String formatPercent(double v) {
+  final one = (v.clamp(0, 100) * 10).round() / 10;
+  final s = one.toStringAsFixed(1);
+  return '${s.endsWith('.0') ? s.substring(0, s.length - 2) : s}%';
+}
+/// model: ring shows live attendance, room/time come from the real weekly
+/// schedule, tone cycles the palette. Pure and unit-tested.
 /// Maps a portal course (+ timetable slots) onto the Home course card
 /// model: ring shows live attendance, room/time come from the real weekly
 /// schedule, tone cycles the palette. Pure and unit-tested.
@@ -522,6 +546,8 @@ class ResultTerm {
   final String cgpa;
   final String attempted;
   final String earned;
+  final String cumCh;
+  final String cumGp;
   final List<ResultCourse> courses;
   const ResultTerm({
     required this.term,
@@ -529,8 +555,35 @@ class ResultTerm {
     required this.cgpa,
     required this.attempted,
     required this.earned,
+    this.cumCh = '',
+    this.cumGp = '',
     this.courses = const [],
   });
+
+  double get sgpaValue => double.tryParse(sgpa) ?? 0;
+  double get cgpaValue => double.tryParse(cgpa) ?? 0;
+  double get cumChValue => double.tryParse(cumCh) ?? 0;
+}
+
+/// Latest term in a results payload, or null when no terms exist.
+/// The calculator uses its CGPA + cumulative CH as the previous base.
+ResultTerm? latestResultTerm(ResultsData data) =>
+    data.terms.isEmpty ? null : data.terms.last;
+
+/// Previous-record base derived from portal results:
+/// (prevCgpa, prevCr). Falls back to [fallback] when unparseable.
+(double, int) prevBaseFromResults(
+  ResultsData data, {
+  double fallbackCgpa = 0,
+  int fallbackCr = 0,
+}) {
+  final t = latestResultTerm(data);
+  if (t == null) return (fallbackCgpa, fallbackCr);
+  final cgpa = double.tryParse(t.cgpa) ?? fallbackCgpa;
+  final cr = t.cumChValue > 0
+      ? t.cumChValue.round()
+      : (double.tryParse(t.earned)?.round() ?? fallbackCr);
+  return (cgpa, cr);
 }
 
 class PloEntry {
@@ -578,6 +631,8 @@ ResultsData parseResults(String html) {
             cgpa: current!.cgpa,
             attempted: current!.attempted,
             earned: current!.earned,
+            cumCh: current!.cumCh,
+            cumGp: current!.cumGp,
             courses: List.of(courses),
           ));
           courses.clear();
@@ -593,6 +648,8 @@ ResultsData parseResults(String html) {
             cgpa: cells[7],
             attempted: cells[3],
             earned: cells[4],
+            cumCh: cells[5],
+            cumGp: cells[2],
             courses: const [],
           );
         } else if (cells.length == 4 &&

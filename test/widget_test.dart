@@ -352,6 +352,10 @@ void main() {
     expect(find.text('Object Oriented Programming'), findsOneWidget);
     expect(find.text('Multivariable Calculus'), findsOneWidget);
     expect(find.text('LIVE'), findsOneWidget);
+    // Third tile is the overall attendance of both courses:
+    // (67*3 + 33*3) / 6 = 50%. The portal's useless "0.0 Total Cr" is gone.
+    expect(find.text('50%'), findsOneWidget);
+    expect(find.text('0.0'), findsNothing);
     // No mock course cards leak through.
     expect(find.text('Data Structures'), findsNothing);
   });

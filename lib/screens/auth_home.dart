@@ -301,11 +301,30 @@ class _HomeScreenState extends State<HomeScreen> {
                 filter == 'Ongoing' ? x.progress < 80 : x.progress >= 80)
             .toList();
     final greeting = greetingForHour(DateTime.now().hour);
+    // First two tiles mirror the portal stats (CGPA, Earned Cr). The third
+    // tile is the credit-weighted overall attendance parsed from the real
+    // enrolled course cards — the portal's own "Total Cr" stat sits at 0.0
+    // and is useless, so it is never shown. Offline/tests fall back to the
+    // matching sample tile.
+    final hasCourses = live != null && live.courses.isNotEmpty;
+    List<String>? attendStatTile() {
+      if (live == null) return null;
+      for (final s in live.stats) {
+        if (s.label.toLowerCase().contains('attend')) {
+          return [s.value, s.label];
+        }
+      }
+      return null;
+    }
+
+    final attendTile = hasCourses
+        ? [formatPercent(overallAttendance(live!.courses)), 'Attend.']
+        : attendStatTile();
     final liveTiles = live == null
         ? <List<String>>[]
         : [
-            for (final s in live.stats.take(3))
-              [s.value, s.label],
+            for (final s in live.stats.take(2)) [s.value, s.label],
+            if (attendTile != null) attendTile,
           ];
     const mockTiles = [
       ['3.62', 'GPA'],
@@ -460,40 +479,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             );
           }),
-          const SizedBox(height: 12),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onGpa,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: c.tealInk,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [BoxShadow(color: c.clay, offset: const Offset(0, 6))],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 44, height: 44,
-                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(14)),
-                    child: const Icon(Icons.calculate_outlined, color: Colors.white, size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('GPA calculator · merit planner', style: body(c, size: 14, weight: FontWeight.w800, color: Colors.white)),
-                        Text('Relative + absolute modes · target CGPA', style: body(c, size: 12, color: Colors.white.withValues(alpha: 0.7))),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right, color: Colors.white70),
-                ],
-              ),
-            ),
-          ),
           if (live?.todayClasses != null) ...[
             const SizedBox(height: 12),
             Container(
