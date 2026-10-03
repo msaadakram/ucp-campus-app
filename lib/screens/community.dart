@@ -57,6 +57,16 @@ class _CommunityScreenState extends State<CommunityScreen> {
   final Set<String> _likingPosts = {};
   final Set<String> _likingComments = {};
 
+  /// Saved posts (bookmark). Stored as ids so the flag survives `_reload`,
+  /// which rebuilds Post objects from the backend (saved would otherwise
+  /// vanish on every refresh).
+  final Set<String> _savedIds = {};
+  bool showSavedOnly = false;
+
+  /// Focus for the thread comment field so the comment button can jump
+  /// straight to writing (it was dead in thread view: onOpen is null there).
+  late final FocusNode _commentFocus;
+
   String get _email => widget.myEmail;
   String get _handle => handleForEmail(
       _email.isEmpty ? 'ayaan.w@ucp.edu.pk' : _email);
@@ -65,6 +75,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
   void initState() {
     super.initState();
     _commentCtrl = TextEditingController();
+    _commentFocus = FocusNode();
     if (widget.service == null) {
       loading = false;
       return;
@@ -79,6 +90,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
   @override
   void dispose() {
     _commentCtrl.dispose();
+    _commentFocus.dispose();
     _sub?.cancel();
     super.dispose();
   }
@@ -105,6 +117,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
           members: live != null && live.members > 0 ? live.members : derived.members,
           online: live != null && live.online > 0 ? live.online : derived.online,
         );
+      }
+      // Reapply saved flags: reloads rebuild Post objects from the backend.
+      for (final p in fresh) {
+        p.saved = _savedIds.contains(p.id);
       }
       setState(() {
         posts = fresh;
@@ -240,8 +256,36 @@ class _CommunityScreenState extends State<CommunityScreen> {
     }
   }
 
-  List<Post> get shown {
-    final f = posts.where((p) => flair == 'All' || p.flair == flair).toList();
+  /// Bookmark toggle that survives reloads (ids, not object flags).
+  void _toggleSave(Post p) {
+    setState(() {
+      if (_savedIds.contains(p.id)) {
+        _savedIds.remove(p.id);
+        p.saved = false;
+      } else {
+        _savedIds.add(p.id);
+        p.saved = true;
+      }
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+            p.saved ? 'Saved — see it under Saved' : 'Removed from saved'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// Share copies the post text and always confirms, so the button never
+  /// feels dead.
+  Future<void> _sharePost(BuildContext context, AppColors c, Post p) =>
+      _copyText(context, c, '${p.title}\n\n${p.body}\n— via campus community');
+
+  List<Post> get shown {    final f = posts
+        .where((p) => flair == 'All' || p.flair == flair)
+        .where((p) => !showSavedOnly || _savedIds.contains(p.id))
+        .toList();
     f.sort((a, b) {
       if (sort == 'New') return a.age.compareTo(b.age);
       if (sort == 'Top') return (b.score + b.vote).compareTo(a.score + a.vote);
@@ -324,8 +368,56 @@ class _CommunityScreenState extends State<CommunityScreen> {
         children: [
           _feedHeader(c),
           const SizedBox(height: 12),
-          for (final p in shown) _postCard(context, c, p, onOpen: () => setState(() => openId = p.id)),
-          if (shown.isEmpty) Center(child: Padding(padding: const EdgeInsets.all(40), child: Text('No posts with this flair yet.', style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.5))))),
+          for (final p in shown)
+            _postCard(context, c, p,
+                onOpen: () => setState(() => openId = p.id),
+                onCommentTap: () => setState(() => openId = p.id)),
+          if (shown.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(40),
+                child: Column(
+                  children: [
+                    Icon(
+                      showSavedOnly
+                          ? Icons.bookmark_outline
+                          : Icons.forum_outlined,
+                      size: 36,
+                      color: c.tealInk.withValues(alpha: 0.4),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      showSavedOnly
+                          ? 'No saved posts yet.\nTap the bookmark on any post to keep it here.'
+                          : 'No posts with this flair yet.',
+                      textAlign: TextAlign.center,
+                      style: body(c,
+                          size: 14,
+                          color: c.tealInk.withValues(alpha: 0.5)),
+                    ),
+                    if (showSavedOnly) ...[
+                      const SizedBox(height: 12),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () =>
+                            setState(() => showSavedOnly = false),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 10),
+                          decoration: BoxDecoration(
+                              color: c.teal,
+                              borderRadius: BorderRadius.circular(20)),
+                          child: const Text('Browse all posts',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
           const SizedBox(height: 96),
         ],
       ),
@@ -474,6 +566,47 @@ class _CommunityScreenState extends State<CommunityScreen> {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    key: const ValueKey('flair-saved'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () =>
+                        setState(() => showSavedOnly = !showSavedOnly),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                          color: showSavedOnly ? c.tealInk : c.dustSoft,
+                          borderRadius: BorderRadius.circular(20)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            showSavedOnly
+                                ? Icons.bookmark
+                                : Icons.bookmark_outline,
+                            size: 13,
+                            color: showSavedOnly
+                                ? c.cream
+                                : c.tealInk.withValues(alpha: 0.7),
+                          ),
+                          Text(
+                            _savedIds.isEmpty
+                                ? ' Saved'
+                                : ' Saved (${_savedIds.length})',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: showSavedOnly
+                                    ? c.cream
+                                    : c.tealInk.withValues(alpha: 0.7)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
                 for (final f in _flairs)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
@@ -494,7 +627,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
       ],
     );
   }
-  Widget _postCard(BuildContext context, AppColors c, Post p, {VoidCallback? onOpen}) {
+  Widget _postCard(BuildContext context, AppColors c, Post p,
+      {VoidCallback? onOpen, VoidCallback? onCommentTap}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -546,22 +680,68 @@ class _CommunityScreenState extends State<CommunityScreen> {
               const SizedBox(width: 8),
               Flexible(
                 child: GestureDetector(
+                  key: ValueKey('post-comment-${p.id}'),
                   behavior: HitTestBehavior.opaque,
-                  onTap: onOpen,
-                  child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: c.dustSoft.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20)), child: Row(children: [const Icon(Icons.chat_bubble_outline, size: 16), Flexible(child: Text(' ${countComments(p.comments)}', style: const TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis))])),
+                  onTap: onCommentTap ?? onOpen,
+                  child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                          color: c.dustSoft.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(20)),
+                      child: Row(children: [
+                        const Icon(Icons.chat_bubble_outline, size: 16),
+                        Flexible(
+                            child: Text(
+                                ' ${countComments(p.comments)}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold),
+                                overflow: TextOverflow.ellipsis))
+                      ])),
                 ),
               ),
               const SizedBox(width: 8),
               Flexible(
                 child: GestureDetector(
+                  key: ValueKey('post-share-${p.id}'),
                   behavior: HitTestBehavior.opaque,
-                  onTap: () => _copyText(context, c,
-                      '${p.title}\n\n${p.body}\n— via campus community'),
-                  child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: c.dustSoft.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20)), child: const Row(children: [Icon(Icons.share_outlined, size: 15), Flexible(child: Text(' Share', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis))])),
+                  onTap: () => _sharePost(context, c, p),
+                  child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                          color: c.dustSoft.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(20)),
+                      child: const Row(children: [
+                        Icon(Icons.share_outlined, size: 15),
+                        Flexible(
+                            child: Text(' Share',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 13),
+                                overflow: TextOverflow.ellipsis))
+                      ])),
                 ),
               ),
               const Spacer(),
-              GestureDetector(onTap: () => setState(() => p.saved = !p.saved), child: Container(alignment: Alignment.center, width: 32, height: 32, decoration: BoxDecoration(color: p.saved ? c.board : c.dustSoft.withValues(alpha: 0.7), shape: BoxShape.circle), child: Icon(Icons.bookmark_outline, size: 16, color: p.saved ? c.tealInk : c.tealInk))),
+              GestureDetector(
+                  key: ValueKey('post-save-${p.id}'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _toggleSave(p),
+                  child: Container(
+                      alignment: Alignment.center,
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                          color: p.saved
+                              ? c.board
+                              : c.dustSoft.withValues(alpha: 0.7),
+                          shape: BoxShape.circle),
+                      child: Icon(
+                          p.saved
+                              ? Icons.bookmark
+                              : Icons.bookmark_outline,
+                          size: 16,
+                          color: c.tealInk))),
             ],
           ),
         ],
@@ -619,7 +799,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
             child: SingleChildScrollView(
               child: Column(
                 children: [
-                  _postCard(context, c, post),
+                  _postCard(context, c, post,
+                      onCommentTap: () =>
+                          _commentFocus.requestFocus()),
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(24)),
@@ -690,6 +872,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                         child: TextField(
                           key: const ValueKey('comment-field'),
                           controller: _commentCtrl,
+                          focusNode: _commentFocus,
                           enabled: !_sendingComment,
                           onChanged: (v) => draft = v,
                           onSubmitted: (_) => _sendComment(post),
