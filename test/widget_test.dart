@@ -416,7 +416,8 @@ void main() {
     expect(find.text('Alpha Class'), findsOneWidget);
     expect(find.text('Beta Class'), findsWidgets);
     expect(find.text('Gamma Class'), findsWidgets);
-    expect(find.textContaining('UP NEXT'), findsOneWidget);
+    // Hero header is UP NEXT, or NOW while the class is in session.
+    expect(find.textContaining(RegExp(r'^(NOW|UP NEXT) ·')), findsOneWidget);
   });
 
   testWidgets('Ongoing shows today courses, Almost done the whole week',

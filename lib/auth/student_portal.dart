@@ -259,17 +259,27 @@ List<TimetableSlot> slotsForCourse(
     });
 }
 
-/// Next upcoming class: today's next slot by start time, else the
-/// earliest slot on the following days (wraps around the week). Null when
-/// there are no slots at all.
+/// Next upcoming class: the class in progress right now if any, else
+/// today's next slot by start time, else the earliest slot on the following
+/// days (wraps around the week). Null when there are no slots at all.
 TimetableSlot? nextClass(List<TimetableSlot> slots, DateTime now) {
   final up = upcomingClasses(slots, now, 1);
   return up.isEmpty ? null : up.first;
 }
 
-/// The next [count] upcoming classes in chronological order: today's
-/// remaining slots first, then the following days (wraps the week).
-/// Empty when there are no slots at all.
+/// True while a class is in session: same weekday and
+/// `start <= now < end`. Pure and unit-tested.
+bool isSlotLive(TimetableSlot s, DateTime now) {
+  final hm =
+      '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+  return s.day == weekdayName(now) &&
+      s.start.compareTo(hm) <= 0 &&
+      hm.compareTo(s.end) < 0;
+}
+
+/// The next [count] upcoming classes in chronological order: the class in
+/// progress right now (if any) first, then today's remaining slots, then
+/// the following days (wraps the week). Empty when there are no slots.
 List<TimetableSlot> upcomingClasses(
     List<TimetableSlot> slots, DateTime now, [
   int count = 3,
@@ -287,17 +297,21 @@ List<TimetableSlot> upcomingClasses(
   String hm(DateTime t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   final today = order[(now.weekday - 1).clamp(0, 6)];
+  final nowHm = hm(now);
   final out = <TimetableSlot>[];
-  out.addAll(
-      slots.where((s) => s.day == today && s.start.compareTo(hm(now)) > 0));
+  // Started-but-unfinished today (in progress) plus later today.
+  out.addAll(slots.where(
+      (s) => s.day == today && s.end.compareTo(nowHm) > 0));
   for (var d = 1; d <= 7 && out.length < count; d++) {
     final name = order[(order.indexOf(today) + d) % 7];
     out.addAll(slots.where((s) => s.day == name));
   }
   out.sort((a, b) {
-    // Today's leftovers first, then day order, then start time.
+    // In-progress class first, then today's leftovers, then day order.
     int rank(TimetableSlot s) {
-      if (s.day == today && s.start.compareTo(hm(now)) > 0) return -8;
+      if (s.day == today && s.end.compareTo(nowHm) > 0) {
+        return s.start.compareTo(nowHm) <= 0 ? -9 : -8;
+      }
       return (order.indexOf(s.day) - order.indexOf(today) + 7) % 7;
     }
     final r = rank(a).compareTo(rank(b));

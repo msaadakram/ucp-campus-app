@@ -207,6 +207,15 @@ void main() {
       // Monday 09:00 -> A2, B (count caps it).
       final two = upcomingClasses(week, DateTime(2026, 9, 28, 9, 0), 2);
       expect(two.map((s) => s.subject).toList(), ['A2', 'B']);
+      // Monday 08:30 -> A is in progress: it leads, not skipped.
+      final during = upcomingClasses(week, DateTime(2026, 9, 28, 8, 30), 3);
+      expect(during.map((s) => s.subject).toList(), ['A', 'A2', 'B']);
+      expect(nextClass(week, DateTime(2026, 9, 28, 8, 30))?.subject, 'A');
+      expect(isSlotLive(week[0], DateTime(2026, 9, 28, 8, 30)), isTrue);
+      expect(isSlotLive(week[0], DateTime(2026, 9, 28, 7, 59)), isFalse);
+      expect(isSlotLive(week[0], DateTime(2026, 9, 28, 8, 55)), isFalse);
+      expect(isSlotLive(week[1], DateTime(2026, 9, 28, 8, 30)), isFalse);
+      expect(isSlotLive(week[0], DateTime(2026, 9, 30, 8, 30)), isFalse);
       expect(upcomingClasses([], DateTime(2026, 9, 28)), isEmpty);
       expect(upcomingClasses(week, DateTime(2026, 9, 28, 7, 0), 0), isEmpty);
     });

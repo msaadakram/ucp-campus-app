@@ -425,11 +425,13 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 20),
           Builder(builder: (_) {
+            final now = DateTime.now();
             final upcoming = widget.timetableSlots.isEmpty
                 ? const <TimetableSlot>[]
-                : upcomingClasses(
-                    widget.timetableSlots, DateTime.now(), 3);
+                : upcomingClasses(widget.timetableSlots, now, 3);
             final next = upcoming.isEmpty ? null : upcoming.first;
+            final liveNow =
+                next != null && isSlotLive(next, now);
             final then = upcoming.length > 1
                 ? upcoming.sublist(1)
                 : const <TimetableSlot>[];
@@ -450,7 +452,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('UP NEXT · $upTime',
+                  Text('${liveNow ? 'NOW' : 'UP NEXT'} · $upTime',
                       style: body(c,
                           size: 12,
                           weight: FontWeight.w600,
