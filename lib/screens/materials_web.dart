@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../data/seed.dart';
@@ -228,9 +230,16 @@ class _WebViewScreenState extends State<WebViewScreen> {
   static const _host = 'horizon.ucp.edu.pk';
   static const _shortcuts = [
     ['Dashboard', '/student/dashboard'],
-    ['Profile', '/student/profile'],
     ['Portal', '/my/home'],
   ];
+
+  /// Controller cache: app.dart builds one tab screen at a time, so this
+  /// State is disposed on every tab switch. The controller + loaded page
+  /// survive here instead, and coming back to the tab reuses them with NO
+  /// reload. A changed session id still forces a fresh login load.
+  static WebViewController? _cachedController;
+  static String? _cachedSid;
+  static String _cachedPath = '/student/dashboard';
 
   WebViewController? _controller;
   String _path = '/student/dashboard';
@@ -256,6 +265,15 @@ class _WebViewScreenState extends State<WebViewScreen> {
   }
 
   Future<void> _initController() async {
+    // Tab switch.dispose -> fresh State: reuse the live portal, no reload.
+    if (_cachedController != null && _cachedSid == widget.sessionId) {
+      if (!mounted) return;
+      setState(() {
+        _controller = _cachedController;
+        _path = _cachedPath;
+      });
+      return;
+    }
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
@@ -286,6 +304,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
       _path = path;
       _expired = false;
     });
+    _cachedController = controller;
+    _cachedSid = sid;
+    _cachedPath = path;
     await controller.loadRequest(Uri.https(_host, path));
   }
 
@@ -302,6 +323,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
         _path = uri.path;
         _expired = false;
       });
+      _cachedPath = uri.path;
     }
   }
 
@@ -395,7 +417,17 @@ class _WebViewScreenState extends State<WebViewScreen> {
               child: Stack(
                 children: [
                   if (widget.renderWebView && _controller != null)
-                    WebViewWidget(controller: _controller!)
+                    WebViewWidget(
+                      controller: _controller!,
+                      // All touches go to the portal (scroll, tap, pinch):
+                      // without this the outer page scroll steals gestures
+                      // and the portal feels frozen.
+                      gestureRecognizers: {
+                        Factory<OneSequenceGestureRecognizer>(
+                          () => EagerGestureRecognizer(),
+                        ),
+                      },
+                    )
                   else
                     Container(
                       color: c.dustSoft.withValues(alpha: 0.4),

@@ -251,7 +251,9 @@ void main() {
     expect(find.text('Web view'), findsOneWidget);
     expect(find.text('Dashboard'), findsOneWidget);
     expect(find.text('Portal preview unavailable in tests'), findsOneWidget);
-    await tester.tap(find.text('Profile'));
+    // No profile shortcut on the web view.
+    expect(find.text('Profile'), findsNothing);
+    await tester.tap(find.text('Portal'));
     await tester.pumpAndSettle();
     // Shortcut switches without any platform WebView.
     expect(find.text('Portal preview unavailable in tests'), findsOneWidget);
