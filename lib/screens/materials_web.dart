@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import '../auth/offline.dart';
 import '../data/seed.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
@@ -245,6 +246,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
   String _path = '/student/dashboard';
   double _progress = 0;
   bool _expired = false;
+  String? _resourceError;
 
   @override
   void initState() {
@@ -282,6 +284,16 @@ class _WebViewScreenState extends State<WebViewScreen> {
             if (mounted) setState(() => _progress = p / 100);
           },
           onUrlChange: _onUrl,
+          onWebResourceError: (e) {
+            // Sub-resource noise (trackers, fonts) is ignored — only a
+            // failed main page gets an overlay with Retry.
+            if (!mounted || e.isForMainFrame != true) return;
+            setState(() {
+              _resourceError = OfflineMonitor.instance.isOffline
+                  ? offlineMessage
+                  : 'Could not load the portal page. Tap Reload to try again.';
+            });
+          },
         ),
       );
     _controller = controller;
@@ -303,6 +315,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
     setState(() {
       _path = path;
       _expired = false;
+      _resourceError = null;
     });
     _cachedController = controller;
     _cachedSid = sid;
@@ -463,6 +476,32 @@ class _WebViewScreenState extends State<WebViewScreen> {
                         backgroundColor: c.dustSoft,
                         valueColor: AlwaysStoppedAnimation(c.clay),
                         minHeight: 3,
+                      ),
+                    ),
+                  if (_resourceError != null && !_expired)
+                    Positioned.fill(
+                      child: Container(
+                        color: c.cream2.withValues(alpha: 0.97),
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.wifi_off_outlined,
+                                size: 36, color: c.clay),
+                            const SizedBox(height: 12),
+                            Text(_resourceError!,
+                                style: display(c, size: 16),
+                                textAlign: TextAlign.center),
+                            const SizedBox(height: 16),
+                            ClayButton(
+                              label: 'Retry',
+                              colors: c,
+                              height: 48,
+                              fontSize: 15,
+                              onPressed: () => _loadPortal(_path),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   if (_expired)

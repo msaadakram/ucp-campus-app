@@ -4,7 +4,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import '../auth/offline.dart';
 import '../community/community_service.dart';
+import '../community/saved_posts_store.dart';
 import '../data/seed.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
@@ -27,7 +29,12 @@ class CommunityScreen extends StatefulWidget {
   /// Widget tests inject [FakeCommunityService] with seed content.
   final CommunityService? service;
   final String myEmail;
-  const CommunityScreen({super.key, this.service, this.myEmail = ''});
+
+  /// Where bookmarks persist. Defaults to encrypted on-device storage;
+  /// widget tests inject [MemorySavedPostsStore].
+  final SavedPostsStore? savedStore;
+  const CommunityScreen(
+      {super.key, this.service, this.myEmail = '', this.savedStore});
   @override
   State<CommunityScreen> createState() => _CommunityScreenState();
 }
@@ -71,6 +78,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
   String get _handle => handleForEmail(
       _email.isEmpty ? 'ayaan.w@ucp.edu.pk' : _email);
 
+  SavedPostsStore get _savedStore =>
+      widget.savedStore ?? SecureSavedPostsStore();
+
   @override
   void initState() {
     super.initState();
@@ -80,6 +90,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
       loading = false;
       return;
     }
+    _loadSaved();
+    OfflineMonitor.instance.offline.addListener(_onConnectivity);
     _reload();
     if (widget.service!.supportsRealtime) {
       widget.service!.ensureRealtime(() async {});
@@ -89,15 +101,57 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
   @override
   void dispose() {
+    OfflineMonitor.instance.offline.removeListener(_onConnectivity);
     _commentCtrl.dispose();
     _commentFocus.dispose();
     _sub?.cancel();
     super.dispose();
   }
 
+  /// Auto-retry the moment the device is back online.
+  void _onConnectivity() {
+    if (!OfflineMonitor.instance.isOffline &&
+        mounted &&
+        !loading &&
+        error != null) {
+      _reload();
+    }
+  }
+
+  /// Loads persisted bookmarks for this user, then repaints so flags and
+  /// the Saved count apply (never blocks the feed on storage).
+  Future<void> _loadSaved() async {
+    try {
+      final ids = await _savedStore.load(_email);
+      if (!mounted || ids.isEmpty) return;
+      setState(() {
+        _savedIds.addAll(ids);
+        for (final p in posts) {
+          p.saved = _savedIds.contains(p.id);
+        }
+      });
+    } catch (_) {}
+  }
+
+  void _persistSaved() {
+    // Fire-and-forget: storage failures must never block the UI.
+    unawaited(_savedStore.save(_email, _savedIds));
+  }
+
   Future<void> _reload() async {
     final svc = widget.service;
     if (svc == null || !mounted) return;
+    // Offline fast path: keep the loaded feed (banner explains why it's
+    // stale); only fresh installs see an immediate offline error.
+    if (OfflineMonitor.instance.isOffline) {
+      if (posts.isEmpty && mounted) {
+        setState(() {
+          loading = false;
+          error = offlineMessage;
+        });
+      }
+      return;
+    }
     // Posts + stats in parallel so a slow/missing stats endpoint can never
     // hold the feed hostage (the old sequential await stuck the header on
     // "Connecting…" when /api/stats 404'd on older backends).
@@ -119,6 +173,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
         );
       }
       // Reapply saved flags: reloads rebuild Post objects from the backend.
+      // Prune ids whose posts are gone so the Saved count never lies.
+      final freshIds = {for (final p in fresh) p.id};
+      final pruned = _savedIds.length;
+      _savedIds.retainAll(freshIds);
+      if (_savedIds.length != pruned) _persistSaved();
       for (final p in fresh) {
         p.saved = _savedIds.contains(p.id);
       }
@@ -267,6 +326,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
         p.saved = true;
       }
     });
+    _persistSaved();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(

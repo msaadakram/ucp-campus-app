@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../auth/odoo_api.dart';
+import '../auth/offline.dart';
 import '../auth/portal_api.dart';
+import '../auth/portal_cache.dart';
 import '../auth/student_portal.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
@@ -26,11 +28,31 @@ class _ResultsScreenState extends State<ResultsScreen> {
   String? error;
   int termIdx = 0;
   bool showPlos = false;
+  bool cachedOffline = false;
+  int? cachedAt;
 
   @override
   void initState() {
     super.initState();
+    OfflineMonitor.instance.offline.addListener(_onConnectivity);
     _load();
+  }
+
+  @override
+  void dispose() {
+    OfflineMonitor.instance.offline.removeListener(_onConnectivity);
+    super.dispose();
+  }
+
+  /// Auto-retry the moment the device is back online.
+  void _onConnectivity() {
+    if (!OfflineMonitor.instance.isOffline &&
+        mounted &&
+        !loading &&
+        error != null &&
+        data == null) {
+      _load();
+    }
   }
 
   Future<String> _fetch() {
@@ -48,11 +70,35 @@ class _ResultsScreenState extends State<ResultsScreen> {
       loading = true;
       error = null;
       expired = false;
+      cachedOffline = false;
+      cachedAt = null;
     });
+    // Offline fast path: saved snapshot or an immediate offline error —
+    // never hang on a 20s connection timeout.
+    if (widget.debugHtml == null && OfflineMonitor.instance.isOffline) {
+      final cached = PortalCache.results;
+      if (!mounted) return;
+      if (cached != null) {
+        setState(() {
+          data = cached;
+          loading = false;
+          termIdx = 0;
+          cachedOffline = true;
+          cachedAt = PortalCache.savedAt['results'];
+        });
+      } else {
+        setState(() {
+          loading = false;
+          error = offlineMessage;
+        });
+      }
+      return;
+    }
     try {
       final html = await _fetch();
       if (!mounted) return;
       final parsed = parseResults(html);
+      PortalCache.putResults(parsed);
       setState(() {
         data = parsed;
         loading = false;
@@ -139,6 +185,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
               style: body(c,
                   size: 14, color: Colors.white.withValues(alpha: 0.78))),
           const SizedBox(height: 16),
+          if (cachedOffline && cachedAt != null)
+            PortalCachedNotice(savedAtMs: cachedAt!),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(

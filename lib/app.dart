@@ -10,6 +10,8 @@ import 'auth/microsoft_oauth.dart';
 import 'auth/dashboard_parser.dart';
 import 'auth/portal_api.dart';
 import 'auth/session_manager.dart';
+import 'auth/offline.dart';
+import 'auth/portal_cache.dart';
 import 'auth/session_monitor.dart';
 import 'auth/session_store.dart';
 import 'auth/student_portal.dart';
@@ -31,6 +33,7 @@ import 'screens/oauth_webview.dart';
 import 'screens/profile.dart';
 import 'screens/results.dart';
 import 'screens/silent_renew_webview.dart';
+import 'widgets/offline_banner.dart';
 import 'widgets/session_expired_dialog.dart';
 import 'theme/palette.dart';
 import 'widgets/common.dart';
@@ -186,6 +189,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
 
   /// Renewal seam: test hooks resolve without mounting a (platform) WebView.
   Future<RenewOutcome> _performRenew(String email) async {
+    // Offline: never mount the silent WebView or pop anything — the next
+    // heartbeat after reconnect retries automatically.
+    if (OfflineMonitor.instance.isOffline) {
+      return RenewOutcome(failCode: 'timeout');
+    }
     final r = widget.authHooks?.renew;
     if (r != null) return r(email);
     final sid = await _renewViaWebView(email);
@@ -197,6 +205,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Platform channels don't exist in widget tests: only probe real
+    // connectivity in production runs.
+    if (!widget.skipLogin && widget.authHooks == null) {
+      OfflineMonitor.instance.start();
+    }
     if (widget.skipLogin) {
       authed = true;
       sessionId = 'test-session';
@@ -218,6 +231,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   void dispose() {
     _healTimer?.cancel();
     _monitor?.stop();
+    OfflineMonitor.instance.stop();
     _community?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -233,7 +247,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       if (authed) {
         _monitor?.start();
-        _monitor?.checkNow();
+        OfflineMonitor.instance.refresh();
+        _checkSessionNow();
       }
     } else {
       _monitor?.stop();
@@ -318,6 +333,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   Future<void> _loadDashboard() async {
     final sid = sessionId;
     if (sid == null || !mounted) return;
+    if (OfflineMonitor.instance.isOffline) return;
     final run = ++_dashRun;
     try {
       final api = PortalApi();
@@ -473,6 +489,13 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     }
   }
 
+  /// Watchdog pass that stays silent while offline: screens keep their
+  /// cached content and retry on reconnect instead of proving anything.
+  void _checkSessionNow() {
+    if (OfflineMonitor.instance.isOffline) return;
+    _checkSessionNow();
+  }
+
   void go(String t) => setState(() { tab = t; course = null; courseLive = false; picker = false; menu = false; chat = null; });
 
   /// The watchdog proved the portal session dead and silent renewal failed:
@@ -510,6 +533,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
 
   Future<void> _logout({String? message}) async {
     _monitor?.stop();
+    PortalCache.clear();
     _healTimer?.cancel();
     _healNotice = false;
     _finishSilentRenew(null); // abort any background renewal
@@ -571,31 +595,31 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         case 'gpa':
           screen = GpaCalcScreen(
             sessionId: sessionId,
-            onSessionExpired: () => _monitor?.checkNow(),
+            onSessionExpired: () => _checkSessionNow(),
           );
           break;
         case 'timetable':
           screen = TimetableScreen(
             sessionId: sessionId,
-            onSessionExpired: () => _monitor?.checkNow(),
+            onSessionExpired: () => _checkSessionNow(),
           );
           break;
         case 'attendance':
           screen = AttendanceScreen(
             sessionId: sessionId,
-            onSessionExpired: () => _monitor?.checkNow(),
+            onSessionExpired: () => _checkSessionNow(),
           );
           break;
         case 'results':
           screen = ResultsScreen(
             sessionId: sessionId,
-            onSessionExpired: () => _monitor?.checkNow(),
+            onSessionExpired: () => _checkSessionNow(),
           );
           break;
         case 'fee':
           screen = FeeChallanScreen(
             sessionId: sessionId,
-            onSessionExpired: () => _monitor?.checkNow(),
+            onSessionExpired: () => _checkSessionNow(),
           );
           break;
         case 'board':
@@ -609,7 +633,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           screen = WebViewScreen(
             sessionId: sessionId,
             renderWebView: !testMode,
-            onSessionExpired: () => _monitor?.checkNow(),
+            onSessionExpired: () => _checkSessionNow(),
           );
           break;
         default:
@@ -696,15 +720,32 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                 : LoginScreen(
                                     restoring: _restoring,
                                     authError: authError,
-                                    onMicrosoftSignIn: (email) => setState(
-                                      () {
-                                        oauthEmail = email;
-                                        authError = null;
-                                      },
-                                    ),
+                                    onMicrosoftSignIn: (email) {
+                                      if (OfflineMonitor
+                                          .instance.isOffline) {
+                                        setState(() {
+                                          authError = offlineLoginMessage;
+                                        });
+                                        return;
+                                      }
+                                      setState(
+                                        () {
+                                          oauthEmail = email;
+                                          authError = null;
+                                        },
+                                      );
+                                    },
                                   )
                             : SafeArea(top: true, bottom: false, child: screen),
                       ),
+                      // Offline pill above everything (login included).
+                      if (!widget.skipLogin && widget.authHooks == null)
+                        const Positioned(
+                          top: 8,
+                          left: 16,
+                          right: 16,
+                          child: OfflineBanner(),
+                        ),
                       // Background silent renewal (1x1 px, touch-transparent).
                       if (_silentEmail != null)
                         Positioned(

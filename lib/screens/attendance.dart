@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../auth/odoo_api.dart';
+import '../auth/offline.dart';
 import '../auth/portal_api.dart';
+import '../auth/portal_cache.dart';
 import '../auth/student_portal.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
@@ -26,11 +28,31 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   bool expired = false;
   String? error;
   final Set<String> open = {};
+  bool cachedOffline = false;
+  int? cachedAt;
 
   @override
   void initState() {
     super.initState();
+    OfflineMonitor.instance.offline.addListener(_onConnectivity);
     _load();
+  }
+
+  @override
+  void dispose() {
+    OfflineMonitor.instance.offline.removeListener(_onConnectivity);
+    super.dispose();
+  }
+
+  /// Auto-retry the moment the device is back online.
+  void _onConnectivity() {
+    if (!OfflineMonitor.instance.isOffline &&
+        mounted &&
+        !loading &&
+        error != null &&
+        courses == null) {
+      _load();
+    }
   }
 
   Future<String> _fetch() {
@@ -48,12 +70,36 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       loading = true;
       error = null;
       expired = false;
+      cachedOffline = false;
+      cachedAt = null;
     });
+    // Offline fast path: saved snapshot or an immediate offline error —
+    // never hang on a 20s connection timeout.
+    if (widget.debugHtml == null && OfflineMonitor.instance.isOffline) {
+      final cached = PortalCache.attendance;
+      if (!mounted) return;
+      if (cached != null) {
+        setState(() {
+          courses = cached;
+          loading = false;
+          cachedOffline = true;
+          cachedAt = PortalCache.savedAt['attendance'];
+        });
+      } else {
+        setState(() {
+          loading = false;
+          error = offlineMessage;
+        });
+      }
+      return;
+    }
     try {
       final html = await _fetch();
       if (!mounted) return;
+      final parsed = parseAttendance(html);
+      PortalCache.putAttendance(parsed);
       setState(() {
-        courses = parseAttendance(html);
+        courses = parsed;
         loading = false;
       });
     } on OdooApiException catch (e) {
@@ -106,6 +152,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               style: body(c,
                   size: 14, color: Colors.white.withValues(alpha: 0.78))),
           const SizedBox(height: 16),
+          if (cachedOffline && cachedAt != null)
+            PortalCachedNotice(savedAtMs: cachedAt!),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),

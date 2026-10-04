@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../auth/offline.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
 import 'loading.dart';
@@ -100,6 +101,43 @@ class PortalError extends StatelessWidget {
                   ],
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Slim "saved data" strip shown above cached portal content while offline:
+/// `Saved 5m ago · connect to refresh`.
+class PortalCachedNotice extends StatelessWidget {
+  final int savedAtMs;
+  const PortalCachedNotice({super.key, required this.savedAtMs});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppScope.colorsOf(context);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: c.tealInk.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.history_outlined,
+              size: 15, color: c.tealInk.withValues(alpha: 0.6)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Saved ${timeAgo(savedAtMs)} · connect to refresh',
+              style: body(c,
+                  size: 12,
+                  weight: FontWeight.w600,
+                  color: c.tealInk.withValues(alpha: 0.6)),
             ),
           ),
         ],

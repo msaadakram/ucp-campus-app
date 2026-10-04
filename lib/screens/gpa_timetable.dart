@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../auth/odoo_api.dart';
+import '../auth/offline.dart';
 import '../auth/portal_api.dart';
+import '../auth/portal_cache.dart';
 import '../auth/student_portal.dart';
 import '../data/seed.dart';
 import '../theme/palette.dart';
@@ -738,12 +740,32 @@ class _TimetableScreenState extends State<TimetableScreen> {
   late String day;
   bool grid = false;
   final Set<String> remind = {};
+  bool cachedOffline = false;
+  int? cachedAt;
 
   @override
   void initState() {
     super.initState();
     day = _todayName();
+    OfflineMonitor.instance.offline.addListener(_onConnectivity);
     _load();
+  }
+
+  @override
+  void dispose() {
+    OfflineMonitor.instance.offline.removeListener(_onConnectivity);
+    super.dispose();
+  }
+
+  /// Auto-retry the moment the device is back online.
+  void _onConnectivity() {
+    if (!OfflineMonitor.instance.isOffline &&
+        mounted &&
+        !loading &&
+        error != null &&
+        data == null) {
+      _load();
+    }
   }
 
   static String _todayName() {
@@ -774,7 +796,36 @@ class _TimetableScreenState extends State<TimetableScreen> {
       loading = true;
       error = null;
       expired = false;
+      cachedOffline = false;
+      cachedAt = null;
     });
+    // Offline fast path: saved snapshot or an immediate offline error —
+    // never hang on a 20s connection timeout.
+    if (widget.fetchHtml == null && OfflineMonitor.instance.isOffline) {
+      final tt = PortalCache.timetable;
+      final ds = PortalCache.datesheet;
+      if (!mounted) return;
+      if (tt != null && ds != null) {
+        final days = [
+          for (final d in _weekOrder)
+            if (tt.slots.any((s) => s.day == d)) d
+        ];
+        setState(() {
+          data = tt;
+          datesheet = ds;
+          loading = false;
+          cachedOffline = true;
+          cachedAt = PortalCache.savedAt['timetable'];
+          if (!days.contains(day) && days.isNotEmpty) day = days.first;
+        });
+      } else {
+        setState(() {
+          loading = false;
+          error = offlineMessage;
+        });
+      }
+      return;
+    }
     try {
       final results = await Future.wait([
         _fetch(PortalRoutes.timetable),
@@ -783,6 +834,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
       if (!mounted) return;
       final tt = parseTimetable(results[0] as String);
       final ds = parseDatesheet(results[1] as String);
+      PortalCache.putTimetable(tt, ds);
       final days = [
         for (final d in _weekOrder)
           if (tt.slots.any((s) => s.day == d)) d
@@ -863,6 +915,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         style: body(c,
                             size: 14,
                             color: Colors.white.withValues(alpha: 0.78))),
+                    if (cachedOffline && cachedAt != null)
+                      PortalCachedNotice(savedAtMs: cachedAt!),
                   ]),
               GestureDetector(
                   behavior: HitTestBehavior.opaque,
