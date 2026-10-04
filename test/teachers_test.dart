@@ -129,6 +129,64 @@ void main() {
     });
   });
 
+  group('SupabaseTeacherService + Hybrid (mocked Supabase)', () {
+    SupabaseTeacherService supabase(MockClient client) =>
+        SupabaseTeacherService(
+          url: 'https://x.supabase.co',
+          anonKey: 'anon-key-12345678901234567890',
+          client: client,
+        );
+
+    test('supabase list/detail map REST rows', () async {
+      final svc = supabase(MockClient((req) async {
+        expect(req.headers['apikey'], 'anon-key-12345678901234567890');
+        if (req.url.path.endsWith('/teachers')) {
+          return http.Response(
+            '[{"slug":"usman-aamer","name":"Usman Aamer",'
+            '"overall_rating":4.7,"review_count":50,"grading_pct":94}]',
+            200,
+          );
+        }
+        if (req.url.path.endsWith('/teacher_reviews')) {
+          return http.Response(
+            '[{"id":1,"teacher_slug":"usman-aamer","student_name":"Coco",'
+            '"comment":"Great","rating_grading":5,"rating_leniency":5,'
+            '"rating_subject":5}]',
+            200,
+          );
+        }
+        return http.Response('[]', 200);
+      }));
+      final list = await svc.fetchTeachers();
+      expect(list.first.slug, 'usman-aamer');
+      final (teacher, reviews) = await svc.fetchDetail('usman-aamer');
+      expect(teacher.name, 'Usman Aamer');
+      expect(reviews.first.comment, 'Great');
+      svc.dispose();
+    });
+
+    test('hybrid falls back to supabase when node 404s', () async {
+      final node = NodeTeacherService(
+        baseUrl: 'https://api.test',
+        sessionOf: () => 'sid-1',
+        client: MockClient((_) async => http.Response('not found', 404)),
+      );
+      final sup = supabase(MockClient((req) async {
+        if (req.url.path.endsWith('/teachers')) {
+          return http.Response(
+            '[{"slug":"usman-aamer","name":"Usman Aamer"}]',
+            200,
+          );
+        }
+        return http.Response('[]', 200);
+      }));
+      final hybrid = HybridTeacherService(primary: node, fallback: sup);
+      final list = await hybrid.fetchTeachers();
+      expect(list.first.slug, 'usman-aamer');
+      hybrid.dispose();
+    });
+  });
+
   group('TeachersScreen', () {
     testWidgets('null service shows setup notice', (tester) async {
       final colors = AppColors.of(AppPalette.skater, false);

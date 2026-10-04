@@ -144,6 +144,182 @@ class NodeTeacherService extends TeacherService {
   }
 }
 
+/// Node-first with Supabase read-fallback: list/detail try Node, then
+/// Supabase on failure (covers old deployments without /teachers routes).
+/// Writes always go to Node (Odoo-verified).
+class HybridTeacherService extends TeacherService {
+  final TeacherService primary;
+  final TeacherService fallback;
+  HybridTeacherService({required this.primary, required this.fallback});
+
+  @override
+  Stream<void> get updates => primary.updates;
+
+  @override
+  bool get supportsRealtime => primary.supportsRealtime;
+
+  @override
+  Future<void> ensureRealtime(Future<void> Function() onEvent) =>
+      primary.ensureRealtime(onEvent);
+
+  @override
+  Future<List<Teacher>> fetchTeachers(
+      {String dept = 'all', String query = ''}) async {
+    try {
+      return await primary.fetchTeachers(dept: dept, query: query);
+    } on TeacherException {
+      return fallback.fetchTeachers(dept: dept, query: query);
+    }
+  }
+
+  @override
+  Future<(Teacher, List<TeacherReview>)> fetchDetail(String slug) async {
+    try {
+      return await primary.fetchDetail(slug);
+    } on TeacherException {
+      return fallback.fetchDetail(slug);
+    }
+  }
+
+  @override
+  Future<TeacherReview> submitRating({
+    required String slug,
+    required int grading,
+    required int leniency,
+    required int subject,
+    required String comment,
+  }) =>
+      primary.submitRating(
+        slug: slug,
+        grading: grading,
+        leniency: leniency,
+        subject: subject,
+        comment: comment,
+      );
+
+  @override
+  void dispose() {
+    primary.dispose();
+    fallback.dispose();
+  }
+}
+/// Used when the Node API has no `/teachers` route yet (old deployment):
+/// list + detail work, rating submission throws with a redeploy message.
+class SupabaseTeacherService extends TeacherService {
+  final String url;
+  final String anonKey;
+  final http.Client _client;
+  final _updates = StreamController<void>.broadcast();
+
+  SupabaseTeacherService({
+    required this.url,
+    required this.anonKey,
+    http.Client? client,
+  }) : _client = client ?? http.Client();
+
+  Map<String, String> get _headers => {
+        'apikey': anonKey,
+        'Authorization': 'Bearer $anonKey',
+      };
+
+  @override
+  Stream<void> get updates => _updates.stream;
+
+  @override
+  bool get supportsRealtime => false;
+
+  @override
+  Future<void> ensureRealtime(Future<void> Function() onEvent) async {}
+
+  @override
+  Future<List<Teacher>> fetchTeachers(
+      {String dept = 'all', String query = ''}) async {
+    final params = <String, String>{
+      'select': '*',
+      'order': 'overall_rating.desc,review_count.desc',
+      'limit': '200',
+    };
+    if (dept != 'all' && dept.isNotEmpty) {
+      params['department_code'] = 'eq.$dept';
+    }
+    if (query.trim().isNotEmpty) params['name'] = 'ilike.*${query.trim()}*';
+    final uri = Uri.parse('$url/rest/v1/teachers').replace(
+      queryParameters: params,
+    );
+    final res = await _client
+        .get(uri, headers: _headers)
+        .timeout(const Duration(seconds: 20));
+    if (res.statusCode != 200) {
+      throw TeacherException('teachers unavailable (${res.statusCode})');
+    }
+    final items = jsonDecode(res.body) as List;
+    return [
+      for (final t in items.whereType<Map>())
+        Teacher.fromJson(Map<String, dynamic>.from(t))
+    ];
+  }
+
+  @override
+  Future<(Teacher, List<TeacherReview>)> fetchDetail(String slug) async {
+    final tRes = await _client
+        .get(
+          Uri.parse('$url/rest/v1/teachers').replace(queryParameters: {
+            'select': '*',
+            'slug': 'eq.$slug',
+          }),
+          headers: _headers,
+        )
+        .timeout(const Duration(seconds: 20));
+    if (tRes.statusCode != 200) {
+      throw TeacherException('teacher unavailable (${tRes.statusCode})');
+    }
+    final tItems = jsonDecode(tRes.body) as List;
+    if (tItems.isEmpty) throw TeacherException('teacher not found');
+    final teacher = Teacher.fromJson(
+        Map<String, dynamic>.from(tItems.first as Map));
+    final rRes = await _client
+        .get(
+          Uri.parse('$url/rest/v1/teacher_reviews').replace(
+            queryParameters: {
+              'select': '*',
+              'teacher_slug': 'eq.$slug',
+              'order': 'created_at.desc',
+              'limit': '200',
+            },
+          ),
+          headers: _headers,
+        )
+        .timeout(const Duration(seconds: 20));
+    if (rRes.statusCode != 200) {
+      throw TeacherException('reviews unavailable (${rRes.statusCode})');
+    }
+    final rItems = jsonDecode(rRes.body) as List;
+    final reviews = [
+      for (final r in rItems.whereType<Map>())
+        TeacherReview.fromJson(Map<String, dynamic>.from(r))
+    ];
+    return (teacher, reviews.where((r) => !r.isBlocked).toList());
+  }
+
+  @override
+  Future<TeacherReview> submitRating({
+    required String slug,
+    required int grading,
+    required int leniency,
+    required int subject,
+    required String comment,
+  }) async {
+    throw TeacherException(
+        'Rating needs the updated API — redeploy the backend with teachers routes, then retry.');
+  }
+
+  @override
+  void dispose() {
+    if (!_updates.isClosed) _updates.close();
+    _client.close();
+  }
+}
+
 /// Offline/test fallback: bundled top teachers from the parsed
 /// `teachers.json` (full 706 live in Supabase after import).
 class FakeTeacherService extends TeacherService {

@@ -12,3 +12,14 @@ const nodeApiUrl = String.fromEnvironment(
 /// True when the app should use the Node backend.
 bool get isNodeConfigured =>
     nodeApiUrl.startsWith('http') && nodeApiUrl.length > 10;
+
+/// Supabase project for teacher reviews (public read via publishable key).
+/// Writes still go through the Node API (Odoo-verified), so the secret key
+/// never ships in the app. Configure with:
+/// `--dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...`
+const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+
+/// True when direct Supabase read-fallback is available (public data only).
+bool get isSupabaseConfigured =>
+    supabaseUrl.startsWith('http') && supabaseAnonKey.length > 20;

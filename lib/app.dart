@@ -137,15 +137,38 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   }
 
   TeacherService? _teacherService() {
-    _teachers ??= ((widget.skipLogin || widget.authHooks != null)
-        ? FakeTeacherService()
-        : isNodeConfigured
-            ? NodeTeacherService(
-                baseUrl: nodeApiUrl,
-                sessionOf: () => sessionId,
-              )
-            : null);
-    return _teachers;
+    if (widget.skipLogin || widget.authHooks != null) {
+      _teachers ??= FakeTeacherService();
+      return _teachers;
+    }
+    if (isNodeConfigured && isSupabaseConfigured) {
+      _teachers ??= HybridTeacherService(
+        primary: NodeTeacherService(
+          baseUrl: nodeApiUrl,
+          sessionOf: () => sessionId,
+        ),
+        fallback: SupabaseTeacherService(
+          url: supabaseUrl,
+          anonKey: supabaseAnonKey,
+        ),
+      );
+      return _teachers;
+    }
+    if (isNodeConfigured) {
+      _teachers ??= NodeTeacherService(
+        baseUrl: nodeApiUrl,
+        sessionOf: () => sessionId,
+      );
+      return _teachers;
+    }
+    if (isSupabaseConfigured) {
+      _teachers ??= SupabaseTeacherService(
+        url: supabaseUrl,
+        anonKey: supabaseAnonKey,
+      );
+      return _teachers;
+    }
+    return null;
   }
 
   /// Brief "session refreshed" banner after a silent heal. Auto-dismissed.
