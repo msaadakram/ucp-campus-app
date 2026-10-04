@@ -17,11 +17,13 @@ import 'community/backend_config.dart';
 import 'community/community_service.dart';
 import 'community/fake_community_service.dart';
 import 'community/node_community_service.dart';
+import 'teachers/teacher_service.dart';
 import 'data/seed.dart';
 import 'screens/attendance.dart';
 import 'screens/auth_home.dart';
 import 'screens/community.dart';
 import 'screens/fee_board.dart';
+import 'screens/teachers.dart';
 import 'screens/gpa_timetable.dart';
 import 'screens/groups_chat.dart';
 import 'screens/materials_web.dart';
@@ -111,6 +113,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// null (= setup notice) in unconfigured production.
   CommunityService? _community;
 
+  /// Teacher reviews backend (Supabase `teachers` + `teacher_reviews`
+  /// via Node API). Same selection policy as community: fake in tests,
+  /// Node when configured, null (setup notice) otherwise.
+  TeacherService? _teachers;
+
   /// Foreground liveness watchdog. Never started in `skipLogin` test mode
   /// (real timers + real network would hang widget tests).
   SessionMonitor? _monitor;
@@ -127,6 +134,18 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
               )
             : null);
     return _community;
+  }
+
+  TeacherService? _teacherService() {
+    _teachers ??= ((widget.skipLogin || widget.authHooks != null)
+        ? FakeTeacherService()
+        : isNodeConfigured
+            ? NodeTeacherService(
+                baseUrl: nodeApiUrl,
+                sessionOf: () => sessionId,
+              )
+            : null);
+    return _teachers;
   }
 
   /// Brief "session refreshed" banner after a silent heal. Auto-dismissed.
@@ -520,6 +539,12 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         case 'groups':
           screen = GroupsScreen(onChat: (g) => setState(() => chat = g));
           break;
+        case 'teachers':
+          screen = TeachersScreen(
+            service: _teacherService(),
+            myEmail: sessionEmail ?? '',
+          );
+          break;
         case 'gpa':
           screen = GpaCalcScreen(
             sessionId: sessionId,
@@ -739,7 +764,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                   child: ListView(
                                     padding: const EdgeInsets.all(12),
                                     children: [
-                                      for (final it in [['home', 'Home', Icons.home_outlined], ['timetable', 'Timetable', Icons.calendar_month_outlined], ['attendance', 'Attendance', Icons.fact_check_outlined], ['material', 'Course material', Icons.book_outlined], ['gpa', 'GPA calculator', Icons.calculate_outlined], ['fee', 'Fee challan', Icons.receipt_outlined], ['results', 'Results', Icons.workspace_premium_outlined], ['community', 'Community', Icons.forum_outlined], ['groups', 'Groups & chats', Icons.group_outlined], ['web', 'Web view', Icons.language_outlined], ['profile', 'Profile & settings', Icons.person_outline]])
+                                      for (final it in [['home', 'Home', Icons.home_outlined], ['teachers', 'Teacher reviews', Icons.star_outlined], ['timetable', 'Timetable', Icons.calendar_month_outlined], ['attendance', 'Attendance', Icons.fact_check_outlined], ['material', 'Course material', Icons.book_outlined], ['gpa', 'GPA calculator', Icons.calculate_outlined], ['fee', 'Fee challan', Icons.receipt_outlined], ['results', 'Results', Icons.workspace_premium_outlined], ['community', 'Community', Icons.forum_outlined], ['groups', 'Groups & chats', Icons.group_outlined], ['web', 'Web view', Icons.language_outlined], ['profile', 'Profile & settings', Icons.person_outline]])
                                         GestureDetector(
                                           behavior: HitTestBehavior.opaque,
                                           onTap: () => go(it[0] as String),

@@ -12,6 +12,7 @@ const rateLimit = require('express-rate-limit');
 const { makeAuth } = require('./middleware/auth');
 const events = require('./events');
 const postsRoutes = require('./routes/posts');
+const teachersRoutes = require('./routes/teachers');
 const commentsRoutes = require('./routes/comments');
 const uploadRoutes = require('./routes/upload');
 const statsRoutes = require('./routes/stats');
@@ -67,6 +68,7 @@ function createApp({
   });
 
   app.use('/api', postsRoutes.routes({ config, requireUser }));
+  app.use('/api', teachersRoutes.routes({ config, requireUser }));
   app.use('/api', commentsRoutes.routes({ config, requireUser }));
   app.use('/api', uploadRoutes.routes({ config, requireUser }));
   app.use('/api', statsRoutes.routes({ config }));
