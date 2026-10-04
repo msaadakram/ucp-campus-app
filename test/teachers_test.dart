@@ -243,6 +243,14 @@ void main() {
     });
 
     testWidgets('fake service renders photo cards + dials', (tester) async {
+      // Narrow + tall viewport: SliverList builds lazily (needs height),
+      // and 320px width locks the stats-strip overflow fix.
+      tester.view.physicalSize = const Size(320 * 3, 2000 * 3);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
       final colors = AppColors.of(AppPalette.skater, false);
       final svc = FakeTeacherService();
       await tester.pumpWidget(

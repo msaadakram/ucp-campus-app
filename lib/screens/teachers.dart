@@ -203,34 +203,94 @@ class _TeachersScreenState extends State<TeachersScreen> {
     final c = AppScope.colorsOf(context);
     if (widget.service == null) return _setupNotice(c);
     if (open != null) return _detailView(c, open!);
-    return UHead(
-      height: 150,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _header(c),
-          const SizedBox(height: 14),
-          _statsStrip(c),
-          const SizedBox(height: 14),
-          _searchBar(c),
-          const SizedBox(height: 10),
-          _deptChips(c),
-          const SizedBox(height: 10),
-          _sortRow(c),
-          const SizedBox(height: 12),
-          if (loading)
-            const CommunityFeedSkeleton()
-          else if (error != null && teachers.isEmpty)
-            _errorCard(c)
-          else if (shown.isEmpty)
-            _emptyCard(c)
-          else
-            for (final t in shown) _teacherCard(context, c, t),
-          if (!loading && error == null && teachers.length > shown.length)
-            _showMoreCard(c),
-          const SizedBox(height: 96),
-        ],
-      ),
+    // Lazy sliver list: only visible cards are built, with bouncing
+    // physics for a smooth feel on 706 rows. The gradient band lives
+    // inside the first sliver (same look as UHead, scrolls together).
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics()),
+      slivers: [
+        SliverToBoxAdapter(
+          child: Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topRight,
+                end: Alignment.bottomLeft,
+                colors: [c.tealDeep, c.teal],
+              ),
+              borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.elliptical(220, 44),
+                bottomRight: Radius.elliptical(220, 44),
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _header(c),
+                const SizedBox(height: 14),
+                _statsStrip(c),
+              ],
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _searchBar(c),
+                const SizedBox(height: 10),
+                _deptChips(c),
+                const SizedBox(height: 10),
+                _sortRow(c),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        ),
+        if (loading)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 0),
+              child: CommunityFeedSkeleton(),
+            ),
+          )
+        else if (error != null && teachers.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+              child: _errorCard(c),
+            ),
+          )
+        else if (shown.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+              child: _emptyCard(c),
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+            sliver: SliverList.builder(
+              itemCount: shown.length,
+              addAutomaticKeepAlives: false,
+              addRepaintBoundaries: true,
+              itemBuilder: (ctx, i) => _teacherCard(context, c, shown[i]),
+            ),
+          ),
+        if (!loading && error == null && teachers.length > shown.length)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 2, 20, 0),
+              child: _showMoreCard(c),
+            ),
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 96)),
+      ],
     );
   }
 
@@ -328,7 +388,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
     final totalReviews =
         teachers.fold<int>(0, (a, t) => a + t.reviewCount);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(20),
@@ -336,14 +396,14 @@ class _TeachersScreenState extends State<TeachersScreen> {
       ),
       child: Row(
         children: [
-          _statItem(c, '${teachers.length}', 'teachers'),
+          Expanded(child: _statItem(c, '${teachers.length}', 'teachers')),
           _statDivider(),
-          _statItem(c, avg.toStringAsFixed(1), 'avg rating'),
+          Expanded(child: _statItem(c, avg.toStringAsFixed(1), 'avg rating')),
           _statDivider(),
-          _statItem(c, '$totalReviews', 'reviews'),
-          const Spacer(),
+          Expanded(child: _statItem(c, '$totalReviews', 'reviews')),
+          const SizedBox(width: 4),
           const Icon(Icons.auto_awesome_outlined,
-              size: 18, color: Colors.white70),
+              size: 16, color: Colors.white70),
         ],
       ),
     );
@@ -352,15 +412,20 @@ class _TeachersScreenState extends State<TeachersScreen> {
   Widget _statItem(AppColors c, String value, String label) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w800,
-                fontSize: 17)),
+                fontSize: 16)),
         Text(label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7), fontSize: 11)),
+                color: Colors.white.withValues(alpha: 0.7), fontSize: 10)),
       ],
     );
   }
@@ -369,7 +434,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
     return Container(
       width: 1,
       height: 30,
-      margin: const EdgeInsets.symmetric(horizontal: 14),
+      margin: const EdgeInsets.symmetric(horizontal: 10),
       color: Colors.white.withValues(alpha: 0.25),
     );
   }
@@ -836,139 +901,177 @@ class _TeachersScreenState extends State<TeachersScreen> {
   }
 
   Widget _detailView(AppColors c, Teacher t) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              GestureDetector(
-                onTap: () => setState(() {
-                  open = null;
-                  reviews = [];
-                }),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                      color: c.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: const [
-                        BoxShadow(
-                            color: Colors.black12,
-                            blurRadius: 10,
-                            offset: Offset(0, 4)),
-                      ]),
-                  child: const Row(children: [
-                    Icon(Icons.arrow_back, size: 17),
-                    Text(' All',
-                        style: TextStyle(fontWeight: FontWeight.w700))
-                  ]),
-                ),
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => _openRateSheet(t),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(
-                    gradient:
-                        LinearGradient(colors: [c.tealDeep, c.teal]),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                          color: c.teal.withValues(alpha: 0.45),
-                          blurRadius: 14,
-                          offset: const Offset(0, 6)),
-                    ],
-                  ),
-                  child: const Row(children: [
-                    Icon(Icons.star_outline,
-                        size: 16, color: Colors.white),
-                    Text(' Rate',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold))
-                  ]),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _detailHero(c, t),
-          const SizedBox(height: 12),
-          _dialsCard(c, t),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-                color: c.white, borderRadius: BorderRadius.circular(26),
-                boxShadow: const [
-                  BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 18,
-                      offset: Offset(0, 8)),
-                ]),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    // Lazy reviews: hero + dials stay on top, review tiles build
+    // on demand so 174-review profiles scroll at 60fps.
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics()),
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                          '${reviews.length} STUDENT REVIEWS'.toUpperCase(),
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: c.tealInk.withValues(alpha: 0.55))),
-                    ),
-                    GestureDetector(
-                      onTap: () => _openRateSheet(t),
-                      child: Text('Write one',
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: c.teal)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (detailLoading)
-                  const Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else if (detailError != null)
-                  Column(
-                    children: [
-                      Text(detailError!),
-                      TextButton(
-                        onPressed: () => _openDetail(t),
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  )
-                else if (reviews.isEmpty)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(22),
+                GestureDetector(
+                  onTap: () => setState(() {
+                    open = null;
+                    reviews = [];
+                  }),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                        color: c.cream2,
-                        borderRadius: BorderRadius.circular(18)),
-                    child: const Center(
-                        child: Text(
-                            'No reviews yet — be the first to rate.')),
-                  )
-                else
-                  for (final r in reviews) _reviewTile(c, r),
+                        color: c.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: const [
+                          BoxShadow(
+                              color: Colors.black12,
+                              blurRadius: 10,
+                              offset: Offset(0, 4)),
+                        ]),
+                    child: const Row(children: [
+                      Icon(Icons.arrow_back, size: 17),
+                      Text(' All',
+                          style: TextStyle(fontWeight: FontWeight.w700))
+                    ]),
+                  ),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => _openRateSheet(t),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      gradient:
+                          LinearGradient(colors: [c.tealDeep, c.teal]),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                            color: c.teal.withValues(alpha: 0.45),
+                            blurRadius: 14,
+                            offset: const Offset(0, 6)),
+                      ],
+                    ),
+                    child: const Row(children: [
+                      Icon(Icons.star_outline,
+                          size: 16, color: Colors.white),
+                      Text(' Rate',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold))
+                    ]),
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 96),
-        ],
-      ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: _detailHero(c, t),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: _dialsCard(c, t),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                  color: c.white, borderRadius: BorderRadius.circular(26),
+                  boxShadow: const [
+                    BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 18,
+                        offset: Offset(0, 8)),
+                  ]),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                        '${reviews.length} STUDENT REVIEWS'.toUpperCase(),
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: c.tealInk.withValues(alpha: 0.55))),
+                  ),
+                  GestureDetector(
+                    onTap: () => _openRateSheet(t),
+                    child: Text('Write one',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: c.teal)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (detailLoading)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          )
+        else if (detailError != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                    color: c.white,
+                    borderRadius: BorderRadius.circular(22)),
+                child: Column(
+                  children: [
+                    Text(detailError!),
+                    TextButton(
+                      onPressed: () => _openDetail(t),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        else if (reviews.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                    color: c.white,
+                    borderRadius: BorderRadius.circular(22)),
+                child: const Center(
+                    child:
+                        Text('No reviews yet — be the first to rate.')),
+              ),
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            sliver: SliverList.builder(
+              itemCount: reviews.length,
+              addAutomaticKeepAlives: false,
+              addRepaintBoundaries: true,
+              itemBuilder: (ctx, i) => _reviewTile(c, reviews[i]),
+            ),
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 96)),
+      ],
     );
   }
 
