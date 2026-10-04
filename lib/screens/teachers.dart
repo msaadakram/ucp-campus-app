@@ -8,7 +8,7 @@ import '../theme/palette.dart';
 import '../widgets/common.dart';
 import '../widgets/loading.dart';
 
-/// Teacher reviews page: photo grid/list, separate 3-dimension ratings,
+/// Teacher reviews page: photo cards, separate 3-dimension ratings,
 /// student comments, and a 1..5 rate flow stored in Supabase via Node API.
 ///
 /// Null [service] = backend not configured (setup notice, same pattern as
@@ -145,9 +145,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
     final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (ctx) => _RateSheet(
         teacher: t,
         onSubmit: (g, l, s, comment) async {
@@ -194,12 +192,14 @@ class _TeachersScreenState extends State<TeachersScreen> {
     if (widget.service == null) return _setupNotice(c);
     if (open != null) return _detailView(c, open!);
     return UHead(
-      height: 132,
+      height: 150,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _header(c),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
+          _statsStrip(c),
+          const SizedBox(height: 14),
           _searchBar(c),
           const SizedBox(height: 10),
           _deptChips(c),
@@ -232,7 +232,12 @@ class _TeachersScreenState extends State<TeachersScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-                color: c.white, borderRadius: BorderRadius.circular(24)),
+              color: c.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: const [
+                BoxShadow(color: Colors.black12, blurRadius: 18, offset: Offset(0, 8)),
+              ],
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -253,43 +258,160 @@ class _TeachersScreenState extends State<TeachersScreen> {
   }
 
   Widget _header(AppColors c) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Text('Teachers', style: display(c, size: 28, color: Colors.white)),
-        Text(
-          teachers.isEmpty
-              ? 'Photos, ratings & student reviews'
-              : '${teachers.length} teachers · tap a photo for reviews',
-          style: body(c, size: 14, color: Colors.white.withValues(alpha: 0.78)),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Teachers',
+                  style: display(c, size: 30, color: Colors.white)),
+              const SizedBox(height: 2),
+              Text(
+                'Photos · ratings · student reviews',
+                style: body(c,
+                    size: 13.5, color: Colors.white.withValues(alpha: 0.8)),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.verified_outlined,
+                  size: 15, color: Colors.white),
+              const SizedBox(width: 6),
+              Text(
+                teachers.isEmpty ? 'UCP' : '${teachers.length} listed',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12),
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 
+  Widget _statsStrip(AppColors c) {
+    if (teachers.isEmpty) return const SizedBox.shrink();
+    final rated =
+        teachers.where((t) => t.reviewCount > 0).toList();
+    final avg = rated.isEmpty
+        ? 0.0
+        : rated.map((t) => t.overallRating).reduce((a, b) => a + b) /
+            rated.length;
+    final totalReviews =
+        teachers.fold<int>(0, (a, t) => a + t.reviewCount);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: [
+          _statItem(c, '${teachers.length}', 'teachers'),
+          _statDivider(),
+          _statItem(c, avg.toStringAsFixed(1), 'avg rating'),
+          _statDivider(),
+          _statItem(c, '$totalReviews', 'reviews'),
+          const Spacer(),
+          const Icon(Icons.auto_awesome_outlined,
+              size: 18, color: Colors.white70),
+        ],
+      ),
+    );
+  }
+
+  Widget _statItem(AppColors c, String value, String label) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(value,
+            style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                fontSize: 17)),
+        Text(label,
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7), fontSize: 11)),
+      ],
+    );
+  }
+
+  Widget _statDivider() {
+    return Container(
+      width: 1,
+      height: 30,
+      margin: const EdgeInsets.symmetric(horizontal: 14),
+      color: Colors.white.withValues(alpha: 0.25),
+    );
+  }
+
   Widget _searchBar(AppColors c) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration:
-          BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(16)),
-      child: TextField(
-        controller: _searchCtrl,
-        onChanged: _onSearchChanged,
-        decoration: InputDecoration(
-          hintText: 'Search by name…',
-          border: InputBorder.none,
-          icon: const Icon(Icons.search, size: 20),
-          suffixIcon: query.isEmpty && _searchCtrl.text.isEmpty
-              ? null
-              : IconButton(
-                  icon: const Icon(Icons.clear, size: 18),
-                  onPressed: () {
-                    _searchCtrl.clear();
-                    query = '';
-                    _reload();
-                  },
-                ),
-        ),
+      padding: const EdgeInsets.only(left: 6, right: 6, top: 6, bottom: 6),
+      decoration: BoxDecoration(
+        color: c.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+              color: Colors.black12, blurRadius: 18, offset: Offset(0, 8)),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            alignment: Alignment.center,
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+                color: c.teal.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(14)),
+            child: Icon(Icons.search, size: 20, color: c.tealInk),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _searchCtrl,
+              onChanged: _onSearchChanged,
+              decoration: const InputDecoration(
+                hintText: 'Search by name…',
+                border: InputBorder.none,
+                isDense: true,
+              ),
+            ),
+          ),
+          if (_searchCtrl.text.isNotEmpty || query.isNotEmpty)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                _searchCtrl.clear();
+                query = '';
+                _reload();
+              },
+              child: Container(
+                alignment: Alignment.center,
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                    color: c.dustSoft, shape: BoxShape.circle),
+                child: const Icon(Icons.clear, size: 16),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -308,21 +430,38 @@ class _TeachersScreenState extends State<TeachersScreen> {
                   setState(() => dept = code);
                   _reload();
                 },
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 15, vertical: 9),
                   decoration: BoxDecoration(
-                    color: dept == code ? c.tealInk : c.dustSoft,
-                    borderRadius: BorderRadius.circular(20),
+                    gradient: dept == code
+                        ? LinearGradient(
+                            colors: [c.tealDeep, c.teal],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    color: dept == code ? null : c.white,
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: [
+                      BoxShadow(
+                        color: dept == code
+                            ? c.teal.withValues(alpha: 0.4)
+                            : Colors.black.withValues(alpha: 0.06),
+                        blurRadius: 12,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
                   ),
                   child: Text(
                     label,
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w700,
                       color: dept == code
-                          ? c.cream
-                          : c.tealInk.withValues(alpha: 0.7),
+                          ? Colors.white
+                          : c.tealInk.withValues(alpha: 0.75),
                     ),
                   ),
                 ),
@@ -337,8 +476,11 @@ class _TeachersScreenState extends State<TeachersScreen> {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-          color: c.dustSoft.withValues(alpha: 0.7),
-          borderRadius: BorderRadius.circular(30)),
+          color: c.white, borderRadius: BorderRadius.circular(30),
+          boxShadow: const [
+            BoxShadow(
+                color: Colors.black12, blurRadius: 12, offset: Offset(0, 5)),
+          ]),
       child: Row(
         children: [
           for (final s in ['Top', 'Most reviewed', 'Name'])
@@ -346,21 +488,25 @@ class _TeachersScreenState extends State<TeachersScreen> {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => setState(() => sort = s),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(vertical: 9),
                   decoration: BoxDecoration(
-                    color: sort == s ? c.white : Colors.transparent,
-                    borderRadius: BorderRadius.circular(20),
+                    gradient: sort == s
+                        ? LinearGradient(
+                            colors: [c.tealDeep, c.teal])
+                        : null,
+                    borderRadius: BorderRadius.circular(22),
                   ),
                   child: Text(
                     s,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w700,
                       color: sort == s
-                          ? c.tealInk
-                          : c.tealInk.withValues(alpha: 0.55),
+                          ? Colors.white
+                          : c.tealInk.withValues(alpha: 0.6),
                     ),
                   ),
                 ),
@@ -374,20 +520,35 @@ class _TeachersScreenState extends State<TeachersScreen> {
   Widget _errorCard(AppColors c) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration:
-          BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(24)),
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+          color: c.white, borderRadius: BorderRadius.circular(24),
+          boxShadow: const [
+            BoxShadow(
+                color: Colors.black12, blurRadius: 18, offset: Offset(0, 8)),
+          ]),
       child: Column(
         children: [
+          Container(
+            alignment: Alignment.center,
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+                color: c.clay.withValues(alpha: 0.14),
+                shape: BoxShape.circle),
+            child: Icon(Icons.wifi_off_outlined, color: c.clay),
+          ),
+          const SizedBox(height: 12),
           Text(error!, textAlign: TextAlign.center, style: body(c, size: 14)),
           const SizedBox(height: 12),
           GestureDetector(
             onTap: _reload,
             child: Container(
               padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
               decoration: BoxDecoration(
-                  color: c.teal, borderRadius: BorderRadius.circular(20)),
+                  gradient: LinearGradient(colors: [c.tealDeep, c.teal]),
+                  borderRadius: BorderRadius.circular(20)),
               child: const Text('Retry',
                   style: TextStyle(
                       color: Colors.white, fontWeight: FontWeight.bold)),
@@ -402,9 +563,24 @@ class _TeachersScreenState extends State<TeachersScreen> {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(40),
-        child: Text('No teachers found.\nTry another search or faculty.',
-            textAlign: TextAlign.center,
-            style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.5))),
+        child: Column(
+          children: [
+            Container(
+              alignment: Alignment.center,
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                  color: c.white, shape: BoxShape.circle),
+              child: Icon(Icons.person_search_outlined,
+                  size: 30, color: c.tealInk.withValues(alpha: 0.5)),
+            ),
+            const SizedBox(height: 12),
+            Text('No teachers found.\nTry another search or faculty.',
+                textAlign: TextAlign.center,
+                style:
+                    body(c, size: 14, color: c.tealInk.withValues(alpha: 0.55))),
+          ],
+        ),
       ),
     );
   }
@@ -417,31 +593,63 @@ class _TeachersScreenState extends State<TeachersScreen> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-            color: c.white, borderRadius: BorderRadius.circular(24)),
+          color: c.white,
+          borderRadius: BorderRadius.circular(26),
+          boxShadow: const [
+            BoxShadow(
+                color: Colors.black12, blurRadius: 18, offset: Offset(0, 8)),
+          ],
+        ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: SizedBox(
-                width: 72,
-                height: 72,
-                child: t.imageUrl.isEmpty
-                    ? Container(
-                        color: c.dustSoft,
-                        child: Icon(Icons.person,
-                            size: 36, color: c.tealInk.withValues(alpha: 0.4)),
-                      )
-                    : Image.network(
-                        t.imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Container(
-                          color: c.dustSoft,
-                          child: Icon(Icons.person,
-                              size: 36,
-                              color: c.tealInk.withValues(alpha: 0.4)),
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: SizedBox(
+                    width: 88,
+                    height: 88,
+                    child: t.imageUrl.isEmpty
+                        ? _avatarFallback(c, t.name, 88)
+                        : Image.network(
+                            t.imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) =>
+                                _avatarFallback(c, t.name, 88),
+                          ),
+                  ),
+                ),
+                Positioned(
+                  right: 6,
+                  bottom: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.78),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.star,
+                            size: 12, color: Colors.amber),
+                        const SizedBox(width: 3),
+                        Text(
+                          t.reviewCount == 0
+                              ? 'New'
+                              : t.overallRating.toStringAsFixed(1),
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11),
                         ),
-                      ),
-              ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -451,59 +659,136 @@ class _TeachersScreenState extends State<TeachersScreen> {
                   Text(t.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: display(c, size: 16)),
-                  Text(
-                    t.designation.isEmpty
-                        ? t.departmentName
-                        : '${t.designation} · ${_shortDept(t)}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: body(c,
-                        size: 12, color: c.tealInk.withValues(alpha: 0.6)),
-                  ),
-                  const SizedBox(height: 6),
+                      style: display(c, size: 16.5)),
+                  const SizedBox(height: 3),
                   Row(
                     children: [
-                      const Icon(Icons.star, size: 15, color: Colors.amber),
-                      const SizedBox(width: 4),
-                      Text(
-                        t.reviewCount == 0
-                            ? 'No reviews yet'
-                            : '${t.overallRating.toStringAsFixed(1)} (${t.reviewCount})',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                      const SizedBox(width: 8),
-                      if (t.reviewCount > 0)
-                        Expanded(
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 9, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: c.teal.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                           child: Text(
-                            'G ${t.gradingPct}% · L ${t.leniencyPct}% · S ${t.subjectPct}%',
+                            t.designation.isEmpty ? 'Faculty' : t.designation,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                fontSize: 11,
-                                color: c.tealInk.withValues(alpha: 0.6)),
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                color: c.tealDeep),
                           ),
                         ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 9, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: c.dustSoft.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          _shortDept(t),
+                          style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: c.tealInk.withValues(alpha: 0.7)),
+                        ),
+                      ),
                     ],
                   ),
+                  const SizedBox(height: 7),
+                  _starRow(t.overallRating, size: 14),
+                  const SizedBox(height: 5),
+                  Text(
+                    t.reviewCount == 0
+                        ? 'No reviews yet — tap to be first'
+                        : '${t.reviewCount} reviews · G ${t.gradingPct}% · L ${t.leniencyPct}% · S ${t.subjectPct}%',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: c.tealInk.withValues(alpha: 0.62)),
+                  ),
+                  if (t.reviewCount > 0) ...[
+                    const SizedBox(height: 6),
+                    _meter(c, t.gradingPct / 100, c.teal),
+                    const SizedBox(height: 4),
+                    _meter(c, t.leniencyPct / 100, c.board),
+                    const SizedBox(height: 4),
+                    _meter(c, t.subjectPct / 100, c.clay),
+                  ],
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, size: 18),
+            Container(
+              alignment: Alignment.center,
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                  color: c.dustSoft.withValues(alpha: 0.6),
+                  shape: BoxShape.circle),
+              child: const Icon(Icons.chevron_right, size: 17),
+            ),
           ],
         ),
       ),
     );
   }
 
+  Widget _avatarFallback(AppColors c, String name, double size) {
+    final colors = [c.teal, c.clay, c.board, c.tealDeep];
+    final bg = colors[name.length % colors.length];
+    return Container(
+      width: size,
+      height: size,
+      color: bg.withValues(alpha: 0.2),
+      child: Icon(Icons.person,
+          size: size * 0.45, color: c.tealInk.withValues(alpha: 0.45)),
+    );
+  }
+
+  Widget _starRow(double rating, {double size = 14}) {
+    final full = rating.floor().clamp(0, 5);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (int i = 1; i <= 5; i++)
+          Icon(
+            i <= full ? Icons.star : Icons.star_outline,
+            size: size,
+            color: Colors.amber,
+          ),
+      ],
+    );
+  }
+
+  Widget _meter(AppColors c, double value, Color color) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: LinearProgressIndicator(
+        value: value.clamp(0.0, 1.0),
+        minHeight: 5,
+        backgroundColor: c.dustSoft.withValues(alpha: 0.7),
+        valueColor: AlwaysStoppedAnimation(color),
+      ),
+    );
+  }
+
   String _shortDept(Teacher t) {
-    if (t.departmentCode.isEmpty) return t.departmentName;
+    if (t.departmentCode.isEmpty) {
+      final words = t.departmentName.replaceAll('Faculty of ', '').split(' ');
+      return words.take(2).join(' ');
+    }
     return t.departmentCode.toUpperCase();
   }
 
   Widget _detailView(AppColors c, Teacher t) {
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Column(
         children: [
@@ -514,23 +799,45 @@ class _TeachersScreenState extends State<TeachersScreen> {
                   open = null;
                   reviews = [];
                 }),
-                child: const Row(children: [
-                  Icon(Icons.arrow_back, size: 18),
-                  Text(' Teachers',
-                      style: TextStyle(fontWeight: FontWeight.w600))
-                ]),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                      color: c.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: const [
+                        BoxShadow(
+                            color: Colors.black12,
+                            blurRadius: 10,
+                            offset: Offset(0, 4)),
+                      ]),
+                  child: const Row(children: [
+                    Icon(Icons.arrow_back, size: 17),
+                    Text(' All',
+                        style: TextStyle(fontWeight: FontWeight.w700))
+                  ]),
+                ),
               ),
               const Spacer(),
               GestureDetector(
                 onTap: () => _openRateSheet(t),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 8),
+                      horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
-                      color: c.teal,
-                      borderRadius: BorderRadius.circular(20)),
+                    gradient:
+                        LinearGradient(colors: [c.tealDeep, c.teal]),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                          color: c.teal.withValues(alpha: 0.45),
+                          blurRadius: 14,
+                          offset: const Offset(0, 6)),
+                    ],
+                  ),
                   child: const Row(children: [
-                    Icon(Icons.star_outline, size: 16, color: Colors.white),
+                    Icon(Icons.star_outline,
+                        size: 16, color: Colors.white),
                     Text(' Rate',
                         style: TextStyle(
                             color: Colors.white,
@@ -541,122 +848,235 @@ class _TeachersScreenState extends State<TeachersScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  _detailHeader(c, t),
-                  const SizedBox(height: 12),
-                  _dialsCard(c, t),
-                  const SizedBox(height: 12),
+          _detailHero(c, t),
+          const SizedBox(height: 12),
+          _dialsCard(c, t),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+                color: c.white, borderRadius: BorderRadius.circular(26),
+                boxShadow: const [
+                  BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 18,
+                      offset: Offset(0, 8)),
+                ]),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                          '${reviews.length} STUDENT REVIEWS'.toUpperCase(),
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: c.tealInk.withValues(alpha: 0.55))),
+                    ),
+                    GestureDetector(
+                      onTap: () => _openRateSheet(t),
+                      child: Text('Write one',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: c.teal)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (detailLoading)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (detailError != null)
+                  Column(
+                    children: [
+                      Text(detailError!),
+                      TextButton(
+                        onPressed: () => _openDetail(t),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  )
+                else if (reviews.isEmpty)
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(22),
                     decoration: BoxDecoration(
-                        color: c.white,
-                        borderRadius: BorderRadius.circular(24)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                            '${reviews.length} STUDENT REVIEWS'
-                                .toUpperCase(),
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: c.tealInk.withValues(alpha: 0.55))),
-                        const SizedBox(height: 8),
-                        if (detailLoading)
-                          const Padding(
-                            padding: EdgeInsets.all(24),
-                            child: Center(child: CircularProgressIndicator()),
-                          )
-                        else if (detailError != null)
-                          Column(
-                            children: [
-                              Text(detailError!),
-                              TextButton(
-                                onPressed: () => _openDetail(t),
-                                child: const Text('Retry'),
-                              ),
-                            ],
-                          )
-                        else if (reviews.isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.all(24),
-                            child: Center(
-                                child: Text(
-                                    'No reviews yet — be the first to rate.')),
-                          )
-                        else
-                          for (final r in reviews) _reviewTile(c, r),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 96),
-                ],
-              ),
+                        color: c.cream2,
+                        borderRadius: BorderRadius.circular(18)),
+                    child: const Center(
+                        child: Text(
+                            'No reviews yet — be the first to rate.')),
+                  )
+                else
+                  for (final r in reviews) _reviewTile(c, r),
+              ],
             ),
           ),
+          const SizedBox(height: 96),
         ],
       ),
     );
   }
 
-  Widget _detailHeader(AppColors c, Teacher t) {
+  Widget _detailHero(AppColors c, Teacher t) {
     return Container(
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-          color: c.white, borderRadius: BorderRadius.circular(24)),
-      child: Row(
+          color: c.white, borderRadius: BorderRadius.circular(28),
+          boxShadow: const [
+            BoxShadow(
+                color: Colors.black12,
+                blurRadius: 20,
+                offset: Offset(0, 10)),
+          ]),
+      child: Column(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: SizedBox(
-              width: 88,
-              height: 88,
-              child: t.imageUrl.isEmpty
-                  ? Container(
-                      color: c.dustSoft,
-                      child: Icon(Icons.person,
-                          size: 44, color: c.tealInk.withValues(alpha: 0.4)),
-                    )
-                  : Image.network(
-                      t.imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => Container(
-                        color: c.dustSoft,
-                        child: Icon(Icons.person,
-                            size: 44,
-                            color: c.tealInk.withValues(alpha: 0.4)),
+          Stack(
+            children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(28)),
+                child: SizedBox(
+                  height: 130,
+                  width: double.infinity,
+                  child: t.imageUrl.isEmpty
+                      ? Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(colors: [
+                              c.tealDeep,
+                              c.teal.withValues(alpha: 0.7)
+                            ]),
+                          ),
+                        )
+                      : Image.network(
+                          t.imageUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(colors: [
+                                c.tealDeep,
+                                c.teal.withValues(alpha: 0.7)
+                              ]),
+                            ),
+                          ),
+                        ),
+                ),
+              ),
+              Container(
+                height: 130,
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(28)),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.45),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 14,
+                bottom: 12,
+                right: 14,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(t.departmentName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 11)),
+                          Text(t.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: display(c,
+                                  size: 20, color: Colors.white)),
+                        ],
                       ),
                     ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(t.name, style: display(c, size: 19)),
-                Text(
-                  t.designation.isEmpty
-                      ? t.departmentName
-                      : '${t.designation}\n${t.departmentName}',
-                  style: body(c,
-                      size: 12, color: c.tealInk.withValues(alpha: 0.6)),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(Icons.star, size: 17, color: Colors.amber),
-                    const SizedBox(width: 4),
-                    Text(
-                      t.reviewCount == 0
-                          ? 'No reviews yet'
-                          : '${t.overallRating.toStringAsFixed(1)} · ${t.reviewCount} reviews',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.star,
+                              size: 17, color: Colors.amber),
+                          const SizedBox(width: 4),
+                          Text(
+                            t.reviewCount == 0
+                                ? 'New'
+                                : t.overallRating.toStringAsFixed(1),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800, fontSize: 16),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
+                ),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: SizedBox(
+                    width: 58,
+                    height: 58,
+                    child: t.imageUrl.isEmpty
+                        ? _avatarFallback(c, t.name, 58)
+                        : Image.network(
+                            t.imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) =>
+                                _avatarFallback(c, t.name, 58),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        t.designation.isEmpty
+                            ? _shortDept(t)
+                            : '${t.designation} · ${_shortDept(t)}',
+                        style: body(c,
+                            size: 12,
+                            color: c.tealInk.withValues(alpha: 0.65)),
+                      ),
+                      const SizedBox(height: 4),
+                      _starRow(t.overallRating, size: 16),
+                      const SizedBox(height: 2),
+                      Text(
+                        t.reviewCount == 0
+                            ? 'No reviews yet'
+                            : '${t.reviewCount} student reviews',
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            color: c.tealInk.withValues(alpha: 0.6)),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -667,23 +1087,65 @@ class _TeachersScreenState extends State<TeachersScreen> {
   }
 
   Widget _dialsCard(AppColors c, Teacher t) {
-    if (t.reviewCount == 0) return const SizedBox.shrink();
+    if (t.reviewCount == 0) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+            gradient: LinearGradient(
+                colors: [c.tealDeep, c.teal],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                  color: c.teal.withValues(alpha: 0.4),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8)),
+            ]),
+        child: const Row(
+          children: [
+            Icon(Icons.auto_awesome_outlined, color: Colors.white),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text('Fresh profile — your rating will set the tone.',
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      );
+    }
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-          color: c.white, borderRadius: BorderRadius.circular(24)),
+          color: c.white, borderRadius: BorderRadius.circular(26),
+          boxShadow: const [
+            BoxShadow(
+                color: Colors.black12,
+                blurRadius: 18,
+                offset: Offset(0, 8)),
+          ]),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('HOW STUDENTS RATE',
-              style: TextStyle(
-                  fontSize: 12, color: c.tealInk.withValues(alpha: 0.55))),
-          const SizedBox(height: 12),
           Row(
             children: [
-              _dial(c, 'Grading', t.gradingPct, t.avgGrading),
-              _dial(c, 'Leniency', t.leniencyPct, t.avgLeniency),
-              _dial(c, 'Subject', t.subjectPct, t.avgSubject),
+              Text('HOW STUDENTS RATE',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: c.tealInk.withValues(alpha: 0.55))),
+              const Spacer(),
+              const Icon(Icons.insights_outlined, size: 16),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _dial(c, 'Grading', t.gradingPct, t.avgGrading, c.teal),
+              _dial(c, 'Leniency', t.leniencyPct, t.avgLeniency, c.board),
+              _dial(c, 'Subject', t.subjectPct, t.avgSubject, c.clay),
             ],
           ),
         ],
@@ -691,85 +1153,119 @@ class _TeachersScreenState extends State<TeachersScreen> {
     );
   }
 
-  Widget _dial(AppColors c, String label, int pct, double avg) {
+  Widget _dial(
+      AppColors c, String label, int pct, double avg, Color color) {
     return Expanded(
-      child: Column(
-        children: [
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
-                width: 64,
-                height: 64,
-                child: CircularProgressIndicator(
-                  value: (pct / 100).clamp(0.0, 1.0),
-                  strokeWidth: 7,
-                  backgroundColor: c.dustSoft,
-                  valueColor: AlwaysStoppedAnimation(c.teal),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+        decoration: BoxDecoration(
+            color: c.cream2, borderRadius: BorderRadius.circular(18)),
+        child: Column(
+          children: [
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 66,
+                  height: 66,
+                  child: CircularProgressIndicator(
+                    value: (pct / 100).clamp(0.0, 1.0),
+                    strokeWidth: 8,
+                    strokeCap: StrokeCap.round,
+                    backgroundColor: c.dustSoft.withValues(alpha: 0.8),
+                    valueColor: AlwaysStoppedAnimation(color),
+                  ),
                 ),
-              ),
-              Text('$pct%',
-                  style:
-                      const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 11, color: c.tealInk.withValues(alpha: 0.65))),
-          Text(avg.toStringAsFixed(1),
-              style: const TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.bold)),
-        ],
+                Text('$pct%',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 13)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: c.tealInk.withValues(alpha: 0.65))),
+            Text('${avg.toStringAsFixed(1)} / 5',
+                style: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w800)),
+          ],
+        ),
       ),
     );
   }
 
   Widget _reviewTile(AppColors c, TeacherReview r) {
+    final avatarColors = [c.teal, c.clay, c.board, c.tealDeep];
+    final avatarBg = avatarColors[r.studentName.length % avatarColors.length];
     return Container(
-      margin: const EdgeInsets.only(top: 12),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-          color: c.cream2, borderRadius: BorderRadius.circular(16)),
+          color: c.cream2, borderRadius: BorderRadius.circular(20)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               CircleAvatar(
-                radius: 13,
+                radius: 15,
+                backgroundColor: avatarBg,
                 child: Text(
                   r.studentName.isEmpty
                       ? '?'
                       : r.studentName[0].toUpperCase(),
-                  style: const TextStyle(fontSize: 11),
+                  style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(r.studentName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 13)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(r.studentName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 13)),
+                    _starRow(r.average, size: 11),
+                  ],
+                ),
               ),
-              const Icon(Icons.star, size: 14, color: Colors.amber),
-              Text(' ${r.average.toStringAsFixed(1)}',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 12)),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.star, size: 13, color: Colors.amber),
+                    Text(' ${r.average.toStringAsFixed(1)}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 12)),
+                  ],
+                ),
+              ),
             ],
           ),
           if (r.comment.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(r.comment, style: const TextStyle(fontSize: 14)),
+            const SizedBox(height: 8),
+            Text(r.comment, style: const TextStyle(fontSize: 14, height: 1.35)),
           ],
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 6,
             children: [
-              _miniStat('G ${r.ratingGrading}'),
-              _miniStat('L ${r.ratingLeniency}'),
-              _miniStat('S ${r.ratingSubject}'),
+              _miniStat(c, 'Grading ${r.ratingGrading}'),
+              _miniStat(c, 'Leniency ${r.ratingLeniency}'),
+              _miniStat(c, 'Subject ${r.ratingSubject}'),
             ],
           ),
         ],
@@ -777,13 +1273,15 @@ class _TeachersScreenState extends State<TeachersScreen> {
     );
   }
 
-  Widget _miniStat(String label) {
+  Widget _miniStat(AppColors c, String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
       decoration: BoxDecoration(
-          color: Colors.white, borderRadius: BorderRadius.circular(12)),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: c.dustSoft)),
       child: Text(label,
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
     );
   }
 }
@@ -797,6 +1295,21 @@ class _RateSheet extends StatefulWidget {
   State<_RateSheet> createState() => _RateSheetState();
 }
 
+String _rateWord(int v) {
+  switch (v) {
+    case 5:
+      return 'Excellent';
+    case 4:
+      return 'Good';
+    case 3:
+      return 'Average';
+    case 2:
+      return 'Poor';
+    default:
+      return 'Very poor';
+  }
+}
+
 class _RateSheetState extends State<_RateSheet> {
   int grading = 5;
   int leniency = 5;
@@ -807,7 +1320,7 @@ class _RateSheetState extends State<_RateSheet> {
   @override
   void initState() {
     super.initState();
-    _commentCtrl = TextEditingController();
+    _commentCtrl = TextEditingController()..addListener(() => setState(() {}));
   }
 
   @override
@@ -820,16 +1333,16 @@ class _RateSheetState extends State<_RateSheet> {
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
     return Padding(
-      padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.88),
+            maxHeight: MediaQuery.of(context).size.height * 0.9),
         padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
         decoration: BoxDecoration(
           color: c.cream2,
           borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(28)),
+              const BorderRadius.vertical(top: Radius.circular(30)),
         ),
         child: SingleChildScrollView(
           child: Column(
@@ -843,31 +1356,67 @@ class _RateSheetState extends State<_RateSheet> {
                         color: c.dustSoft,
                         borderRadius: BorderRadius.circular(4))),
               ),
-              const SizedBox(height: 10),
-              Text('Rate ${widget.teacher.name}',
-                  style: display(c, size: 18)),
-              Text('1 = poor · 5 = excellent',
-                  style: body(c,
-                      size: 12, color: c.tealInk.withValues(alpha: 0.6))),
               const SizedBox(height: 12),
-              _starsRow(c, 'Grading fairness', grading,
+              Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: widget.teacher.imageUrl.isEmpty
+                          ? Container(
+                              color: c.dustSoft,
+                              child: const Icon(Icons.person))
+                          : Image.network(
+                              widget.teacher.imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => Container(
+                                  color: c.dustSoft,
+                                  child: const Icon(Icons.person)),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Rate ${widget.teacher.name}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: display(c, size: 17)),
+                        Text('Anonymous · 1 poor · 5 excellent',
+                            style: body(c,
+                                size: 12,
+                                color:
+                                    c.tealInk.withValues(alpha: 0.6))),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _starsCard(
+                  c, 'Grading fairness', 'Fair marking & feedback', grading,
                   (v) => setState(() => grading = v)),
-              _starsRow(c, 'Leniency', leniency,
+              _starsCard(c, 'Leniency', 'Flexibility & support', leniency,
                   (v) => setState(() => leniency = v)),
-              _starsRow(c, 'Subject knowledge', subject,
-                  (v) => setState(() => subject = v)),
-              const SizedBox(height: 12),
+              _starsCard(c, 'Subject knowledge', 'Concepts & clarity',
+                  subject, (v) => setState(() => subject = v)),
+              const SizedBox(height: 6),
               TextField(
                 controller: _commentCtrl,
                 maxLines: 3,
                 maxLength: 500,
                 enabled: !_busy,
                 decoration: InputDecoration(
-                  hintText: 'Write a short anonymous review (optional)…',
+                  hintText:
+                      'Write a short anonymous review (optional)…',
                   filled: true,
                   fillColor: c.white,
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(18),
                       borderSide: BorderSide.none),
                 ),
               ),
@@ -894,10 +1443,18 @@ class _RateSheetState extends State<_RateSheet> {
                   child: Container(
                     width: double.infinity,
                     alignment: Alignment.center,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 15),
                     decoration: BoxDecoration(
-                        color: c.teal,
-                        borderRadius: BorderRadius.circular(20)),
+                      gradient: LinearGradient(
+                          colors: [c.tealDeep, c.teal]),
+                      borderRadius: BorderRadius.circular(22),
+                      boxShadow: [
+                        BoxShadow(
+                            color: c.teal.withValues(alpha: 0.4),
+                            blurRadius: 14,
+                            offset: const Offset(0, 6)),
+                      ],
+                    ),
                     child: _busy
                         ? const SizedBox(
                             width: 20,
@@ -907,8 +1464,9 @@ class _RateSheetState extends State<_RateSheet> {
                                 valueColor: AlwaysStoppedAnimation(
                                     Colors.white)),
                           )
-                        : const Text('Submit rating',
-                            style: TextStyle(
+                        : Text(
+                            'Submit · ${((grading + leniency + subject) / 3).toStringAsFixed(1)} average',
+                            style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold)),
                   ),
@@ -921,26 +1479,66 @@ class _RateSheetState extends State<_RateSheet> {
     );
   }
 
-  Widget _starsRow(
-      AppColors c, String label, int value, ValueChanged<int> onPick) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
+  Widget _starsCard(AppColors c, String label, String hint, int value,
+      ValueChanged<int> onPick) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+          color: c.white, borderRadius: BorderRadius.circular(20)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: Text(label, style: body(c, size: 14))),
-          for (int i = 1; i <= 5; i++)
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => onPick(i),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: Icon(
-                  i <= value ? Icons.star : Icons.star_outline,
-                  size: 28,
-                  color: Colors.amber,
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 14)),
+                    Text(hint,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: c.tealInk.withValues(alpha: 0.55))),
+                  ],
                 ),
               ),
-            ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                    color: c.teal.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12)),
+                child: Text(_rateWord(value),
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: c.tealDeep)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              for (int i = 1; i <= 5; i++)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => onPick(i),
+                  child: AnimatedScale(
+                    scale: i == value ? 1.18 : 1.0,
+                    duration: const Duration(milliseconds: 150),
+                    child: Icon(
+                      i <= value ? Icons.star : Icons.star_outline,
+                      size: 34,
+                      color: Colors.amber,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
     );
