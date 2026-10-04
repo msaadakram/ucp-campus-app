@@ -271,7 +271,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text(' Share').first);
+      await tester.tap(find.text('Share').first);
       await tester.pumpAndSettle();
       expect(find.text('Copied to clipboard'), findsOneWidget);
       await tester.pump(const Duration(seconds: 3)); // let snackbar dismiss

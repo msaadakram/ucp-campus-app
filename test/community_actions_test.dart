@@ -15,6 +15,38 @@ Widget wrap(Widget child) {
 }
 
 void main() {
+  testWidgets('action row fits narrow screens with even buttons',
+      (tester) async {
+    final svc = FakeCommunityService();
+    await tester.pumpWidget(wrap(
+        CommunityScreen(service: svc, myEmail: 't@ucp.edu.pk')));
+    await tester.pumpAndSettle();
+    // Narrow phone width: any RenderFlex overflow fails the test.
+    tester.view.physicalSize = const Size(320 * 3, 800 * 3);
+    tester.view.devicePixelRatio = 3.0;
+    await tester.pumpAndSettle();
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    expect(find.byKey(const ValueKey('post-comment-p1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('post-share-p1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('post-save-p1')), findsOneWidget);
+    // Comment pill and share pill share one uniform height with the
+    // 36px save circle.
+    final saveSize =
+        tester.getSize(find.byKey(const ValueKey('post-save-p1')));
+    expect(saveSize.height, moreOrLessEquals(36, epsilon: 0.5));
+    final commentSize =
+        tester.getSize(find.byKey(const ValueKey('post-comment-p1')));
+    final shareSize =
+        tester.getSize(find.byKey(const ValueKey('post-share-p1')));
+    expect(commentSize.height, moreOrLessEquals(36, epsilon: 2));
+    expect(shareSize.height, moreOrLessEquals(36, epsilon: 2));
+    expect(find.text('Share'), findsWidgets);
+    svc.dispose();
+  });
+
   testWidgets('comment button in feed opens the thread', (tester) async {
     final svc = FakeCommunityService();
     await tester.pumpWidget(

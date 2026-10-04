@@ -670,6 +670,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
           ),
           const SizedBox(height: 12),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               _likeButton(
                 c,
@@ -678,7 +679,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 onTap: () => _votePost(p, 1),
               ),
               const SizedBox(width: 8),
-              Flexible(
+              Expanded(
                 child: GestureDetector(
                   key: ValueKey('post-comment-${p.id}'),
                   behavior: HitTestBehavior.opaque,
@@ -689,19 +690,24 @@ class _CommunityScreenState extends State<CommunityScreen> {
                       decoration: BoxDecoration(
                           color: c.dustSoft.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(20)),
-                      child: Row(children: [
-                        const Icon(Icons.chat_bubble_outline, size: 16),
-                        Flexible(
-                            child: Text(
-                                ' ${countComments(p.comments)}',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold),
-                                overflow: TextOverflow.ellipsis))
-                      ])),
+                      child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.chat_bubble_outline, size: 16),
+                            const SizedBox(width: 4),
+                            Flexible(
+                                child: Text(
+                                    '${countComments(p.comments)}',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13),
+                                    overflow: TextOverflow.ellipsis))
+                          ])),
                 ),
               ),
               const SizedBox(width: 8),
-              Flexible(
+              Expanded(
                 child: GestureDetector(
                   key: ValueKey('post-share-${p.id}'),
                   behavior: HitTestBehavior.opaque,
@@ -712,17 +718,22 @@ class _CommunityScreenState extends State<CommunityScreen> {
                       decoration: BoxDecoration(
                           color: c.dustSoft.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(20)),
-                      child: const Row(children: [
-                        Icon(Icons.share_outlined, size: 15),
-                        Flexible(
-                            child: Text(' Share',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 13),
-                                overflow: TextOverflow.ellipsis))
-                      ])),
+                      child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.share_outlined, size: 15),
+                            SizedBox(width: 4),
+                            Flexible(
+                                child: Text('Share',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13),
+                                    overflow: TextOverflow.ellipsis))
+                          ])),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               GestureDetector(
                   key: ValueKey('post-save-${p.id}'),
                   behavior: HitTestBehavior.opaque,
@@ -764,7 +775,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
       onTap: onTap,
       child: Container(
         padding: EdgeInsets.symmetric(
-            horizontal: small ? 10 : 12, vertical: small ? 5 : 6),
+            horizontal: small ? 10 : 12, vertical: small ? 5 : 8),
         decoration: BoxDecoration(
           color: liked
               ? c.clay.withValues(alpha: 0.15)
