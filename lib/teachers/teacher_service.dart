@@ -56,14 +56,22 @@ class NodeTeacherService extends TeacherService {
   }
 
   Never _throwFor(http.Response res) {
-    String message = 'request failed (${res.statusCode})';
+    String? serverError;
     try {
       final body = jsonDecode(res.body);
       if (body is Map && body['error'] is String) {
-        message = body['error'] as String;
+        serverError = body['error'] as String;
       }
-    } catch (_) {}
-    throw TeacherException(message);
+    } catch (_) {
+      // Non-JSON body (e.g. Vercel/Next.js HTML 404 page) means the
+      // teachers routes are not deployed on this backend.
+    }
+    if (serverError != null) throw TeacherException(serverError);
+    if (res.statusCode == 404) {
+      throw TeacherException(
+          'teachers API not found (404) — redeploy the backend with teachers routes');
+    }
+    throw TeacherException('request failed (${res.statusCode})');
   }
 
   @override
@@ -167,7 +175,7 @@ class HybridTeacherService extends TeacherService {
       {String dept = 'all', String query = ''}) async {
     try {
       return await primary.fetchTeachers(dept: dept, query: query);
-    } on TeacherException {
+    } on Exception {
       return fallback.fetchTeachers(dept: dept, query: query);
     }
   }
@@ -176,7 +184,7 @@ class HybridTeacherService extends TeacherService {
   Future<(Teacher, List<TeacherReview>)> fetchDetail(String slug) async {
     try {
       return await primary.fetchDetail(slug);
-    } on TeacherException {
+    } on Exception {
       return fallback.fetchDetail(slug);
     }
   }

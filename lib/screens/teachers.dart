@@ -132,11 +132,14 @@ class _TeachersScreenState extends State<TeachersScreen> {
         reviews = revs.where((r) => !r.isBlocked).toList();
         detailLoading = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
+      final hint = e is TeacherException && e.message.contains('404')
+          ? 'Backend has no teachers routes — redeploy the API, or run with SUPABASE_URL + SUPABASE_ANON_KEY for direct read.'
+          : 'Check connection and retry.';
       setState(() {
         detailLoading = false;
-        detailError = 'Could not load reviews. Retry.';
+        detailError = 'Could not load reviews. $hint';
       });
     }
   }
@@ -160,11 +163,15 @@ class _TeachersScreenState extends State<TeachersScreen> {
             if (ctx.mounted) Navigator.of(ctx).pop(true);
           } catch (e) {
             if (ctx.mounted) {
+              final msg = e is TeacherException ? e.message : '';
+              final text = msg.contains('404') || msg.contains('redeploy')
+                  ? 'Rating needs the updated API — redeploy the backend with teachers routes, then retry.'
+                  : (msg.isEmpty
+                      ? 'Could not save rating. Try again.'
+                      : msg);
               ScaffoldMessenger.of(ctx).showSnackBar(
                 SnackBar(
-                  content: Text(e is TeacherException
-                      ? e.message
-                      : 'Could not save rating. Try again.'),
+                  content: Text(text),
                   behavior: SnackBarBehavior.floating,
                 ),
               );

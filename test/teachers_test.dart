@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -180,6 +182,42 @@ void main() {
         }
         return http.Response('[]', 200);
       }));
+      final hybrid = HybridTeacherService(primary: node, fallback: sup);
+      final list = await hybrid.fetchTeachers();
+      expect(list.first.slug, 'usman-aamer');
+      hybrid.dispose();
+    });
+
+    test('node HTML 404 yields redeploy message', () async {
+      final svc = NodeTeacherService(
+        baseUrl: 'https://api.test',
+        sessionOf: () => 'sid-1',
+        client: MockClient(
+            (_) async => http.Response('<html>404 page</html>', 404)),
+      );
+      await expectLater(
+        svc.fetchDetail('usman-aamer'),
+        throwsA(isA<TeacherException>().having(
+          (e) => e.message,
+          'message',
+          contains('redeploy'),
+        )),
+      );
+      svc.dispose();
+    });
+
+    test('hybrid falls back on timeout too, not just TeacherException',
+        () async {
+      final node = NodeTeacherService(
+        baseUrl: 'https://api.test',
+        sessionOf: () => 'sid-1',
+        client: MockClient(
+            (_) async => throw TimeoutException('timed out')),
+      );
+      final sup = supabase(MockClient((_) async => http.Response(
+            '[{"slug":"usman-aamer","name":"Usman Aamer"}]',
+            200,
+          )));
       final hybrid = HybridTeacherService(primary: node, fallback: sup);
       final list = await hybrid.fetchTeachers();
       expect(list.first.slug, 'usman-aamer');
