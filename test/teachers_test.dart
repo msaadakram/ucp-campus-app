@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:ucp/teachers/teacher_models.dart';
 import 'package:ucp/teachers/teacher_service.dart';
+import 'package:ucp/community/backend_config.dart';
 import 'package:ucp/screens/teachers.dart';
 import 'package:ucp/theme/palette.dart';
 import 'package:ucp/widgets/common.dart';
@@ -222,6 +223,16 @@ void main() {
       final list = await hybrid.fetchTeachers();
       expect(list.first.slug, 'usman-aamer');
       hybrid.dispose();
+    });
+  });
+
+  group('Backend fallback defaults', () {
+    test('supabase read fallback works without dart-defines', () {
+      // Publishable key + URL are public (RLS governs access), so they
+      // ship as defaults: every build reads teachers even when the
+      // Node deploy has no /teachers routes yet.
+      expect(supabaseUrl.startsWith('http'), isTrue);
+      expect(isSupabaseConfigured, isTrue);
     });
   });
 

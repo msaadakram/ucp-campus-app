@@ -15,10 +15,18 @@ bool get isNodeConfigured =>
 
 /// Supabase project for teacher reviews (public read via publishable key).
 /// Writes still go through the Node API (Odoo-verified), so the secret key
-/// never ships in the app. Configure with:
+/// never ships in the app. Override per-build with:
 /// `--dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...`
-const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
-const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+/// Defaults are the public project + publishable key (safe to ship: RLS
+/// governs access, same as any Supabase client app).
+const supabaseUrl = String.fromEnvironment(
+  'SUPABASE_URL',
+  defaultValue: 'https://rggrodedmioijwgfkljt.supabase.co',
+);
+const supabaseAnonKey = String.fromEnvironment(
+  'SUPABASE_ANON_KEY',
+  defaultValue: 'sb_publishable_iHAHYAZ8SxZzqgZXnjhk3g_A6th26K_',
+);
 
 /// True when direct Supabase read-fallback is available (public data only).
 bool get isSupabaseConfigured =>

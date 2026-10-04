@@ -81,11 +81,15 @@ class _TeachersScreenState extends State<TeachersScreen> {
         teachers = fresh;
         loading = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
+      final detail = e is TeacherException && e.message.isNotEmpty
+          ? ' (${e.message})'
+          : '';
       setState(() {
         loading = false;
-        error = 'Could not load teachers. Check connection and retry.';
+        error =
+            'Could not load teachers. Check connection and retry.$detail';
       });
     }
   }
