@@ -86,7 +86,8 @@ class NodeTeacherService extends TeacherService {
   @override
   Future<List<Teacher>> fetchTeachers(
       {String dept = 'all', String query = ''}) async {
-    final params = <String, String>{'limit': '200'};
+    // 706 teachers total — one page of 1000 covers all (backend max 1000).
+    final params = <String, String>{'limit': '1000'};
     if (dept != 'all' && dept.isNotEmpty) params['dept'] = dept;
     if (query.trim().isNotEmpty) params['q'] = query.trim();
     final uri =
@@ -245,7 +246,7 @@ class SupabaseTeacherService extends TeacherService {
     final params = <String, String>{
       'select': '*',
       'order': 'overall_rating.desc,review_count.desc',
-      'limit': '200',
+      'limit': '1000',
     };
     if (dept != 'all' && dept.isNotEmpty) {
       params['department_code'] = 'eq.$dept';

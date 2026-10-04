@@ -108,12 +108,12 @@ function routes({ config, requireUser }) {
   const router = express.Router();
   const db = () => getSupabase(config);
 
-  /* GET /teachers?dept=foit&q=usman&limit=50 — newest/highest first. */
+  /* GET /teachers?dept=foit&q=usman&limit=1000 — highest rated first. */
   router.get('/teachers', async (req, res) => {
     try {
       const limit = Math.min(
-        Math.max(parseInt(req.query.limit || '50', 10) || 50, 1),
-        200,
+        Math.max(parseInt(req.query.limit || '1000', 10) || 1000, 1),
+        1000,
       );
       const dept =
         typeof req.query.dept === 'string' ? req.query.dept.trim() : '';

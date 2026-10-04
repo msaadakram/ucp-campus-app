@@ -29,6 +29,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
   String dept = 'all';
   String query = '';
   String sort = 'Top';
+  int visibleCount = 60;
   Teacher? open;
   List<TeacherReview> reviews = [];
   bool detailLoading = false;
@@ -93,6 +94,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 450), () {
       query = v;
+      visibleCount = 60;
       _reload();
     });
   }
@@ -110,6 +112,9 @@ class _TeachersScreenState extends State<TeachersScreen> {
         return b.reviewCount.compareTo(a.reviewCount);
       });
     }
+    // Progressive render: stats always use the full list, cards render
+    // in pages of 60 so 706 teachers stay smooth.
+    if (list.length > visibleCount) return list.sublist(0, visibleCount);
     return list;
   }
 
@@ -221,6 +226,8 @@ class _TeachersScreenState extends State<TeachersScreen> {
             _emptyCard(c)
           else
             for (final t in shown) _teacherCard(context, c, t),
+          if (!loading && error == null && teachers.length > shown.length)
+            _showMoreCard(c),
           const SizedBox(height: 96),
         ],
       ),
@@ -434,7 +441,10 @@ class _TeachersScreenState extends State<TeachersScreen> {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () {
-                  setState(() => dept = code);
+                  setState(() {
+                    dept = code;
+                    visibleCount = 60;
+                  });
                   _reload();
                 },
                 child: AnimatedContainer(
@@ -494,7 +504,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
             Expanded(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => sort = s),
+                onTap: () => setState(() { sort = s; visibleCount = 60; }),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(vertical: 9),
@@ -562,6 +572,37 @@ class _TeachersScreenState extends State<TeachersScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _showMoreCard(AppColors c) {
+    final remaining = teachers.length - shown.length;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() {
+        visibleCount += 60;
+        if (visibleCount > teachers.length) {
+          visibleCount = teachers.length;
+        }
+      }),
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(top: 2),
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        decoration: BoxDecoration(
+          color: c.white,
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: const [
+            BoxShadow(
+                color: Colors.black12, blurRadius: 14, offset: Offset(0, 6)),
+          ],
+        ),
+        child: Text(
+          'Show more · $remaining remaining of ${teachers.length}',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontWeight: FontWeight.w700, color: c.tealDeep),
+        ),
       ),
     );
   }
