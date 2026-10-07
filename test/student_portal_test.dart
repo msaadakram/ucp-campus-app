@@ -345,6 +345,41 @@ void main() {
       expect(week.map((e) => e.name).toList(), ['Alpha', 'Beta']);
       expect(coursesThisWeek([a], []), isEmpty);
     });
+
+    test('formatDay and todaySlots feed the home timeline', () {
+      expect(formatDay(DateTime(2026, 9, 28)), 'Mon, Sep 28');
+      expect(formatDay(DateTime(2026, 10, 7)), 'Wed, Oct 7');
+      const slots = [
+        TimetableSlot(
+            day: 'Monday',
+            start: '10:00',
+            end: '10:55',
+            subject: 'Late',
+            teacher: '',
+            section: '',
+            room: ''),
+        TimetableSlot(
+            day: 'Monday',
+            start: '08:00',
+            end: '08:55',
+            subject: 'Early',
+            teacher: '',
+            section: '',
+            room: ''),
+        TimetableSlot(
+            day: 'Tuesday',
+            start: '09:00',
+            end: '09:55',
+            subject: 'Other day',
+            teacher: '',
+            section: '',
+            room: ''),
+      ];
+      final monday = todaySlots(slots, DateTime(2026, 9, 28, 12, 0));
+      expect(monday.map((s) => s.subject).toList(), ['Early', 'Late']);
+      expect(todaySlots(slots, DateTime(2026, 10, 3)), isEmpty);
+      expect(todaySlots([], DateTime(2026, 9, 28)), isEmpty);
+    });
   });
 
   group('PLO table (real markup)', () {

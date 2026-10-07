@@ -269,11 +269,12 @@ class HomeScreen extends StatefulWidget {  final ValueChanged<Course> onOpen;
   final VoidCallback onGpa;
   final ValueChanged<Course> onBoard;
   final VoidCallback? onAttend;
+  final VoidCallback? onTimetable;
   /// Live portal data. Null while loading/failed → bundled sample content.
   final DashboardData? dashboard;
   /// Real weekly slots, used to enrich portal courses with rooms/times.
   final List<TimetableSlot> timetableSlots;
-  const HomeScreen({super.key, required this.onOpen, required this.toProfile, required this.onMenu, required this.onGpa, required this.onBoard, this.dashboard, this.onAttend, this.timetableSlots = const []});
+  const HomeScreen({super.key, required this.onOpen, required this.toProfile, required this.onMenu, required this.onGpa, required this.onBoard, this.dashboard, this.onAttend, this.onTimetable, this.timetableSlots = const []});
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -500,34 +501,265 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             );
           }),
-          if (live?.todayClasses != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(24)),
-              child: Row(
-                children: [
-                  Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(color: c.board.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(14)),
-                      child: Icon(Icons.today_outlined, size: 22, color: c.tealInk)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+          Builder(builder: (_) {
+            final now = DateTime.now();
+            // Real schedule loaded: full "today" timeline. Otherwise fall
+            // back to the portal's own today line, if the dashboard has it.
+            if (widget.timetableSlots.isEmpty) {
+              if (live?.todayClasses == null) {
+                return const SizedBox.shrink();
+              }
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                      color: c.white,
+                      borderRadius: BorderRadius.circular(24)),
+                  child: Row(
+                    children: [
+                      Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                              color: c.board.withValues(alpha: 0.35),
+                              borderRadius: BorderRadius.circular(14)),
+                          child: Icon(Icons.today_outlined,
+                              size: 22, color: c.tealInk)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Today',
+                                style: body(c,
+                                    size: 12,
+                                    weight: FontWeight.w600,
+                                    color: c.tealInk.withValues(alpha: 0.55))),
+                            Text(live!.todayClasses!,
+                                style: body(c,
+                                    size: 15, weight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+            final today = todaySlots(widget.timetableSlots, now);
+            final liveCount =
+                today.where((s) => isSlotLive(s, now)).length;
+            return Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                    color: c.white,
+                    borderRadius: BorderRadius.circular(24)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Text('Today', style: body(c, size: 12, weight: FontWeight.w600, color: c.tealInk.withValues(alpha: 0.55))),
-                        Text(live!.todayClasses!,
-                            style: body(c, size: 15, weight: FontWeight.w700)),
+                        Text("Today's classes",
+                            style: display(c, size: 20)),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                              color: liveCount > 0
+                                  ? c.clay
+                                  : c.teal.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(12)),
+                          child: Text(
+                              liveCount > 0
+                                  ? '• LIVE NOW'
+                                  : '${today.length} today',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: liveCount > 0
+                                      ? Colors.white
+                                      : c.teal)),
+                        ),
                       ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 2),
+                    Text(formatDay(now),
+                        style: body(c,
+                            size: 13,
+                            color: c.tealInk.withValues(alpha: 0.5))),
+                    const SizedBox(height: 12),
+                    if (today.isEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        decoration: BoxDecoration(
+                            color:
+                                c.teal.withValues(alpha: 0.07),
+                            borderRadius: BorderRadius.circular(16)),
+                        child: Column(
+                          children: [
+                            Text('🎉',
+                                style: TextStyle(fontSize: 28)),
+                            const SizedBox(height: 6),
+                            Text('No classes today — enjoy the day off',
+                                textAlign: TextAlign.center,
+                                style: body(c,
+                                    size: 14,
+                                    weight: FontWeight.w600,
+                                    color: c.tealInk
+                                        .withValues(alpha: 0.6))),
+                          ],
+                        ),
+                      ),
+                    for (final s in today)
+                      Builder(builder: (_) {
+                        final live = isSlotLive(s, now);
+                        final past = !live &&
+                            s.end.compareTo(
+                                    '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}') <=
+                                0;
+                        final card = Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: live
+                                ? c.clay.withValues(alpha: 0.1)
+                                : c.cream2,
+                            borderRadius: BorderRadius.circular(16),
+                            border: live
+                                ? Border.all(color: c.clay, width: 1.5)
+                                : null,
+                          ),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 52,
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(s.start,
+                                        style: body(c,
+                                            size: 14,
+                                            weight: FontWeight.w800)),
+                                    Text(s.end,
+                                        style: body(c,
+                                            size: 11,
+                                            color: c.tealInk.withValues(
+                                                alpha: 0.5))),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                width: 10,
+                                height: 10,
+                                margin: const EdgeInsets.only(right: 10),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: live
+                                      ? c.clay
+                                      : past
+                                          ? c.tealInk.withValues(alpha: 0.25)
+                                          : c.teal,
+                                ),
+                              ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(s.subject,
+                                        style: body(c,
+                                            size: 14,
+                                            weight: FontWeight.w700),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1),
+                                    if (s.room.isNotEmpty ||
+                                        s.teacher.isNotEmpty)
+                                      Text(
+                                          [
+                                            if (s.room.isNotEmpty) s.room,
+                                            if (s.teacher.isNotEmpty)
+                                              s.teacher,
+                                          ].join(' · '),
+                                          style: body(c,
+                                              size: 12,
+                                              color: c.tealInk.withValues(
+                                                  alpha: 0.55)),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: live
+                                      ? c.clay
+                                      : past
+                                          ? c.tealInk
+                                              .withValues(alpha: 0.12)
+                                          : c.teal.withValues(alpha: 0.14),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                    live
+                                        ? 'NOW'
+                                        : past
+                                            ? 'Done'
+                                            : s.start,
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                        color: live
+                                            ? Colors.white
+                                            : past
+                                                ? c.tealInk.withValues(
+                                                    alpha: 0.55)
+                                                : c.teal)),
+                              ),
+                            ],
+                          ),
+                        );
+                        return past
+                            ? Opacity(opacity: 0.6, child: card)
+                            : card;
+                      }),
+                    if (widget.onTimetable != null) ...[
+                      const SizedBox(height: 4),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: widget.onTimetable,
+                        child: Container(
+                          width: double.infinity,
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                              color:
+                                  c.teal.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(14)),
+                          child: Text('See full week ›',
+                              textAlign: TextAlign.center,
+                              style: body(c,
+                                  size: 14,
+                                  weight: FontWeight.w800,
+                                  color: c.teal)),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            );
+          }),
           const SizedBox(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,

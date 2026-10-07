@@ -420,6 +420,104 @@ void main() {
     expect(find.textContaining(RegExp(r'^(NOW|UP NEXT) ·')), findsOneWidget);
   });
 
+  testWidgets("home today section lists all of today classes with date",
+      (WidgetTester tester) async {
+    const data = DashboardData(studentName: 'Test Student');
+    // Same two classes every weekday: today always has exactly 2 rows,
+    // whatever day the test runs.
+    final slots = <TimetableSlot>[
+      for (final day in [
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+        'Sunday'
+      ]) ...[
+        TimetableSlot(
+            day: day,
+            start: '08:00',
+            end: '08:55',
+            subject: 'Morning Class',
+            teacher: 'T A',
+            section: 'S1',
+            room: 'R1'),
+        TimetableSlot(
+            day: day,
+            start: '10:00',
+            end: '10:55',
+            subject: 'Midday Class',
+            teacher: 'T B',
+            section: 'S2',
+            room: 'R2'),
+      ],
+    ];
+    var wentToTimetable = false;
+    final colors = AppColors.of(AppPalette.skater, false);
+    await tester.pumpWidget(
+      AppScope(
+        colors: colors,
+        palette: AppPalette.skater,
+        child: MaterialApp(
+          home: Scaffold(
+            body: HomeScreen(
+              onOpen: (_) {},
+              toProfile: () {},
+              onMenu: () {},
+              onGpa: () {},
+              onBoard: (_) {},
+              dashboard: data,
+              timetableSlots: slots,
+              onTimetable: () => wentToTimetable = true,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text("Today's classes"), findsOneWidget);
+    expect(find.text(formatDay(DateTime.now())), findsOneWidget);
+    expect(find.text('Morning Class'), findsWidgets);
+    expect(find.text('Midday Class'), findsWidgets);
+    expect(find.text('R1 · T A'), findsWidgets);
+    // Count pill, or LIVE NOW while a class is in session.
+    expect(find.textContaining(RegExp(r'^(2 today|• LIVE NOW)$')),
+        findsOneWidget);
+    // Footer navigates to the full timetable.
+    await tester.ensureVisible(find.text('See full week ›'));
+    await tester.tap(find.text('See full week ›'));
+    await tester.pumpAndSettle();
+    expect(wentToTimetable, isTrue);
+  });
+
+  testWidgets('home today section hides without schedule data',
+      (WidgetTester tester) async {
+    const data = DashboardData(studentName: 'Test Student');
+    final colors = AppColors.of(AppPalette.skater, false);
+    await tester.pumpWidget(
+      AppScope(
+        colors: colors,
+        palette: AppPalette.skater,
+        child: MaterialApp(
+          home: Scaffold(
+            body: HomeScreen(
+              onOpen: (_) {},
+              toProfile: () {},
+              onMenu: () {},
+              onGpa: () {},
+              onBoard: (_) {},
+              dashboard: data,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text("Today's classes"), findsNothing);
+    expect(find.text('See full week ›'), findsNothing);
+  });
+
   testWidgets('Ongoing shows today courses, Almost done the whole week',
       (WidgetTester tester) async {
     const data = DashboardData(
@@ -499,11 +597,13 @@ void main() {
     );
     await tester.pumpAndSettle();
     // Ongoing -> today's courses: Alpha always, Gamma never.
+    await tester.ensureVisible(find.text('Ongoing'));
     await tester.tap(find.text('Ongoing'));
     await tester.pumpAndSettle();
     expect(find.text('Alpha'), findsWidgets);
     expect(find.text('Gamma'), findsNothing);
     // Almost done -> complete weekly subjects: Alpha + Beta, never Gamma.
+    await tester.ensureVisible(find.text('Almost done'));
     await tester.tap(find.text('Almost done'));
     await tester.pumpAndSettle();
     expect(find.text('Alpha'), findsWidgets);
@@ -556,10 +656,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Ongoing'));
     await tester.tap(find.text('Ongoing'));
     await tester.pumpAndSettle();
     expect(find.text('Gamma'), findsNothing);
-    expect(find.textContaining('No classes today'), findsOneWidget);
+    // Filter empty state (exact text without emoji; the timeline section
+    // shows its own day-off card above it).
+    expect(find.text('No classes today — enjoy the day off'),
+        findsOneWidget);
   });
 
   testWidgets('course detail shows live weekly classes',

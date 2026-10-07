@@ -572,7 +572,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     } else {
       switch (tab) {
         case 'home':
-          screen = HomeScreen(onOpen: (c) => setState(() { course = c; courseLive = dashboard != null && dashboard!.courses.isNotEmpty; }), toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; tab = 'board'; }); }, dashboard: dashboard, timetableSlots: timetableSlots, onAttend: () => go('attendance'));
+          screen = HomeScreen(onOpen: (c) => setState(() { course = c; courseLive = dashboard != null && dashboard!.courses.isNotEmpty; }), toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; tab = 'board'; }); }, dashboard: dashboard, timetableSlots: timetableSlots, onAttend: () => go('attendance'), onTimetable: () => go('timetable'));
           break;
         case 'material':
           screen = const MaterialsScreen();

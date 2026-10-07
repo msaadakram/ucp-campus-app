@@ -220,6 +220,24 @@ const weekdayOrder = [
 /// `"Monday"`. Pure and unit-tested.
 String weekdayName(DateTime d) => weekdayOrder[(d.weekday - 1).clamp(0, 6)];
 
+/// `"Mon, Sep 28"` style label for section headers. Pure and unit-tested.
+String formatDay(DateTime d) {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+  return '${days[(d.weekday - 1).clamp(0, 6)]}, '
+      '${months[(d.month - 1).clamp(0, 11)]} ${d.day}';
+}
+
+/// Today's slots, sorted by start time. Pure and unit-tested.
+List<TimetableSlot> todaySlots(List<TimetableSlot> slots, DateTime now) {
+  final today = weekdayName(now);
+  return slots.where((s) => s.day == today).toList()
+    ..sort((a, b) => a.start.compareTo(b.start));
+}
+
 /// Enrolled courses that have at least one class today. Pure, unit-tested.
 List<PortalCourse> coursesToday(
     List<PortalCourse> courses, List<TimetableSlot> slots, DateTime now) {
