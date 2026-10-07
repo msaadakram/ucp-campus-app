@@ -21,11 +21,9 @@ Future<void> _tapNav(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
-/// Community bottom tab opens the picker; choose the Community card.
+/// Community bottom tab opens the feed directly.
 Future<void> _openCommunityFeed(WidgetTester tester) async {
   await _tapNav(tester, 'Community');
-  await tester.tap(find.text('Campus feed & posts'), warnIfMissed: false);
-  await tester.pumpAndSettle();
   expect(find.text('r/campus'), findsOneWidget);
 }
 
@@ -109,24 +107,6 @@ void main() {
     await tester.tap(board, warnIfMissed: false);
     await tester.pumpAndSettle();
     expect(find.text('Your rank in CS 214'), findsWidgets);
-  });
-
-  testWidgets('UI walkthrough: groups + chat render', (WidgetTester tester) async {
-    await _login(tester);
-    await tester.tap(find.byIcon(Icons.menu).first, warnIfMissed: false);
-    await tester.pumpAndSettle();
-    final drawerList = find.ancestor(of: find.text('Timetable'), matching: find.byType(ListView));
-    await tester.drag(drawerList, const Offset(0, -400));
-    await tester.pumpAndSettle();
-    await _tapNav(tester, 'Groups & chats');
-    expect(find.text('Groups'), findsWidgets);
-    // join-free chat open: tap first Chat button
-    final chatBtn = find.text('Chat').first;
-    await tester.ensureVisible(chatBtn);
-    await tester.pumpAndSettle();
-    await tester.tap(chatBtn, warnIfMissed: false);
-    await tester.pumpAndSettle();
-    expect(find.text('Message the group…'), findsOneWidget);
   });
 
   testWidgets('UI walkthrough: community thread renders', (WidgetTester tester) async {

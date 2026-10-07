@@ -28,7 +28,6 @@ import 'screens/community.dart';
 import 'screens/fee_board.dart';
 import 'screens/teachers.dart';
 import 'screens/gpa_timetable.dart';
-import 'screens/groups_chat.dart';
 import 'screens/materials_web.dart';
 import 'screens/oauth_webview.dart';
 import 'screens/profile.dart';
@@ -89,9 +88,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   bool courseLive = false;
   Course boardOf = courses[0];
   ProfilePrefs prefs = ProfilePrefs();
-  bool picker = false;
   bool menu = false;
-  GroupInfo? chat;
 
   /// Active background renewal: mounting [SilentRenewWebView] for this email.
   /// Null when no renewal is running.
@@ -454,16 +451,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       setState(() => _expiredMessage = null);
       return true;
     }
-    if (picker) {
-      setState(() => picker = false);
-      return true;
-    }
     if (menu) {
       setState(() => menu = false);
-      return true;
-    }
-    if (chat != null) {
-      setState(() => chat = null);
       return true;
     }
     if (course != null) {
@@ -532,7 +521,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     _checkSessionNow();
   }
 
-  void go(String t) => setState(() { tab = t; course = null; courseLive = false; picker = false; menu = false; chat = null; });
+  void go(String t) => setState(() { tab = t; course = null; courseLive = false; menu = false; });
 
   /// The watchdog proved the portal session dead and silent renewal failed:
   /// show the "someone logged in elsewhere?" popup instead of silently
@@ -601,9 +590,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     final colors = AppColors.of(prefs.palette, dark);
 
     Widget screen;
-    if (chat != null) {
-      screen = GroupChatScreen(group: chat!, back: () => setState(() => chat = null));
-    } else if (course != null) {
+    if (course != null) {
       screen = DetailScreen(course: course!, slots: timetableSlots, isLive: courseLive, back: () => setState(() { course = null; courseLive = false; }));
     } else {
       switch (tab) {
@@ -618,9 +605,6 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
             service: _communityService(),
             myEmail: sessionEmail ?? '',
           );
-          break;
-        case 'groups':
-          screen = GroupsScreen(onChat: (g) => setState(() => chat = g));
           break;
         case 'teachers':
           screen = TeachersScreen(
@@ -688,7 +672,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       }
     }
 
-    final bool showNav = authed && chat == null && oauthEmail == null;
+    final bool showNav = authed && oauthEmail == null;
 
     return AppScope(
       colors: colors,
@@ -799,37 +783,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                             ),
                           ),
                         ),
-                      if (authed && picker) ...[
-                        Positioned.fill(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => setState(() => picker = false),
-                            child: Container(color: colors.tealInk.withValues(alpha: 0.4)),
-                          ),
-                        ),
-                        Positioned(
-                          left: 16, right: 16, bottom: 16,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: () => go('community'),
-                                  child: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: colors.teal, borderRadius: BorderRadius.circular(24)), child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(Icons.forum_outlined, color: Colors.white), SizedBox(height: 24), Text('Community', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)), Text('Campus feed & posts', style: TextStyle(color: Colors.white70, fontSize: 12))])),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: () => go('groups'),
-                                  child: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: colors.clay, borderRadius: BorderRadius.circular(24)), child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(Icons.group_outlined, color: Colors.white), SizedBox(height: 24), Text('Groups', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)), Text('Study circles & clubs', style: TextStyle(color: Colors.white70, fontSize: 12))])),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                      
                       if (authed && menu) ...[
                         Positioned.fill(
                           child: GestureDetector(
@@ -864,7 +818,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                   child: ListView(
                                     padding: const EdgeInsets.all(12),
                                     children: [
-                                      for (final it in [['home', 'Home', Icons.home_outlined], ['teachers', 'Teacher reviews', Icons.star_outlined], ['timetable', 'Timetable', Icons.calendar_month_outlined], ['attendance', 'Attendance', Icons.fact_check_outlined], ['material', 'Course material', Icons.book_outlined], ['gpa', 'GPA calculator', Icons.calculate_outlined], ['fee', 'Fee challan', Icons.receipt_outlined], ['results', 'Results', Icons.workspace_premium_outlined], ['community', 'Community', Icons.forum_outlined], ['groups', 'Groups & chats', Icons.group_outlined], ['web', 'Web view', Icons.language_outlined], ['profile', 'Profile & settings', Icons.person_outline]])
+                                      for (final it in [['home', 'Home', Icons.home_outlined], ['teachers', 'Teacher reviews', Icons.star_outlined], ['timetable', 'Timetable', Icons.calendar_month_outlined], ['attendance', 'Attendance', Icons.fact_check_outlined], ['material', 'Course material', Icons.book_outlined], ['gpa', 'GPA calculator', Icons.calculate_outlined], ['fee', 'Fee challan', Icons.receipt_outlined], ['results', 'Results', Icons.workspace_premium_outlined], ['community', 'Community', Icons.forum_outlined], ['web', 'Web view', Icons.language_outlined], ['profile', 'Profile & settings', Icons.person_outline]])
                                         GestureDetector(
                                           behavior: HitTestBehavior.opaque,
                                           onTap: () => go(it[0] as String),
@@ -901,7 +855,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                           ),
                         ),
                       ],
-                      // Dead-session popup sits above menu/picker: "someone
+                      // Dead-session popup sits above menu: "someone
                       // logged in elsewhere?" + Login-here-now option.
                       if (authed &&
                           oauthEmail == null &&
@@ -981,7 +935,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                 child: Row(
                                   children: [
                                     _navItem(ctx, colors, 'material', 'Material', Icons.book_outlined),
-                                    _navItem(ctx, colors, 'community', tab == 'groups' ? 'Groups' : 'Community', Icons.group_outlined, isCommunity: true),
+                                    _navItem(ctx, colors, 'community', 'Community', Icons.group_outlined),
                                     Expanded(
                                       child: GestureDetector(
                                         behavior: HitTestBehavior.opaque,
@@ -1020,12 +974,12 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     );
   }
 
-  Widget _navItem(BuildContext ctx, AppColors c, String key, String label, IconData icon, {bool isCommunity = false}) {
-    final on = (tab == key || (isCommunity && tab == 'groups')) && course == null && chat == null;
+  Widget _navItem(BuildContext ctx, AppColors c, String key, String label, IconData icon) {
+    final on = tab == key && course == null;
     return Expanded(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => isCommunity ? setState(() => picker = !picker) : go(key),
+        onTap: () => go(key),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
