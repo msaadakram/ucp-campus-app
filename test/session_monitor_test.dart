@@ -98,6 +98,24 @@ void main() {
       expect(h.deadMessage, isNull);
     });
 
+    test('validate throwing (offline) -> stays logged in, never throws',
+        () async {
+      final h = _Harness();
+      final m = SessionMonitor(
+        readSession: () async => MonitorSnapshot('sid-1', h.email),
+        validate: (_) async => throw Exception('SocketException'),
+        renew: (_) async {
+          h.renewals++;
+          return h.renewOutcome;
+        },
+        onRenewed: (s, e) async {},
+        onDead: (msg, _) async => h.deadMessage = msg,
+      );
+      await m.checkNow();
+      expect(h.renewals, 0);
+      expect(h.deadMessage, isNull);
+    });
+
     test('concurrent passes are skipped', () async {
       final h = _Harness();
       final m = h.build();

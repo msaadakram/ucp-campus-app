@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../auth/odoo_api.dart';
 import '../auth/offline.dart';
+import '../auth/page_cache.dart';
 import '../auth/portal_api.dart';
 import '../auth/portal_cache.dart';
 import '../auth/student_portal.dart';
@@ -30,6 +33,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
   bool showPlos = false;
   bool cachedOffline = false;
   int? cachedAt;
+  bool refreshFailed = false;
 
   @override
   void initState() {
@@ -66,43 +70,66 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
   Future<void> _load() async {
     if (!mounted) return;
-    setState(() {
-      loading = true;
-      error = null;
-      expired = false;
-      cachedOffline = false;
-      cachedAt = null;
-    });
-    // Offline fast path: saved snapshot or an immediate offline error —
-    // never hang on a 20s connection timeout.
-    if (widget.debugHtml == null && OfflineMonitor.instance.isOffline) {
-      final cached = PortalCache.results;
-      if (!mounted) return;
-      if (cached != null) {
+    // Instant paint: memory first, then the on-disk snapshot. Only a first
+    // paint with nothing saved shows the skeleton / error states below.
+    if (data == null && widget.debugHtml == null) {
+      final mem = PortalCache.results;
+      if (mem != null) {
         setState(() {
-          data = cached;
-          loading = false;
+          data = mem;
           termIdx = 0;
           cachedOffline = true;
           cachedAt = PortalCache.savedAt['results'];
         });
       } else {
-        setState(() {
-          loading = false;
-          error = offlineMessage;
-        });
+        final snap = await PageCache.loadPage('results');
+        if (!mounted) return;
+        if (snap != null) {
+          try {
+            final parsed = parseResults(snap.html);
+            PortalCache.putResults(parsed);
+            setState(() {
+              data = parsed;
+              termIdx = 0;
+              cachedOffline = true;
+              cachedAt = snap.savedAtMs;
+            });
+          } catch (_) {}
+        }
       }
+    }
+    // Offline: stop here — error only when nothing is on screen.
+    if (widget.debugHtml == null && OfflineMonitor.instance.isOffline) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        if (data == null) error = offlineMessage;
+      });
       return;
     }
+    // Refresh. Silent when data is already visible: just the top line bar.
+    setState(() {
+      loading = true;
+      refreshFailed = false;
+      if (data == null) {
+        error = null;
+        expired = false;
+        cachedOffline = false;
+        cachedAt = null;
+      }
+    });
     try {
       final html = await _fetch();
       if (!mounted) return;
       final parsed = parseResults(html);
       PortalCache.putResults(parsed);
+      unawaited(PageCache.savePage('results', html));
       setState(() {
         data = parsed;
         loading = false;
         termIdx = 0;
+        cachedOffline = false;
+        cachedAt = null;
       });
     } on OdooApiException catch (e) {
       if (!mounted) return;
@@ -111,17 +138,27 @@ class _ResultsScreenState extends State<ResultsScreen> {
           e.message.contains('no portal session');
       setState(() {
         loading = false;
-        expired = dead;
-        error = dead ? null : e.message;
+        if (dead) {
+          expired = true;
+        } else if (data == null) {
+          error = e.message;
+        } else {
+          refreshFailed = true;
+        }
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         loading = false;
-        error = 'Could not load results. Check connection.';
+        if (data == null) {
+          error = 'Could not load results. Check connection.';
+        } else {
+          refreshFailed = true;
+        }
       });
     }
   }
+
 
   Color _gradeTone(String grade, AppColors c) {
     if (grade.startsWith('A')) return c.teal;
@@ -133,11 +170,11 @@ class _ResultsScreenState extends State<ResultsScreen> {
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
-    if (loading) {
+    if (loading && data == null) {
       return const PortalLoading(
           title: 'Results', subtitle: 'Loading your results…');
     }
-    if (error != null || expired) {
+    if (expired || (error != null && data == null)) {
       return PortalError(
         title: 'Results',
         message: expired
@@ -179,6 +216,11 @@ class _ResultsScreenState extends State<ResultsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (loading) ...[
+            const PortalLoadingBar(),
+            const SizedBox(height: 12),
+          ],
+          if (refreshFailed) PortalRefreshFailed(onRetry: _load),
           Text('Results',
               style: display(c, size: 28, color: Colors.white)),
           Text('Semester grades and PLO attainment',

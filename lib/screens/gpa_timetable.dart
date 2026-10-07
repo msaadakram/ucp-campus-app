@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../auth/odoo_api.dart';
 import '../auth/offline.dart';
+import '../auth/page_cache.dart';
 import '../auth/portal_api.dart';
 import '../auth/portal_cache.dart';
 import '../auth/student_portal.dart';
@@ -742,6 +745,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
   final Set<String> remind = {};
   bool cachedOffline = false;
   int? cachedAt;
+  bool refreshFailed = false;
 
   @override
   void initState() {
@@ -792,40 +796,71 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
   Future<void> _load() async {
     if (!mounted) return;
-    setState(() {
-      loading = true;
-      error = null;
-      expired = false;
-      cachedOffline = false;
-      cachedAt = null;
-    });
-    // Offline fast path: saved snapshot or an immediate offline error —
-    // never hang on a 20s connection timeout.
-    if (widget.fetchHtml == null && OfflineMonitor.instance.isOffline) {
-      final tt = PortalCache.timetable;
-      final ds = PortalCache.datesheet;
-      if (!mounted) return;
-      if (tt != null && ds != null) {
+    // Instant paint: memory first, then the on-disk snapshots. Only a first
+    // paint with nothing saved shows the skeleton / error states below.
+    if (data == null && widget.fetchHtml == null) {
+      final memTt = PortalCache.timetable;
+      final memDs = PortalCache.datesheet;
+      if (memTt != null && memDs != null) {
         final days = [
           for (final d in _weekOrder)
-            if (tt.slots.any((s) => s.day == d)) d
+            if (memTt.slots.any((s) => s.day == d)) d
         ];
         setState(() {
-          data = tt;
-          datesheet = ds;
-          loading = false;
+          data = memTt;
+          datesheet = memDs;
           cachedOffline = true;
           cachedAt = PortalCache.savedAt['timetable'];
           if (!days.contains(day) && days.isNotEmpty) day = days.first;
         });
       } else {
-        setState(() {
-          loading = false;
-          error = offlineMessage;
-        });
+        final results = await Future.wait([
+          PageCache.loadPage('timetable'),
+          PageCache.loadPage('datesheet'),
+        ]);
+        if (!mounted) return;
+        final snapTt = results[0] as PageSnapshot?;
+        final snapDs = results[1] as PageSnapshot?;
+        if (snapTt != null && snapDs != null) {
+          try {
+            final tt = parseTimetable(snapTt.html);
+            final ds = parseDatesheet(snapDs.html);
+            PortalCache.putTimetable(tt, ds);
+            final days = [
+              for (final d in _weekOrder)
+                if (tt.slots.any((s) => s.day == d)) d
+            ];
+            setState(() {
+              data = tt;
+              datesheet = ds;
+              cachedOffline = true;
+              cachedAt = snapTt.savedAtMs;
+              if (!days.contains(day) && days.isNotEmpty) day = days.first;
+            });
+          } catch (_) {}
+        }
       }
+    }
+    // Offline: stop here — error only when nothing is on screen.
+    if (widget.fetchHtml == null && OfflineMonitor.instance.isOffline) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        if (data == null) error = offlineMessage;
+      });
       return;
     }
+    // Refresh. Silent when data is already visible: just the top line bar.
+    setState(() {
+      loading = true;
+      refreshFailed = false;
+      if (data == null) {
+        error = null;
+        expired = false;
+        cachedOffline = false;
+        cachedAt = null;
+      }
+    });
     try {
       final results = await Future.wait([
         _fetch(PortalRoutes.timetable),
@@ -835,6 +870,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
       final tt = parseTimetable(results[0] as String);
       final ds = parseDatesheet(results[1] as String);
       PortalCache.putTimetable(tt, ds);
+      unawaited(PageCache.savePage('timetable', results[0] as String));
+      unawaited(PageCache.savePage('datesheet', results[1] as String));
       final days = [
         for (final d in _weekOrder)
           if (tt.slots.any((s) => s.day == d)) d
@@ -843,6 +880,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
         data = tt;
         datesheet = ds;
         loading = false;
+        cachedOffline = false;
+        cachedAt = null;
         if (!days.contains(day) && days.isNotEmpty) day = days.first;
       });
     } on OdooApiException catch (e) {
@@ -852,26 +891,36 @@ class _TimetableScreenState extends State<TimetableScreen> {
           e.message.contains('no portal session');
       setState(() {
         loading = false;
-        expired = dead;
-        error = dead ? null : e.message;
+        if (dead) {
+          expired = true;
+        } else if (data == null) {
+          error = e.message;
+        } else {
+          refreshFailed = true;
+        }
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         loading = false;
-        error = 'Could not load the class schedule. Check connection.';
+        if (data == null) {
+          error = 'Could not load the class schedule. Check connection.';
+        } else {
+          refreshFailed = true;
+        }
       });
     }
   }
 
+
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
-    if (loading) {
+    if (loading && data == null) {
       return const PortalLoading(
           title: 'Timetable', subtitle: 'Loading your class schedule…');
     }
-    if (error != null || expired) {
+    if (expired || (error != null && data == null)) {
       return PortalError(
         title: 'Timetable',
         message: expired
@@ -902,6 +951,13 @@ class _TimetableScreenState extends State<TimetableScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (loading) ...[
+            const PortalLoadingBar(),
+            const SizedBox(height: 12),
+          ],
+          if (refreshFailed) PortalRefreshFailed(onRetry: _load),
+          if (cachedOffline && cachedAt != null)
+            PortalCachedNotice(savedAtMs: cachedAt!),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

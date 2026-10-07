@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../auth/odoo_api.dart';
 import '../auth/offline.dart';
+import '../auth/page_cache.dart';
 import '../auth/portal_api.dart';
 import '../auth/portal_cache.dart';
 import '../auth/student_portal.dart';
@@ -30,6 +33,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   final Set<String> open = {};
   bool cachedOffline = false;
   int? cachedAt;
+  bool refreshFailed = false;
 
   @override
   void initState() {
@@ -66,41 +70,63 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Future<void> _load() async {
     if (!mounted) return;
-    setState(() {
-      loading = true;
-      error = null;
-      expired = false;
-      cachedOffline = false;
-      cachedAt = null;
-    });
-    // Offline fast path: saved snapshot or an immediate offline error —
-    // never hang on a 20s connection timeout.
-    if (widget.debugHtml == null && OfflineMonitor.instance.isOffline) {
-      final cached = PortalCache.attendance;
-      if (!mounted) return;
-      if (cached != null) {
+    // Instant paint: memory first, then the on-disk snapshot. Only a first
+    // paint with nothing saved shows the skeleton / error states below.
+    if (courses == null && widget.debugHtml == null) {
+      final mem = PortalCache.attendance;
+      if (mem != null) {
         setState(() {
-          courses = cached;
-          loading = false;
+          courses = mem;
           cachedOffline = true;
           cachedAt = PortalCache.savedAt['attendance'];
         });
       } else {
-        setState(() {
-          loading = false;
-          error = offlineMessage;
-        });
+        final snap = await PageCache.loadPage('attendance');
+        if (!mounted) return;
+        if (snap != null) {
+          try {
+            final parsed = parseAttendance(snap.html);
+            PortalCache.putAttendance(parsed);
+            setState(() {
+              courses = parsed;
+              cachedOffline = true;
+              cachedAt = snap.savedAtMs;
+            });
+          } catch (_) {}
+        }
       }
+    }
+    // Offline: stop here — error only when nothing is on screen.
+    if (widget.debugHtml == null && OfflineMonitor.instance.isOffline) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        if (courses == null) error = offlineMessage;
+      });
       return;
     }
+    // Refresh. Silent when data is already visible: just the top line bar.
+    setState(() {
+      loading = true;
+      refreshFailed = false;
+      if (courses == null) {
+        error = null;
+        expired = false;
+        cachedOffline = false;
+        cachedAt = null;
+      }
+    });
     try {
       final html = await _fetch();
       if (!mounted) return;
       final parsed = parseAttendance(html);
       PortalCache.putAttendance(parsed);
+      unawaited(PageCache.savePage('attendance', html));
       setState(() {
         courses = parsed;
         loading = false;
+        cachedOffline = false;
+        cachedAt = null;
       });
     } on OdooApiException catch (e) {
       if (!mounted) return;
@@ -109,26 +135,36 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           e.message.contains('no portal session');
       setState(() {
         loading = false;
-        expired = dead;
-        error = dead ? null : e.message;
+        if (dead) {
+          expired = true;
+        } else if (courses == null) {
+          error = e.message;
+        } else {
+          refreshFailed = true;
+        }
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         loading = false;
-        error = 'Could not load attendance. Check connection.';
+        if (courses == null) {
+          error = 'Could not load attendance. Check connection.';
+        } else {
+          refreshFailed = true;
+        }
       });
     }
   }
 
+
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
-    if (loading) {
+    if (loading && courses == null) {
       return const PortalLoading(
           title: 'Attendance', subtitle: 'Loading your attendance…');
     }
-    if (error != null || expired) {
+    if (expired || (error != null && courses == null)) {
       return PortalError(
         title: 'Attendance',
         message: expired
@@ -147,6 +183,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (loading) ...[
+            const PortalLoadingBar(),
+            const SizedBox(height: 12),
+          ],
+          if (refreshFailed) PortalRefreshFailed(onRetry: _load),
           Text('Attendance', style: display(c, size: 28, color: Colors.white)),
           Text('${list.length} courses · overall ${avg.toStringAsFixed(1)}%',
               style: body(c,

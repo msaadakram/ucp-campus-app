@@ -11,6 +11,7 @@ import 'auth/dashboard_parser.dart';
 import 'auth/portal_api.dart';
 import 'auth/session_manager.dart';
 import 'auth/offline.dart';
+import 'auth/page_cache.dart';
 import 'auth/portal_cache.dart';
 import 'auth/session_monitor.dart';
 import 'auth/session_store.dart';
@@ -219,10 +220,12 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       sessionId = 'hook-session';
       sessionEmail = 'hook@ucp.edu.pk';
       _loadCachedDashboard();
+      _loadCachedSlots();
       _startMonitor();
     } else {
       _restoring = true;
       _loadCachedDashboard();
+      _loadCachedSlots();
       _restoreSession();
     }
   }
@@ -275,6 +278,24 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         .load()
         .timeout(const Duration(seconds: 8), onTimeout: () => null);
     if (saved == null) return; // first launch ever: no message
+    // No internet: skip validation/renewal entirely and open straight
+    // into the saved world (session cookie + cached pages). First launch
+    // ever has no saved session, so it stays on the login screen instead.
+    await OfflineMonitor.instance.refresh();
+    if (OfflineMonitor.instance.isOffline) {
+      if (!mounted) return;
+      setState(() {
+        sessionId = saved.sessionId;
+        sessionEmail = saved.email;
+        authed = true;
+        _expiredForSid = null;
+        _expiredMessage = null;
+        _expiredCode = null;
+      });
+      _startMonitor();
+      _loadDashboard();
+      return;
+    }
     final validate = _validateSession;
     final manager = SessionManager(
       store: store,
@@ -326,6 +347,20 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  /// Timetable slots from the on-disk snapshot so Home's timeline and
+  /// UP NEXT work before (and without) any network. Silent: missing or
+  /// corrupt cache simply leaves the sample fallback in place.
+  Future<void> _loadCachedSlots() async {
+    try {
+      final snap = await PageCache.loadPage('timetable');
+      if (snap == null || !mounted) return;
+      final slots = parseTimetable(snap.html).slots;
+      if (slots.isNotEmpty && mounted) {
+        setState(() => timetableSlots = slots);
+      }
+    } catch (_) {}
+  }
+
   /// Pulls `/student/dashboard` (+ timetable for course schedules) with
   /// the live session and parses them for Home. Saves a fresh snapshot to
   /// the phone on success. Never throws: on any failure the previous data
@@ -352,6 +387,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         timetableSlots = slots;
       });
       unawaited(_backend.saveDashboard(jsonEncode(parsed.toJson())));
+      unawaited(PageCache.savePage('timetable', results[1] as String));
     } catch (_) {
       // Keep previous data / sample fallback; next login or resume retries.
     }

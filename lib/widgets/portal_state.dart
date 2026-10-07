@@ -145,3 +145,60 @@ class PortalCachedNotice extends StatelessWidget {
     );
   }
 }
+
+/// Thin top loading line: shown while fresh data loads over already-visible
+/// (saved) content. The full skeleton only appears when nothing is cached.
+class PortalLoadingBar extends StatelessWidget {
+  const PortalLoadingBar({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppScope.colorsOf(context);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(2),
+      child: LinearProgressIndicator(
+        minHeight: 3,
+        backgroundColor: c.teal.withValues(alpha: 0.15),
+        valueColor: AlwaysStoppedAnimation<Color>(c.teal),
+      ),
+    );
+  }
+}
+
+/// Slim retry strip after a background refresh failed while saved content
+/// stays on screen.
+class PortalRefreshFailed extends StatelessWidget {
+  final VoidCallback onRetry;
+  const PortalRefreshFailed({super.key, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppScope.colorsOf(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onRetry,
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: c.clay.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.refresh_outlined, size: 15, color: c.clay),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                "Couldn't refresh — tap to retry",
+                style: body(c,
+                    size: 12, weight: FontWeight.w600, color: c.clay),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

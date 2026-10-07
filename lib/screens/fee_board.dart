@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../auth/odoo_api.dart';
 import '../auth/offline.dart';
+import '../auth/page_cache.dart';
 import '../auth/portal_api.dart';
 import '../auth/portal_cache.dart';
 import '../auth/student_portal.dart';
@@ -28,6 +31,7 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
   String? error;
   bool cachedOffline = false;
   int? cachedAt;
+  bool refreshFailed = false;
 
   @override
   void initState() {
@@ -64,41 +68,63 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
 
   Future<void> _load() async {
     if (!mounted) return;
-    setState(() {
-      loading = true;
-      error = null;
-      expired = false;
-      cachedOffline = false;
-      cachedAt = null;
-    });
-    // Offline fast path: saved snapshot or an immediate offline error —
-    // never hang on a 20s connection timeout.
-    if (widget.debugHtml == null && OfflineMonitor.instance.isOffline) {
-      final cached = PortalCache.invoices;
-      if (!mounted) return;
-      if (cached != null) {
+    // Instant paint: memory first, then the on-disk snapshot. Only a first
+    // paint with nothing saved shows the skeleton / error states below.
+    if (invoices == null && widget.debugHtml == null) {
+      final mem = PortalCache.invoices;
+      if (mem != null) {
         setState(() {
-          invoices = cached;
-          loading = false;
+          invoices = mem;
           cachedOffline = true;
           cachedAt = PortalCache.savedAt['invoices'];
         });
       } else {
-        setState(() {
-          loading = false;
-          error = offlineMessage;
-        });
+        final snap = await PageCache.loadPage('invoices');
+        if (!mounted) return;
+        if (snap != null) {
+          try {
+            final parsed = parseInvoices(snap.html);
+            PortalCache.putInvoices(parsed);
+            setState(() {
+              invoices = parsed;
+              cachedOffline = true;
+              cachedAt = snap.savedAtMs;
+            });
+          } catch (_) {}
+        }
       }
+    }
+    // Offline: stop here — error only when nothing is on screen.
+    if (widget.debugHtml == null && OfflineMonitor.instance.isOffline) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        if (invoices == null) error = offlineMessage;
+      });
       return;
     }
+    // Refresh. Silent when data is already visible: just the top line bar.
+    setState(() {
+      loading = true;
+      refreshFailed = false;
+      if (invoices == null) {
+        error = null;
+        expired = false;
+        cachedOffline = false;
+        cachedAt = null;
+      }
+    });
     try {
       final html = await _fetch();
       if (!mounted) return;
       final parsed = parseInvoices(html);
       PortalCache.putInvoices(parsed);
+      unawaited(PageCache.savePage('invoices', html));
       setState(() {
         invoices = parsed;
         loading = false;
+        cachedOffline = false;
+        cachedAt = null;
       });
     } on OdooApiException catch (e) {
       if (!mounted) return;
@@ -107,17 +133,27 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
           e.message.contains('no portal session');
       setState(() {
         loading = false;
-        expired = dead;
-        error = dead ? null : e.message;
+        if (dead) {
+          expired = true;
+        } else if (invoices == null) {
+          error = e.message;
+        } else {
+          refreshFailed = true;
+        }
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         loading = false;
-        error = 'Could not load invoices. Check connection.';
+        if (invoices == null) {
+          error = 'Could not load invoices. Check connection.';
+        } else {
+          refreshFailed = true;
+        }
       });
     }
   }
+
 
   static double _amount(String raw) {
     final cleaned = raw.replaceAll(RegExp(r'[^0-9.]'), '');
@@ -139,11 +175,11 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
-    if (loading) {
+    if (loading && invoices == null) {
       return const PortalLoading(
           title: 'Fee challan', subtitle: 'Loading your invoices…');
     }
-    if (error != null || expired) {
+    if (expired || (error != null && invoices == null)) {
       return PortalError(
         title: 'Fee challan',
         message: expired
@@ -162,6 +198,11 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (loading) ...[
+            const PortalLoadingBar(),
+            const SizedBox(height: 12),
+          ],
+          if (refreshFailed) PortalRefreshFailed(onRetry: _load),
           Text('Fee challan',
               style: display(c, size: 28, color: Colors.white)),
           Text(

@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ucp/auth/offline.dart';
+import 'package:ucp/auth/page_cache.dart';
 import 'package:ucp/auth/portal_cache.dart';
 import 'package:ucp/auth/student_portal.dart';
 import 'package:ucp/screens/attendance.dart';
@@ -24,6 +26,9 @@ Widget _wrap(Widget child) {
 void main() {
   tearDown(() {
     PortalCache.clear();
+    PageCache.debugDir = null;
+    PageCache.debugPages = null;
+    PageCache.diskEnabled = false;
     OfflineMonitor.resetDebug();
   });
 
@@ -126,6 +131,48 @@ void main() {
     });
   });
 
+  group('PageCache', () {
+    test('memory stand-in serves pages to widget tests', () async {
+      PageCache.debugPages = {};
+      expect(await PageCache.loadPage('attendance'), isNull);
+      await PageCache.savePage('attendance', '<html>hi</html>');
+      final snap = await PageCache.loadPage('attendance');
+      expect(snap, isNotNull);
+      expect(snap!.html, '<html>hi</html>');
+      expect(snap.savedAtMs, greaterThan(0));
+      await PageCache.savePage('attendance', '');
+      expect((await PageCache.loadPage('attendance'))!.html, '<html>hi</html>');
+      await PageCache.clear();
+      expect(await PageCache.loadPage('attendance'), isNull);
+    });
+
+    test('save/load/clear round-trips raw pages on real disk', () async {
+      // Plain unit test: real async IO completes here.
+      final dir = await Directory.systemTemp.createTemp('ucp_page_cache');
+      addTearDown(() => dir.delete(recursive: true));
+      PageCache.diskEnabled = true;
+      PageCache.debugDir = dir;
+      expect(await PageCache.loadPage('attendance'), isNull);
+      await PageCache.savePage('attendance', '<html>hi</html>');
+      final snap = await PageCache.loadPage('attendance');
+      expect(snap, isNotNull);
+      expect(snap!.html, '<html>hi</html>');
+      expect(snap.savedAtMs, greaterThan(0));
+      await PageCache.clear();
+      expect(await PageCache.loadPage('attendance'), isNull);
+    });
+
+    test('corrupt or missing files read as null, never throw', () async {
+      final dir = await Directory.systemTemp.createTemp('ucp_page_empty');
+      addTearDown(() => dir.delete(recursive: true));
+      PageCache.diskEnabled = true;
+      PageCache.debugDir = dir;
+      expect(await PageCache.loadPage('nope'), isNull);
+      await PageCache.savePage('attendance', '');
+      expect(await PageCache.loadPage('attendance'), isNull);
+    });
+  });
+
   group('OfflineBanner', () {
     testWidgets('forced states render the pill or nothing',
         (WidgetTester tester) async {
@@ -197,8 +244,29 @@ void main() {
       expect(find.textContaining("You're offline"), findsNothing);
       expect(find.textContaining('sign in again'), findsOneWidget);
     });
+
+    testWidgets('disk snapshot paints instantly on offline restart',
+        (WidgetTester tester) async {
+      // In-memory stand-in: real async IO never completes in widget tests.
+      PageCache.debugPages = {'attendance': _diskAttHtml};
+      OfflineMonitor.debugOverride(OfflineMonitor.debug(
+        check: () async => [ConnectivityResult.none],
+      ));
+      OfflineMonitor.instance.offline.value = true;
+
+      await tester.pumpWidget(_wrap(const AttendanceScreen()));
+      await tester.pumpAndSettle();
+      expect(find.text('Disk Course'), findsOneWidget);
+      expect(find.textContaining('Saved '), findsOneWidget);
+      expect(find.textContaining("You're offline"), findsNothing);
+    });
   });
 }
+
+const _diskAttHtml = '<h3><div><span>Disk Course</span>'
+    '<div><span>Attendance: 75.0%</span></div></div></h3>'
+    '<table class="uk-table"><tr><th>Sr. no</th><th>Date</th><th>Status</th><th>Fine</th></tr>'
+    '<tr><td>1</td><td>2026-10-01</td><td>Present</td><td>-</td></tr></table>';
 
 class SocketExceptionClosed implements Exception {
   const SocketExceptionClosed();

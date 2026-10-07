@@ -71,7 +71,13 @@ class SessionMonitor {
     try {
       final snap = await readSession();
       if (snap == null) return;
-      if (await validate(snap.sessionId)) return; // alive: nothing to do
+      bool alive;
+      try {
+        alive = await validate(snap.sessionId);
+      } catch (_) {
+        return; // timeout/offline: stay logged in, retry next tick.
+      }
+      if (alive) return; // alive: nothing to do
 
       final outcome = await renew(snap.email);
       final fresh = outcome.sessionId;
