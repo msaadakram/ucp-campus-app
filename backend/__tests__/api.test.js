@@ -24,6 +24,20 @@ function appWith(tables, verify) {
 }
 
 describe('auth', () => {
+  test('GET / shows a browser landing page, not a 404', async () => {
+    const app = appWith(makeRows(), anonVerify);
+    const res = await request(app).get('/').expect(200);
+    expect(res.text).toContain('UCP Campus API');
+    expect(res.text).toContain('/api/teachers');
+  });
+
+  test('GET /api lists endpoints as JSON', async () => {
+    const app = appWith(makeRows(), anonVerify);
+    const res = await request(app).get('/api').expect(200);
+    expect(res.body.teachers).toContain('/api/teachers');
+    expect(res.body.health).toBe('GET /api/health');
+  });
+
   test('GET /api/me is 401 without a session', async () => {
     const app = appWith(makeRows(), anonVerify);
     await request(app).get('/api/me').expect(401);

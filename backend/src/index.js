@@ -57,6 +57,44 @@ function createApp({
   });
   app.use('/api/', attachUser);
 
+  /* Browser landing page: opening the API URL in a browser shows this
+   * instead of a 404. It is an API server, not a website. */
+  app.get('/', (_req, res) => {
+    res.type('html').send(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UCP Campus API</title>
+<style>body{font-family:system-ui,sans-serif;max-width:640px;margin:48px auto;padding:0 20px;color:#0A3F47}
+h1{font-size:28px}a{color:#0C6F7D}code{background:#F1F5F6;padding:2px 6px;border-radius:6px}
+ul{line-height:2}</style></head><body>
+<h1>UCP Campus API</h1>
+<p>This server powers the UCP Campus Flutter app (community + teacher reviews).
+It has no website here &mdash; use the endpoints below.</p>
+<ul>
+<li><a href="/api/health"><code>GET /api/health</code></a> &mdash; server status</li>
+<li><code>GET /api</code> &mdash; full endpoint list (JSON)</li>
+<li><code>GET /api/posts</code> &mdash; community feed</li>
+<li><code>GET /api/teachers</code> &mdash; teacher reviews</li>
+<li><code>GET /api/stats</code> &mdash; live counters</li>
+</ul>
+<p>Writes require header <code>x-ucp-session</code> (verified against Odoo).</p>
+</body></html>`);
+  });
+
+  /* Machine-readable endpoint list. */
+  app.get('/api', (_req, res) => {
+    res.json({
+      name: 'ucp-campus-community-api',
+      health: 'GET /api/health',
+      posts: 'GET /api/posts?limit=',
+      teachers: 'GET /api/teachers?dept=&q=&limit=',
+      teacherDetail: 'GET /api/teachers/:slug',
+      rateTeacher: 'POST /api/teachers/:slug/rate (auth)',
+      stats: 'GET /api/stats',
+      stream: 'GET /api/stream (SSE)',
+    });
+  });
+
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, time: new Date(now()).toISOString() });
   });
