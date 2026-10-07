@@ -684,6 +684,14 @@ void main() {
           day: 'Monday',
           start: '08:00',
           end: '08:55',
+          subject: 'Object Oriented Programming',
+          teacher: 'Aasma Abdul Waheed',
+          section: 'CP223',
+          room: 'C-301'),
+      TimetableSlot(
+          day: 'Wednesday',
+          start: '09:00',
+          end: '09:55',
           subject: 'Object Oriented Programming - Lab',
           teacher: 'S X',
           section: 'CP221',
@@ -705,6 +713,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('This week'), findsOneWidget);
     expect(find.textContaining('Monday'), findsWidgets);
+    // The lab slot belongs to the Lab course, not the theory detail.
+    expect(find.textContaining('Wednesday'), findsNothing);
     expect(find.text('Assignment 3'), findsNothing);
   });
 }

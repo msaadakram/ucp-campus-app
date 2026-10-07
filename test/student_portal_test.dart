@@ -140,11 +140,28 @@ void main() {
       expect(c.prof, 'Aasma Abdul Waheed');
       expect(c.progress, 67);
       expect(c.credits, 3);
-      expect(c.room, contains('B-CL203'));
-      expect(c.time, contains('Mon'));
-      // Lab-only subject still matches its base course (both slots).
+      // Theory card sees ONLY theory slots: lab room/time must not leak in.
+      expect(c.room, 'C-301');
+      expect(c.time, contains('Wed'));
+      expect(c.time, isNot(contains('Mon')));
+      // The lab card sees ONLY lab slots.
+      const labPc = PortalCourse(
+        name: 'Object Oriented Programming - Lab',
+        teacher: 'S X',
+        code: 'CP221',
+        credits: 1.0,
+        attendance: 100.0,
+        infoUrl: '/student/course/info/y',
+      );
+      final labCard = portalCourseToCourse(labPc, slots, 1);
+      expect(labCard.room, contains('B-CL203'));
+      expect(labCard.time, contains('Mon'));
+      expect(labCard.time, isNot(contains('Wed')));
+      // Exact-name lookup: lab never matches theory and vice versa.
       final lab = slotsForCourse('Object Oriented Programming - Lab', slots);
-      expect(lab.length, 2);
+      expect(lab.length, 1);
+      expect(
+          slotsForCourse('Object Oriented Programming', slots).length, 1);
       expect(slotsForCourse('Nope 101', slots), isEmpty);
     });
 

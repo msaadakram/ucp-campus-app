@@ -75,8 +75,7 @@ class PortalCourse {
       );
 }
 
-String _subjectBase(String s) =>
-    s.replaceAll(RegExp(r'\s*-\s*Lab\s*$'), '').trim().toLowerCase();
+String _subjectKey(String s) => s.trim().toLowerCase();
 
 /// Overall attendance across enrolled courses, weighted by credits (a
 /// 3-credit course counts 3x a 1-credit lab). Courses with no credit info
@@ -104,14 +103,15 @@ String formatPercent(double v) {
 /// schedule, tone cycles the palette. Pure and unit-tested.
 /// Maps a portal course (+ timetable slots) onto the Home course card
 /// model: ring shows live attendance, room/time come from the real weekly
-/// schedule, tone cycles the palette. Pure and unit-tested.
+/// schedule, tone cycles the palette. Lab and theory stay separate: only
+/// slots with the exact course name attach. Pure and unit-tested.
 Course portalCourseToCourse(
   PortalCourse pc,
   List<TimetableSlot> slots,
   int index,
 ) {
   final mine = slots
-      .where((s) => _subjectBase(s.subject) == _subjectBase(pc.name))
+      .where((s) => _subjectKey(s.subject) == _subjectKey(pc.name))
       .toList()
     ..sort((a, b) {
       const order = [
@@ -255,12 +255,14 @@ List<PortalCourse> coursesThisWeek(
       .where((c) => slotsForCourse(c.name, slots).isNotEmpty)
       .toList();
 }
-/// Weekly slots belonging to a course title (matches "X" and "X - Lab").
+/// Weekly slots belonging to a course title. Lab and theory are DIFFERENT
+/// courses: `"X - Lab"` never matches `"X"` (exact name, case-insensitive).
+/// Pure and unit-tested.
 List<TimetableSlot> slotsForCourse(
     String title, List<TimetableSlot> slots) {
-  final base = _subjectBase(title);
+  final key = _subjectKey(title);
   return slots
-      .where((s) => _subjectBase(s.subject) == base)
+      .where((s) => _subjectKey(s.subject) == key)
       .toList()
     ..sort((a, b) {
       const order = [
