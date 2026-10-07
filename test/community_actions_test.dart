@@ -31,12 +31,7 @@ void main() {
     });
     expect(find.byKey(const ValueKey('post-comment-p1')), findsOneWidget);
     expect(find.byKey(const ValueKey('post-share-p1')), findsOneWidget);
-    expect(find.byKey(const ValueKey('post-save-p1')), findsOneWidget);
-    // Comment pill and share pill share one uniform height with the
-    // 36px save circle.
-    final saveSize =
-        tester.getSize(find.byKey(const ValueKey('post-save-p1')));
-    expect(saveSize.height, moreOrLessEquals(36, epsilon: 0.5));
+    // Comment, share and vote pills share one uniform action-row height.
     final commentSize =
         tester.getSize(find.byKey(const ValueKey('post-comment-p1')));
     final shareSize =
@@ -94,38 +89,5 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     svc.dispose();
   });
-
-  testWidgets('save survives reload and Saved filter lists it',
-      (tester) async {
-    final svc = FakeCommunityService();
-    await tester.pumpWidget(
-        wrap(CommunityScreen(service: svc, myEmail: 't@ucp.edu.pk')));
-    await tester.pumpAndSettle();
-    // Save first post.
-    await tester.ensureVisible(find.byKey(const ValueKey('post-save-p1')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('post-save-p1')));
-    await tester.pumpAndSettle();
-    expect(find.text('Saved — see it under Saved'), findsOneWidget);
-    // Force a reload via a vote on another post; saved flag must persist.
-    final posts = await svc.fetchPosts(myEmail: 't@ucp.edu.pk');
-    await svc.setVote(
-        postId: posts[1].id, myEmail: 'o@ucp.edu.pk', value: 1);
-    await tester.pumpAndSettle();
-    // Open Saved view: only the saved post remains.
-    await tester.ensureVisible(find.byKey(const ValueKey('flair-saved')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('flair-saved')));
-    await tester.pumpAndSettle();
-    expect(
-        find.text('Study group for the Data Structures midterm?'),
-        findsOneWidget);
-    expect(find.text('Hack Night this Friday — pizza, prizes & mentors'),
-        findsNothing);
-    // Unsaving empties the view with helpful empty state.
-    await tester.tap(find.byKey(const ValueKey('post-save-p1')));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('No saved posts yet'), findsOneWidget);
-    svc.dispose();
-  });
 }
+

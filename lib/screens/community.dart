@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../auth/offline.dart';
 import '../community/community_service.dart';
-import '../community/saved_posts_store.dart';
 import '../data/seed.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
@@ -30,11 +29,7 @@ class CommunityScreen extends StatefulWidget {
   final CommunityService? service;
   final String myEmail;
 
-  /// Where bookmarks persist. Defaults to encrypted on-device storage;
-  /// widget tests inject [MemorySavedPostsStore].
-  final SavedPostsStore? savedStore;
-  const CommunityScreen(
-      {super.key, this.service, this.myEmail = '', this.savedStore});
+  const CommunityScreen({super.key, this.service, this.myEmail = ''});
   @override
   State<CommunityScreen> createState() => _CommunityScreenState();
 }
@@ -64,12 +59,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
   final Set<String> _likingPosts = {};
   final Set<String> _likingComments = {};
 
-  /// Saved posts (bookmark). Stored as ids so the flag survives `_reload`,
-  /// which rebuilds Post objects from the backend (saved would otherwise
-  /// vanish on every refresh).
-  final Set<String> _savedIds = {};
-  bool showSavedOnly = false;
-
   /// Focus for the thread comment field so the comment button can jump
   /// straight to writing (it was dead in thread view: onOpen is null there).
   late final FocusNode _commentFocus;
@@ -77,9 +66,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
   String get _email => widget.myEmail;
   String get _handle => handleForEmail(
       _email.isEmpty ? 'ayaan.w@ucp.edu.pk' : _email);
-
-  SavedPostsStore get _savedStore =>
-      widget.savedStore ?? SecureSavedPostsStore();
 
   @override
   void initState() {
@@ -90,7 +76,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
       loading = false;
       return;
     }
-    _loadSaved();
     OfflineMonitor.instance.offline.addListener(_onConnectivity);
     _reload();
     if (widget.service!.supportsRealtime) {
@@ -116,26 +101,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
         error != null) {
       _reload();
     }
-  }
-
-  /// Loads persisted bookmarks for this user, then repaints so flags and
-  /// the Saved count apply (never blocks the feed on storage).
-  Future<void> _loadSaved() async {
-    try {
-      final ids = await _savedStore.load(_email);
-      if (!mounted || ids.isEmpty) return;
-      setState(() {
-        _savedIds.addAll(ids);
-        for (final p in posts) {
-          p.saved = _savedIds.contains(p.id);
-        }
-      });
-    } catch (_) {}
-  }
-
-  void _persistSaved() {
-    // Fire-and-forget: storage failures must never block the UI.
-    unawaited(_savedStore.save(_email, _savedIds));
   }
 
   Future<void> _reload() async {
@@ -171,15 +136,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
           members: live != null && live.members > 0 ? live.members : derived.members,
           online: live != null && live.online > 0 ? live.online : derived.online,
         );
-      }
-      // Reapply saved flags: reloads rebuild Post objects from the backend.
-      // Prune ids whose posts are gone so the Saved count never lies.
-      final freshIds = {for (final p in fresh) p.id};
-      final pruned = _savedIds.length;
-      _savedIds.retainAll(freshIds);
-      if (_savedIds.length != pruned) _persistSaved();
-      for (final p in fresh) {
-        p.saved = _savedIds.contains(p.id);
       }
       setState(() {
         posts = fresh;
@@ -315,36 +271,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
     }
   }
 
-  /// Bookmark toggle that survives reloads (ids, not object flags).
-  void _toggleSave(Post p) {
-    setState(() {
-      if (_savedIds.contains(p.id)) {
-        _savedIds.remove(p.id);
-        p.saved = false;
-      } else {
-        _savedIds.add(p.id);
-        p.saved = true;
-      }
-    });
-    _persistSaved();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-            p.saved ? 'Saved — see it under Saved' : 'Removed from saved'),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
   /// Share copies the post text and always confirms, so the button never
   /// feels dead.
   Future<void> _sharePost(BuildContext context, AppColors c, Post p) =>
       _copyText(context, c, '${p.title}\n\n${p.body}\n— via campus community');
 
-  List<Post> get shown {    final f = posts
+  List<Post> get shown {
+    final f = posts
         .where((p) => flair == 'All' || p.flair == flair)
-        .where((p) => !showSavedOnly || _savedIds.contains(p.id))
         .toList();
     f.sort((a, b) {
       if (sort == 'New') return a.age.compareTo(b.age);
@@ -439,41 +373,18 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 child: Column(
                   children: [
                     Icon(
-                      showSavedOnly
-                          ? Icons.bookmark_outline
-                          : Icons.forum_outlined,
+                      Icons.forum_outlined,
                       size: 36,
                       color: c.tealInk.withValues(alpha: 0.4),
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      showSavedOnly
-                          ? 'No saved posts yet.\nTap the bookmark on any post to keep it here.'
-                          : 'No posts with this flair yet.',
+                      'No posts with this flair yet.',
                       textAlign: TextAlign.center,
                       style: body(c,
                           size: 14,
                           color: c.tealInk.withValues(alpha: 0.5)),
                     ),
-                    if (showSavedOnly) ...[
-                      const SizedBox(height: 12),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () =>
-                            setState(() => showSavedOnly = false),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 10),
-                          decoration: BoxDecoration(
-                              color: c.teal,
-                              borderRadius: BorderRadius.circular(20)),
-                          child: const Text('Browse all posts',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -626,47 +537,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: GestureDetector(
-                    key: const ValueKey('flair-saved'),
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () =>
-                        setState(() => showSavedOnly = !showSavedOnly),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                          color: showSavedOnly ? c.tealInk : c.dustSoft,
-                          borderRadius: BorderRadius.circular(20)),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            showSavedOnly
-                                ? Icons.bookmark
-                                : Icons.bookmark_outline,
-                            size: 13,
-                            color: showSavedOnly
-                                ? c.cream
-                                : c.tealInk.withValues(alpha: 0.7),
-                          ),
-                          Text(
-                            _savedIds.isEmpty
-                                ? ' Saved'
-                                : ' Saved (${_savedIds.length})',
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: showSavedOnly
-                                    ? c.cream
-                                    : c.tealInk.withValues(alpha: 0.7)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
                 for (final f in _flairs)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
@@ -793,26 +663,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
                           ])),
                 ),
               ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                  key: ValueKey('post-save-${p.id}'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _toggleSave(p),
-                  child: Container(
-                      alignment: Alignment.center,
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                          color: p.saved
-                              ? c.board
-                              : c.dustSoft.withValues(alpha: 0.7),
-                          shape: BoxShape.circle),
-                      child: Icon(
-                          p.saved
-                              ? Icons.bookmark
-                              : Icons.bookmark_outline,
-                          size: 16,
-                          color: c.tealInk))),
             ],
           ),
         ],
