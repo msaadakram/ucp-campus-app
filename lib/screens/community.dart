@@ -10,6 +10,7 @@ import '../data/seed.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
 import '../widgets/loading.dart';
+import '../widgets/user_avatar.dart';
 
 const _flairs = ['All', 'Study', 'Events', 'Help', 'Memes', 'Marketplace'];
 
@@ -495,7 +496,21 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 onTap: () => setState(() => composing = true),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(color: c.tealInk, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: c.clay, offset: const Offset(0, 4))]),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [c.teal, c.tealDeep],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: c.teal.withValues(alpha: 0.4),
+                        offset: const Offset(0, 4),
+                        blurRadius: 8,
+                      )
+                    ],
+                  ),
                   child: const Row(children: [Icon(Icons.add, size: 18, color: Colors.white), Text(' Post', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]),
                 ),
               ),
@@ -507,8 +522,20 @@ class _CommunityScreenState extends State<CommunityScreen> {
             onTap: () => setState(() => composing = true),
             child: Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(16)),
-              child: Row(children: [const CircleAvatar(radius: 18, child: Text('A')), const SizedBox(width: 12), Expanded(child: Text('Share something with campus…', style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.5)), overflow: TextOverflow.ellipsis))]),
+              decoration: BoxDecoration(
+                color: c.white,
+                borderRadius: BorderRadius.circular(16),
+                border:
+                    Border.all(color: c.dustSoft.withValues(alpha: 0.8)),
+                boxShadow: [
+                  BoxShadow(
+                    color: c.tealInk.withValues(alpha: 0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(children: [UserAvatar(userKey: _email.isNotEmpty ? _email : _handle, fallbackName: _handle, radius: 18), const SizedBox(width: 12), Expanded(child: Text('Share something with campus…', style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.5)), overflow: TextOverflow.ellipsis))]),
             ),
           ),
           const SizedBox(height: 16),
@@ -557,121 +584,211 @@ class _CommunityScreenState extends State<CommunityScreen> {
       ],
     );
   }
+  /// Modern post card: gradient-ring avatar, bold title, edge-to-edge
+  /// media, and a borderless X-style action bar. Keys, counts, labels and
+  /// callbacks are unchanged — only the presentation is new.
   Widget _postCard(BuildContext context, AppColors c, Post p,
       {VoidCallback? onOpen, VoidCallback? onCommentTap}) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: c.white, borderRadius: BorderRadius.circular(24)),
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: c.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: c.dustSoft.withValues(alpha: 0.7)),
+        boxShadow: [
+          BoxShadow(
+            color: c.tealInk.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              CircleAvatar(radius: 16, backgroundColor: [c.teal, c.clay, c.board, c.dust, c.tealDeep][p.author.length % 5], child: Text(p.author[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 12))),
-              const SizedBox(width: 8),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('u/${p.author}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Text('${p.time} ago', style: TextStyle(fontSize: 12, color: c.tealInk.withValues(alpha: 0.5)))])),
-              Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: _flairColor(p.flair, c), borderRadius: BorderRadius.circular(12)), child: Text(p.flair, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white))),
-            ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [c.teal, c.clay],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: UserAvatar(
+                    userKey: p.author,
+                    fallbackName: p.author,
+                    radius: 15,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('u/${p.author}',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 13)),
+                      Text(p.time,
+                          style: TextStyle(
+                              fontSize: 12,
+                              color:
+                                  c.tealInk.withValues(alpha: 0.5))),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: _flairColor(p.flair, c),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(p.flair,
+                      style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white)),
+                ),
+              ],
+            ),
           ),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: onOpen,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(p.title, style: display(c, size: 18)),
+                  if (p.body.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(p.body,
+                        maxLines: onOpen != null ? 2 : 100,
+                        overflow: TextOverflow.ellipsis,
+                        style: body(c,
+                            size: 14,
+                            color:
+                                c.tealInk.withValues(alpha: 0.75))),
+                  ],
+                  if (p.imageUrl != null && p.imageUrl!.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                            color:
+                                c.dustSoft.withValues(alpha: 0.8)),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(13),
+                        child: Image.network(
+                          p.imageUrl!,
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          errorBuilder: (_, _, _) =>
+                              const SizedBox.shrink(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            decoration: BoxDecoration(
+              color: c.dustSoft.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
               children: [
-                const SizedBox(height: 12),
-                Text(p.title, style: display(c, size: 17)),
-                if (p.body.isNotEmpty) Text(p.body, maxLines: onOpen != null ? 2 : 100, overflow: TextOverflow.ellipsis, style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.75))),
-                if (p.imageUrl != null && p.imageUrl!.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.network(
-                      p.imageUrl!,
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                Expanded(
+                  child: _likeButton(
+                    c,
+                    count: p.score + p.vote,
+                    liked: p.vote == 1,
+                    onTap: () => _votePost(p, 1),
+                  ),
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    key: ValueKey('post-comment-${p.id}'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onCommentTap ?? onOpen,
+                    child: _cardAction(
+                      c,
+                      icon: Icons.chat_bubble_outline,
+                      label: '${countComments(p.comments)}',
                     ),
                   ),
-                ],
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    key: ValueKey('post-share-${p.id}'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _sharePost(context, c, p),
+                    child: _cardAction(
+                      c,
+                      icon: Icons.share_outlined,
+                      label: 'Share',
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _likeButton(
-                c,
-                count: p.score + p.vote,
-                liked: p.vote == 1,
-                onTap: () => _votePost(p, 1),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: GestureDetector(
-                  key: ValueKey('post-comment-${p.id}'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onCommentTap ?? onOpen,
-                  child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                          color: c.dustSoft.withValues(alpha: 0.7),
-                          borderRadius: BorderRadius.circular(20)),
-                      child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.chat_bubble_outline, size: 16),
-                            const SizedBox(width: 4),
-                            Flexible(
-                                child: Text(
-                                    '${countComments(p.comments)}',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13),
-                                    overflow: TextOverflow.ellipsis))
-                          ])),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: GestureDetector(
-                  key: ValueKey('post-share-${p.id}'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _sharePost(context, c, p),
-                  child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                          color: c.dustSoft.withValues(alpha: 0.7),
-                          borderRadius: BorderRadius.circular(20)),
-                      child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.share_outlined, size: 15),
-                            SizedBox(width: 4),
-                            Flexible(
-                                child: Text('Share',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13),
-                                    overflow: TextOverflow.ellipsis))
-                          ])),
-                ),
-              ),
-            ],
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  /// Borderless action-bar cell shared by comment/share (like has its own
+  /// animated treatment in [_likeButton]).
+  Widget _cardAction(
+    AppColors c, {
+    required IconData icon,
+    required String label,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration:
+          BoxDecoration(borderRadius: BorderRadius.circular(12)),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon,
+              size: 17, color: c.tealInk.withValues(alpha: 0.65)),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: c.tealInk.withValues(alpha: 0.75)),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
     );
   }
 
-  /// Like-only button (replaces the old up/down arrows): heart fills
-  /// instantly via the optimistic vote above, count = score + my like.
+  /// Like button with a soft animated treatment: the heart fills clay and
+  /// the count warms up the moment a like lands (optimistic upstream).
   Widget _likeButton(
     AppColors c, {
     required int count,
@@ -679,30 +796,43 @@ class _CommunityScreenState extends State<CommunityScreen> {
     required VoidCallback onTap,
     bool small = false,
   }) {
-    final color = liked ? c.clay : c.tealInk.withValues(alpha: 0.6);
+    final color = liked ? c.clay : c.tealInk.withValues(alpha: 0.65);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
         padding: EdgeInsets.symmetric(
             horizontal: small ? 10 : 12, vertical: small ? 5 : 8),
         decoration: BoxDecoration(
           color: liked
-              ? c.clay.withValues(alpha: 0.15)
-              : c.dustSoft.withValues(alpha: 0.7),
+              ? c.clay.withValues(alpha: 0.14)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(liked ? Icons.favorite : Icons.favorite_outline,
-                size: small ? 15 : 16, color: color),
-            const SizedBox(width: 4),
-            Text('$count',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: small ? 12 : 13,
-                    color: color)),
+            AnimatedScale(
+              scale: liked ? 1.15 : 1.0,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutBack,
+              child: Icon(
+                  liked ? Icons.favorite : Icons.favorite_outline,
+                  size: small ? 15 : 16,
+                  color: color),
+            ),
+            const SizedBox(width: 3),
+            Flexible(
+              child: Text('$count',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: small ? 12 : 13,
+                      color: color)),
+            ),
           ],
         ),
       ),
@@ -911,21 +1041,26 @@ class _CommunityScreenState extends State<CommunityScreen> {
     return Padding(
       padding: EdgeInsets.only(left: depth == 0 ? 0 : 12, top: 12),
       child: Container(
-        decoration: depth == 0 ? null : BoxDecoration(border: Border(left: BorderSide(color: c.dustSoft, width: 2))),
+        decoration: depth == 0
+            ? null
+            : BoxDecoration(
+                border: Border(
+                    left: BorderSide(
+                        color: c.teal.withValues(alpha: 0.35), width: 2))),
         padding: EdgeInsets.only(left: depth == 0 ? 0 : 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              CircleAvatar(
-                  radius: 12,
-                  child: Text(cm.author[0].toUpperCase(),
-                      style: const TextStyle(fontSize: 10))),
+              UserAvatar(
+                  userKey: cm.author,
+                  fallbackName: cm.author,
+                  radius: 12),
               const SizedBox(width: 6),
               Flexible(
                 child: Text('u/${cm.author}',
                     style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 12),
+                        fontWeight: FontWeight.w800, fontSize: 12),
                     overflow: TextOverflow.ellipsis),
               ),
               Text(' · ${cm.time}',
@@ -933,8 +1068,22 @@ class _CommunityScreenState extends State<CommunityScreen> {
                       fontSize: 12,
                       color: c.tealInk.withValues(alpha: 0.5))),
             ]),
-            const SizedBox(height: 4),
-            Text(cm.text, style: const TextStyle(fontSize: 14)),
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: c.dustSoft.withValues(alpha: 0.45),
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(14),
+                  bottomLeft: Radius.circular(14),
+                  bottomRight: Radius.circular(14),
+                ),
+              ),
+              child: Text(cm.text, style: const TextStyle(fontSize: 14)),
+            ),
+            const SizedBox(height: 2),
             Wrap(
               spacing: 4,
               runSpacing: 4,
@@ -1227,16 +1376,10 @@ class _ComposerSheetState extends State<_ComposerSheet> {
                               color: c.dustSoft, shape: BoxShape.circle),
                           child: const Icon(Icons.close, size: 18))),
                   const SizedBox(width: 12),
-                  CircleAvatar(
+                  UserAvatar(
+                    userKey: widget.authorName,
+                    fallbackName: widget.authorName,
                     radius: 18,
-                    backgroundColor: c.teal,
-                    child: Text(
-                      widget.authorName.isEmpty
-                          ? 'A'
-                          : widget.authorName[0].toUpperCase(),
-                      style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -1713,16 +1856,10 @@ class _ComposerSheetState extends State<_ComposerSheet> {
         children: [
           Row(
             children: [
-              CircleAvatar(
+              UserAvatar(
+                userKey: widget.authorName,
+                fallbackName: widget.authorName,
                 radius: 14,
-                backgroundColor: c.teal,
-                child: Text(
-                  widget.authorName.isEmpty
-                      ? 'A'
-                      : widget.authorName[0].toUpperCase(),
-                  style:
-                      const TextStyle(color: Colors.white, fontSize: 11),
-                ),
               ),
               const SizedBox(width: 8),
               Expanded(

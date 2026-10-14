@@ -211,7 +211,11 @@ class _ResultsScreenState extends State<ResultsScreen> {
       );
     }
     final term = terms[termIdx.clamp(0, terms.length - 1)];
-    return UHead(
+    return PortalBottomNotices(
+      refreshFailed: refreshFailed,
+      onRetry: _load,
+      cachedAtMs: cachedOffline ? cachedAt : null,
+      child: UHead(
       height: 150,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -220,15 +224,12 @@ class _ResultsScreenState extends State<ResultsScreen> {
             const PortalLoadingBar(),
             const SizedBox(height: 12),
           ],
-          if (refreshFailed) PortalRefreshFailed(onRetry: _load),
           Text('Results',
               style: display(c, size: 28, color: Colors.white)),
           Text('Semester grades and PLO attainment',
               style: body(c,
                   size: 14, color: Colors.white.withValues(alpha: 0.78))),
           const SizedBox(height: 16),
-          if (cachedOffline && cachedAt != null)
-            PortalCachedNotice(savedAtMs: cachedAt!),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -330,8 +331,11 @@ class _ResultsScreenState extends State<ResultsScreen> {
                           borderRadius: BorderRadius.circular(14)),
                       child: Center(
                           child: Text(course.grade,
-                              style: const TextStyle(
-                                  color: Colors.white,
+                              style: TextStyle(
+                                  color: _gradeTone(course.grade, c) ==
+                                          c.tealInk
+                                      ? c.cream
+                                      : Colors.white,
                                   fontWeight: FontWeight.w800,
                                   fontSize: 15)))),
                   const SizedBox(width: 12),
@@ -425,6 +429,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
           ],
           const SizedBox(height: 96),
         ],
+      ),
       ),
     );
   }

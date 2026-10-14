@@ -13,6 +13,7 @@ import 'auth/session_manager.dart';
 import 'auth/offline.dart';
 import 'auth/page_cache.dart';
 import 'auth/portal_cache.dart';
+import 'auth/prefs_store.dart';
 import 'auth/session_monitor.dart';
 import 'auth/session_store.dart';
 import 'auth/student_portal.dart';
@@ -72,7 +73,10 @@ class CampusApp extends StatefulWidget {
   /// browser, real credentials and network).
   final bool skipLogin;
   final AuthTestHooks? authHooks;
-  const CampusApp({super.key, this.skipLogin = false, this.authHooks});
+  /// Theme snapshot read from device storage before the first frame, so
+  /// startup paints in the saved theme. Null in tests → light defaults.
+  final ProfilePrefs? initialPrefs;
+  const CampusApp({super.key, this.skipLogin = false, this.authHooks, this.initialPrefs});
   @override
   State<CampusApp> createState() => _CampusAppState();
 }
@@ -107,7 +111,29 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
 
   /// True while the cold-start auto-login attempt is running: the login
   /// screen shows a short "Signing you in…" animation instead of the form.
+  /// This only covers the instant local store read — the session itself is
+  /// verified in the background AFTER Home paints (see [_backgroundVerify]),
+  /// so this never blocks the app.
   bool _restoring = false;
+
+  /// Background sign-in engine: true while the saved session is being
+  /// verified/renewed off the critical path. A small non-blocking pill
+  /// shows it; the app stays fully usable meanwhile.
+  bool _signingIn = false;
+
+  /// Background sign-in failed (session dead, interaction needed): banner
+  /// with Try again / Sign in. The saved world stays usable underneath.
+  bool _signInFailed = false;
+  String? _signInFailMessage;
+
+  /// "Stay without live": the user dismissed the expiry popup and keeps
+  /// using saved data. While set, no renewal is attempted and no cookies
+  /// are minted or overwritten. In-memory only — a fresh app launch starts
+  /// again at false and retries auto sign-in with the kept session.
+  bool _stayWithoutLive = false;
+
+  /// Stale-run guard for overlapping background verify passes.
+  int _bgRun = 0;
 
   /// Community backend, chosen once. Priority: Node API (session-verified
   /// writes) > direct Supabase > seeded fake in widget-test modes >
@@ -187,6 +213,12 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
 
   /// Renewal seam: test hooks resolve without mounting a (platform) WebView.
   Future<RenewOutcome> _performRenew(String email) async {
+    // "Stay without live": never mint cookies until the user explicitly
+    // asks (Try again / Login now). The watchdog treats this as a quiet
+    // non-interaction failure, so no popup re-fires for the dead session.
+    if (_stayWithoutLive) {
+      return RenewOutcome(failCode: 'stayed-offline');
+    }
     // Offline: never mount the silent WebView or pop anything — the next
     // heartbeat after reconnect retries automatically.
     if (OfflineMonitor.instance.isOffline) {
@@ -203,6 +235,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Saved theme applies from the very first frame (preloaded in main).
+    if (widget.initialPrefs != null) prefs = widget.initialPrefs!;
     // Platform channels don't exist in widget tests: only probe real
     // connectivity in production runs.
     if (!widget.skipLogin && widget.authHooks == null) {
@@ -255,77 +289,113 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     }
   }
 
-  /// Resume a previously stored portal session: fresh sessions are validated
-  /// directly, stale ones are silently renewed first — this is the auto-login.
-  /// If silent renewal reports the Microsoft session dead, the login screen
-  /// explains that a fresh sign-in is needed (roughly monthly).
+  /// Cold start: open the saved world INSTANTLY (no blocking sign-in
+  /// animation), then verify/renew the session in the background while the
+  /// user already uses the app. First launch ever (no saved session) shows
+  /// the login form immediately.
   Future<void> _restoreSession() async {
-    try {
-      await _doRestoreSession();
-    } finally {
-      if (mounted) setState(() => _restoring = false);
-    }
-  }
-
-  Future<void> _doRestoreSession() async {
     final store = _backend;
-    // Bounded: a hung keystore must never trap the splash screen; the
-    // deeper steps (validation 15 s, silent webview 25 s) carry own bounds.
+    // Bounded: a hung keystore must never trap the splash screen.
     final saved = await store
         .load()
         .timeout(const Duration(seconds: 8), onTimeout: () => null);
-    if (saved == null) return; // first launch ever: no message
-    // No internet: skip validation/renewal entirely and open straight
-    // into the saved world (session cookie + cached pages). First launch
-    // ever has no saved session, so it stays on the login screen instead.
-    await OfflineMonitor.instance.refresh();
-    if (OfflineMonitor.instance.isOffline) {
-      if (!mounted) return;
-      setState(() {
-        sessionId = saved.sessionId;
-        sessionEmail = saved.email;
-        authed = true;
-        _expiredForSid = null;
-        _expiredMessage = null;
-        _expiredCode = null;
-      });
-      _startMonitor();
-      _loadDashboard();
-      return;
+    if (!mounted) return;
+    if (saved == null) {
+      setState(() => _restoring = false);
+      return; // first launch ever: login form, no animation
     }
-    final validate = _validateSession;
-    final manager = SessionManager(
-      store: store,
-      api: FakeValidatingApi(validate),
-    );
+    setState(() {
+      _restoring = false;
+      sessionId = saved.sessionId;
+      sessionEmail = saved.email;
+      authed = true;
+      _expiredForSid = null;
+      _expiredMessage = null;
+      _expiredCode = null;
+      _signInFailed = false;
+      _signInFailMessage = null;
+    });
+    _startMonitor();
+    _loadDashboard();
+    // Fire-and-forget liveness probe (production only: the channel never
+    // resolves in widget tests and would leak a pending timer). The cached
+    // flag below + the watchdog cover offline.
+    if (widget.authHooks == null) {
+      unawaited(OfflineMonitor.instance.refresh());
+    }
+    if (!mounted || !authed) return;
+    // Offline: stay on the cached world; the watchdog retries on reconnect.
+    if (OfflineMonitor.instance.isOffline) return;
+    unawaited(_backgroundVerify());
+  }
+
+  /// The background sign-in engine: proves the opened session is still
+  /// alive and silently renews it when stale — all without blocking the UI.
+  /// Success is silent (the pill just disappears); failure raises the
+  /// retry banner while the app stays usable on cached data.
+  Future<void> _backgroundVerify() async {
+    final run = ++_bgRun;
+    if (!mounted || !authed) return;
+    if (OfflineMonitor.instance.isOffline) return;
+    final sid = sessionId;
+    if (sid == null) return;
+    _silentFailCode = null;
+    setState(() {
+      _signingIn = true;
+      _signInFailed = false;
+      _signInFailMessage = null;
+    });
     try {
+      final manager = SessionManager(
+        store: _backend,
+        api: FakeValidatingApi(_validateSession),
+      );
       final valid = await manager.ensureValidSession(
         renew: (email) async {
           final outcome = await _performRenew(email);
           return outcome.sessionId;
         },
       );
-      if (!mounted) return;
+      if (!mounted || run != _bgRun || !authed) return;
+      final changed = valid.sessionId != sessionId;
       setState(() {
         sessionId = valid.sessionId;
         sessionEmail = valid.email;
-        authed = true;
+        _signingIn = false;
+        _signInFailed = false;
+        _signInFailMessage = null;
         _expiredForSid = null;
         _expiredMessage = null;
         _expiredCode = null;
       });
       _startMonitor();
-      _loadDashboard();
+      if (changed || dashboard == null) _loadDashboard();
     } on AuthRequired {
-      await store.clear();
-      if (!mounted) return;
+      if (!mounted || run != _bgRun || !authed) return;
+      // Went offline mid-verify: stay quiet, the watchdog retries.
+      if (OfflineMonitor.instance.isOffline) {
+        setState(() => _signingIn = false);
+        return;
+      }
       setState(() {
-        authError = MicrosoftOAuth.renewFailureMessage(
+        _signingIn = false;
+        _signInFailed = true;
+        _signInFailMessage = MicrosoftOAuth.renewFailureMessage(
           _silentFailCode ?? 'login_required',
         );
       });
     } catch (_) {
-      // Offline etc: stay on the login screen; user retries by opening app.
+      if (!mounted || run != _bgRun || !authed) return;
+      if (OfflineMonitor.instance.isOffline) {
+        setState(() => _signingIn = false);
+        return;
+      }
+      setState(() {
+        _signingIn = false;
+        _signInFailed = true;
+        _signInFailMessage =
+            'Couldn\'t reach the portal — will retry automatically.';
+      });
     }
   }
 
@@ -412,6 +482,10 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           _expiredForSid = null;
           _expiredMessage = null;
           _expiredCode = null;
+          // A background heal also clears any stale sign-in banner.
+          _signingIn = false;
+          _signInFailed = false;
+          _signInFailMessage = null;
         });
         _flashHealNotice();
         if (widget.authHooks == null) _loadDashboard();
@@ -514,11 +588,14 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     }
   }
 
-  /// Watchdog pass that stays silent while offline: screens keep their
-  /// cached content and retry on reconnect instead of proving anything.
+  /// One immediate watchdog pass: proves the live session, heals it
+  /// silently when stale, or pops the re-login dialog when truly dead.
+  /// Safe from resume hooks and portal 401 handlers (concurrent passes
+  /// are skipped inside the monitor). Stays silent while offline.
   void _checkSessionNow() {
     if (OfflineMonitor.instance.isOffline) return;
-    _checkSessionNow();
+    if (!authed || _monitor == null) return;
+    unawaited(_monitor!.checkNow());
   }
 
   void go(String t) => setState(() { tab = t; course = null; courseLive = false; menu = false; });
@@ -551,6 +628,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       oauthEmail = email.isNotEmpty ? email : null;
       authError = null;
       _expiredMessage = null;
+      _signingIn = false;
+      _signInFailed = false;
+      _signInFailMessage = null;
+      _stayWithoutLive = false; // explicit fresh sign-in: live again
+      _bgRun++;
       tab = 'home';
       menu = false;
     });
@@ -562,6 +644,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     _healTimer?.cancel();
     _healNotice = false;
     _finishSilentRenew(null); // abort any background renewal
+    _bgRun++; // invalidate any in-flight background verify
     await _backend.clear();
     try {
       await WebViewCookieManager().clearCookies();
@@ -576,6 +659,10 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       _expiredMessage = null;
       _expiredCode = null;
       _expiredForSid = null;
+      _signingIn = false;
+      _signInFailed = false;
+      _signInFailMessage = null;
+      _stayWithoutLive = false;
       dashboard = null;
       timetableSlots = const [];
       tab = 'home';
@@ -595,7 +682,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     } else {
       switch (tab) {
         case 'home':
-          screen = HomeScreen(onOpen: (c) => setState(() { course = c; courseLive = dashboard != null && dashboard!.courses.isNotEmpty; }), toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; tab = 'board'; }); }, dashboard: dashboard, timetableSlots: timetableSlots, onAttend: () => go('attendance'), onTimetable: () => go('timetable'));
+          screen = HomeScreen(onOpen: (c) => setState(() { course = c; courseLive = dashboard != null && dashboard!.courses.isNotEmpty; }), toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; tab = 'board'; }); }, dashboard: dashboard, timetableSlots: timetableSlots, onAttend: () => go('attendance'), onTimetable: () => go('timetable'), onTeachers: () => go('teachers'), onMaterial: () => go('material'), onFee: () => go('fee'), onResults: () => go('results'), onCommunity: () => go('community'), onWeb: () => go('web'));
           break;
         case 'material':
           screen = const MaterialsScreen();
@@ -660,7 +747,12 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           screen = ProfileScreen(
             logout: _logout,
             prefs: prefs,
-            onPrefs: (p) => setState(() => prefs = p),
+            onPrefs: (p) {
+              setState(() => prefs = p);
+              // Permanent until the user changes it again (survives
+              // restarts and logout).
+              unawaited(PrefsStore().savePrefs(p));
+            },
             studentName: dashboard?.studentName,
             studentId: dashboard?.studentId,
             faculty: dashboard?.faculty,
@@ -678,7 +770,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       colors: colors,
       palette: prefs.palette,
       child: MaterialApp(
-        title: 'campus.',
+        title: 'UCP University',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           scaffoldBackgroundColor: colors.cream2,
@@ -721,6 +813,10 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                         oauthEmail = null;
                                         authError = null;
                                         authed = true;
+                                        _signingIn = false;
+                                        _signInFailed = false;
+                                        _signInFailMessage = null;
+                                        _stayWithoutLive = false;
                                         _expiredForSid = null;
                                         _expiredMessage = null;
                                         _expiredCode = null;
@@ -758,8 +854,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                   )
                             : SafeArea(top: true, bottom: false, child: screen),
                       ),
-                      // Offline pill above everything (login included).
-                      if (!widget.skipLogin && widget.authHooks == null)
+                      // Offline pill on the login screen only — the signed-in
+                      // world shows status above the tab bar.
+                      if (!authed &&
+                          !widget.skipLogin &&
+                          widget.authHooks == null)
                         const Positioned(
                           top: 8,
                           left: 16,
@@ -865,55 +964,58 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                             message: _expiredMessage!,
                             detail: _expiredCode,
                             onLoginNow: _reloginNow,
-                            onLater: () => setState(
-                                () => _expiredMessage = null),
+                            onLater: () => setState(() {
+                              // Stay without live: usable on saved data,
+                              // no cookie refresh; the kept session lets
+                              // the next launch retry auto sign-in.
+                              _expiredMessage = null;
+                              _stayWithoutLive = true;
+                            }),
                           ),
                         ),
-                      // Silent-heal notice: brief proof the background
-                      // renewal ran. Non-interactive, above content but
-                      // below dialogs.
-                      if (authed && _healNotice && _expiredMessage == null)
+                      // Bottom stack above the tab bar: sign-in-failed
+                      // banner / silent-heal notice / "trying to sign in"
+                      // pill, plus the persistent offline saved-data pill.
+                      if (authed)
                         Positioned(
                           left: 16,
                           right: 16,
                           bottom: 16,
-                          child: IgnorePointer(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 12),
-                              decoration: BoxDecoration(
-                                color: colors.tealInk,
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Colors.black26,
-                                    blurRadius: 8,
-                                    offset: Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
+                          child: ValueListenableBuilder<bool>(
+                            valueListenable:
+                                OfflineMonitor.instance.offline,
+                            builder: (_, off, __) {
+                              final showFail = _signInFailed &&
+                                  !_signingIn &&
+                                  _expiredMessage == null;
+                              final showHeal = !showFail &&
+                                  _healNotice &&
+                                  _expiredMessage == null;
+                              final showSigning = _signingIn &&
+                                  _expiredMessage == null;
+                              if (!showFail &&
+                                  !showHeal &&
+                                  !showSigning &&
+                                  !off) {
+                                return const SizedBox.shrink();
+                              }
+                              return Column(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(
-                                    Icons.check_circle_outline,
-                                    size: 18,
-                                    color: Colors.white,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      'Session refreshed automatically — you stay signed in.',
-                                      style: body(
-                                        colors,
-                                        size: 13,
-                                        weight: FontWeight.w600,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
+                                  if (showFail)
+                                    _signInFailBanner(colors),
+                                  if (showHeal) _healCard(colors),
+                                  if (showSigning) _signingPill(),
+                                  if (off) ...[
+                                    if (showFail ||
+                                        showHeal ||
+                                        showSigning)
+                                      const SizedBox(height: 8),
+                                    const OfflineBanner(),
+                                  ],
                                 ],
-                              ),
-                            ),
+                              );
+                            },
                           ),
                         ),
                     ],
@@ -948,7 +1050,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                               transform: Matrix4.translationValues(0, -12, 0),
                                               width: 52, height: 52,
                                               decoration: BoxDecoration(color: (tab == 'home' && course == null) ? colors.teal : colors.tealInk, shape: BoxShape.circle, border: Border.all(color: colors.cream2, width: 4), boxShadow: [BoxShadow(color: colors.clay, offset: const Offset(0, 6))]),
-                                              child: const Icon(Icons.home_outlined, color: Colors.white, size: 26),
+                                              child: Icon(Icons.home_outlined, color: colors.cream, size: 26),
                                             ),
                                             Text('Home', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: (tab == 'home' && course == null) ? colors.tealInk : colors.tealInk.withValues(alpha: 0.55))),
                                           ],
@@ -970,6 +1072,201 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
             ),
           );
         }),
+      ),
+    );
+  }
+
+  /// Tiny "Trying to sign in…" pill: proof the background session engine
+  /// is working. Non-interactive, lives in the bottom stack above tabs.
+  Widget _signingPill() {
+    return IgnorePointer(
+      child: Center(
+        child: Container(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.black87,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              ),
+              SizedBox(width: 8),
+              Text(
+                'Trying to sign in…',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Retry / fresh-sign-in card for a failed background sign-in.
+  Widget _signInFailBanner(AppColors colors) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+      decoration: BoxDecoration(
+        color: colors.tealInk,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.cloud_off_outlined,
+                size: 18,
+                color: colors.cream,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _signInFailMessage ?? 'Couldn\'t sign you in.',
+                  style: body(
+                    colors,
+                    size: 13,
+                    weight: FontWeight.w600,
+                    color: colors.cream,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _signInFailed = false),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(
+                    Icons.close,
+                    size: 16,
+                    color: colors.cream.withValues(alpha: 0.7),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _signingIn
+                      ? null
+                      : () {
+                          // Explicit live request.
+                          setState(
+                              () => _stayWithoutLive = false);
+                          _backgroundVerify();
+                        },
+                  child: Container(
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: colors.cream,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Try again',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: colors.tealDeep,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _reloginNow,
+                  child: Container(
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                          color: colors.cream.withValues(alpha: 0.7)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Sign in',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: colors.cream,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Brief proof the background heal ran. Non-interactive.
+  Widget _healCard(AppColors colors) {
+    return IgnorePointer(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: colors.tealInk,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black26,
+              blurRadius: 8,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.check_circle_outline,
+              size: 18,
+              color: colors.cream,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Session refreshed automatically — you stay signed in.',
+                style: body(
+                  colors,
+                  size: 13,
+                  weight: FontWeight.w600,
+                  color: colors.cream,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -7,6 +7,7 @@ import '../teachers/teacher_service.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
 import '../widgets/loading.dart';
+import '../widgets/user_avatar.dart';
 
 /// Teacher reviews page: photo cards, separate 3-dimension ratings,
 /// student comments, and a 1..5 rate flow stored in Supabase via Node API.
@@ -22,6 +23,20 @@ class TeachersScreen extends StatefulWidget {
   State<TeachersScreen> createState() => _TeachersScreenState();
 }
 
+/// 'Mar 2026' from an ISO review timestamp; '' when unparseable.
+String teacherReviewDate(String iso) {
+  try {
+    final dt = DateTime.parse(iso).toLocal();
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return '${months[dt.month - 1]} ${dt.year}';
+  } catch (_) {
+    return '';
+  }
+}
+
 class _TeachersScreenState extends State<TeachersScreen> {
   List<Teacher> teachers = [];
   bool loading = true;
@@ -30,6 +45,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
   String query = '';
   String sort = 'Top';
   int visibleCount = 60;
+  String reviewSort = 'Newest';
   Teacher? open;
   List<TeacherReview> reviews = [];
   bool detailLoading = false;
@@ -122,12 +138,23 @@ class _TeachersScreenState extends State<TeachersScreen> {
     return list;
   }
 
+  /// Reviews in the selected order. Backend returns newest first;
+  /// 'Highest' re-sorts client-side by average rating.
+  List<TeacherReview> get sortedReviews {
+    final list = List<TeacherReview>.of(reviews);
+    if (reviewSort == 'Highest') {
+      list.sort((a, b) => b.average.compareTo(a.average));
+    }
+    return list;
+  }
+
   Future<void> _openDetail(Teacher t) async {
     final svc = widget.service;
     if (svc == null) return;
     setState(() {
       open = t;
       reviews = [];
+      reviewSort = 'Newest';
       detailLoading = true;
       detailError = null;
     });
@@ -144,7 +171,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
     } catch (e) {
       if (!mounted) return;
       final hint = e is TeacherException && e.message.contains('404')
-          ? 'Backend has no teachers routes — redeploy the API, or run with SUPABASE_URL + SUPABASE_ANON_KEY for direct read.'
+          ? 'Teacher not found on the server.'
           : 'Check connection and retry.';
       setState(() {
         detailLoading = false;
@@ -173,11 +200,9 @@ class _TeachersScreenState extends State<TeachersScreen> {
           } catch (e) {
             if (ctx.mounted) {
               final msg = e is TeacherException ? e.message : '';
-              final text = msg.contains('404') || msg.contains('redeploy')
-                  ? 'Rating needs the updated API — redeploy the backend with teachers routes, then retry.'
-                  : (msg.isEmpty
-                      ? 'Could not save rating. Try again.'
-                      : msg);
+              final text = msg.isEmpty
+                  ? 'Could not save rating. Try again.'
+                  : msg;
               ScaffoldMessenger.of(ctx).showSnackBar(
                 SnackBar(
                   content: Text(text),
@@ -210,7 +235,12 @@ class _TeachersScreenState extends State<TeachersScreen> {
     // Lazy sliver list: only visible cards are built, with bouncing
     // physics for a smooth feel on 706 rows. The gradient band lives
     // inside the first sliver (same look as UHead, scrolls together).
-    return CustomScrollView(
+    // Pull-to-refresh re-fetches the current dept/search.
+    return RefreshIndicator(
+      color: c.teal,
+      backgroundColor: c.white,
+      onRefresh: _reload,
+      child: CustomScrollView(
       physics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics()),
       slivers: [
@@ -228,25 +258,53 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 bottomRight: Radius.elliptical(220, 44),
               ),
             ),
+            clipBehavior: Clip.antiAlias,
             padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Stack(
               children: [
-                _header(c),
-                const SizedBox(height: 14),
-                _statsStrip(c),
+                Positioned(
+                  right: -46,
+                  top: -54,
+                  child: _decoCircle(150, 0.07),
+                ),
+                Positioned(
+                  left: 50,
+                  bottom: -84,
+                  child: _decoCircle(170, 0.05),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _header(c),
+                    const SizedBox(height: 14),
+                    _statsStrip(c),
+                  ],
+                ),
               ],
             ),
           ),
         ),
+        // Pinned search: stays under the thumb across 706 rows.
+        SliverAppBar(
+          pinned: true,
+          floating: false,
+          toolbarHeight: 68,
+          automaticallyImplyLeading: false,
+          backgroundColor: c.cream2,
+          surfaceTintColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          elevation: 0,
+          flexibleSpace: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+            child: _searchBar(c),
+          ),
+        ),
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _searchBar(c),
-                const SizedBox(height: 10),
                 _deptChips(c),
                 const SizedBox(height: 10),
                 _sortRow(c),
@@ -295,6 +353,19 @@ class _TeachersScreenState extends State<TeachersScreen> {
           ),
         const SliverToBoxAdapter(child: SizedBox(height: 96)),
       ],
+      ),
+    );
+  }
+
+  /// Soft translucent disc for header decoration.
+  Widget _decoCircle(double size, double alpha) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: alpha),
+        shape: BoxShape.circle,
+      ),
     );
   }
 
@@ -702,6 +773,9 @@ class _TeachersScreenState extends State<TeachersScreen> {
     );
   }
 
+  /// RateMyProfessors-style list card: photo with rating badge, name,
+  /// designation · dept, stars + `4.8 (174)`. Breakdown meters live on
+  /// the detail profile — the card stays scannable at 60fps.
   Widget _teacherCard(BuildContext context, AppColors c, Teacher t) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -711,29 +785,34 @@ class _TeachersScreenState extends State<TeachersScreen> {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: c.white,
-          borderRadius: BorderRadius.circular(26),
-          boxShadow: const [
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: c.dustSoft.withValues(alpha: 0.6)),
+          boxShadow: [
             BoxShadow(
-                color: Colors.black12, blurRadius: 18, offset: Offset(0, 8)),
+              color: c.tealInk.withValues(alpha: 0.06),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
           ],
         ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Stack(
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(16),
                   child: SizedBox(
-                    width: 88,
-                    height: 88,
+                    width: 84,
+                    height: 84,
                     child: t.imageUrl.isEmpty
-                        ? _avatarFallback(c, t.name, 88)
+                        ? _avatarFallback(c, t.name, 84)
                         : Image.network(
                             t.imageUrl,
                             fit: BoxFit.cover,
+                            cacheWidth: 168,
+                            gaplessPlayback: true,
                             errorBuilder: (_, _, _) =>
-                                _avatarFallback(c, t.name, 88),
+                                _avatarFallback(c, t.name, 84),
                           ),
                   ),
                 ),
@@ -772,73 +851,56 @@ class _TeachersScreenState extends State<TeachersScreen> {
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(t.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: display(c, size: 16.5)),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 9, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: c.teal.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            t.designation.isEmpty ? 'Faculty' : t.designation,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w700,
-                                color: c.tealDeep),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 9, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: c.dustSoft.withValues(alpha: 0.7),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          _shortDept(t),
-                          style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w700,
-                              color: c.tealInk.withValues(alpha: 0.7)),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 7),
-                  _starRow(t.overallRating, size: 14),
-                  const SizedBox(height: 5),
+                      style: display(c, size: 16)),
+                  const SizedBox(height: 2),
                   Text(
-                    t.reviewCount == 0
-                        ? 'No reviews yet — tap to be first'
-                        : '${t.reviewCount} reviews · G ${t.gradingPct}% · L ${t.leniencyPct}% · S ${t.subjectPct}%',
+                    t.designation.isEmpty
+                        ? _shortDept(t)
+                        : '${t.designation} · ${_shortDept(t)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w600,
-                        color: c.tealInk.withValues(alpha: 0.62)),
+                        color: c.tealInk.withValues(alpha: 0.6)),
                   ),
-                  if (t.reviewCount > 0) ...[
-                    const SizedBox(height: 6),
-                    _meter(c, t.gradingPct / 100, c.teal),
-                    const SizedBox(height: 4),
-                    _meter(c, t.leniencyPct / 100, c.board),
-                    const SizedBox(height: 4),
-                    _meter(c, t.subjectPct / 100, c.clay),
-                  ],
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      _starRow(t.overallRating, size: 14),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          t.reviewCount == 0
+                              ? 'No reviews yet'
+                              : '${t.overallRating.toStringAsFixed(1)} (${t.reviewCount})',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: c.tealInk
+                                  .withValues(alpha: 0.7)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (t.reviewCount == 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Tap to be the first to rate',
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: c.teal),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -905,72 +967,17 @@ class _TeachersScreenState extends State<TeachersScreen> {
   }
 
   Widget _detailView(AppColors c, Teacher t) {
-    // Lazy reviews: hero + dials stay on top, review tiles build
-    // on demand so 174-review profiles scroll at 60fps.
-    return CustomScrollView(
+    // Lazy reviews: hero + breakdown stay on top, review tiles build
+    // on demand so 174-review profiles scroll at 60fps. Pull down to
+    // refresh the profile.
+    return RefreshIndicator(
+      color: c.teal,
+      backgroundColor: c.white,
+      onRefresh: () => _openDetail(t),
+      child: CustomScrollView(
       physics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics()),
       slivers: [
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () => setState(() {
-                    open = null;
-                    reviews = [];
-                  }),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                        color: c.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: const [
-                          BoxShadow(
-                              color: Colors.black12,
-                              blurRadius: 10,
-                              offset: Offset(0, 4)),
-                        ]),
-                    child: const Row(children: [
-                      Icon(Icons.arrow_back, size: 17),
-                      Text(' All',
-                          style: TextStyle(fontWeight: FontWeight.w700))
-                    ]),
-                  ),
-                ),
-                const Spacer(),
-                GestureDetector(
-                  onTap: () => _openRateSheet(t),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      gradient:
-                          LinearGradient(colors: [c.tealDeep, c.teal]),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                            color: c.teal.withValues(alpha: 0.45),
-                            blurRadius: 14,
-                            offset: const Offset(0, 6)),
-                      ],
-                    ),
-                    child: const Row(children: [
-                      Icon(Icons.star_outline,
-                          size: 16, color: Colors.white),
-                      Text(' Rate',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold))
-                    ]),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -980,7 +987,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: _dialsCard(c, t),
+            child: _breakdownCard(c, t),
           ),
         ),
         SliverToBoxAdapter(
@@ -1001,15 +1008,50 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                        '${reviews.length} STUDENT REVIEWS'.toUpperCase(),
+                        '${reviews.length} review${reviews.length == 1 ? '' : 's'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: c.tealInk.withValues(alpha: 0.55))),
                   ),
+                  PopupMenuButton<String>(
+                    tooltip: 'Sort reviews',
+                    initialValue: reviewSort,
+                    onSelected: (v) =>
+                        setState(() => reviewSort = v),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                          value: 'Newest', child: Text('Newest first')),
+                      PopupMenuItem(
+                          value: 'Highest', child: Text('Highest rated')),
+                    ],
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: c.dustSoft.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.sort_outlined, size: 13),
+                          Text(' $reviewSort',
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   GestureDetector(
                     onTap: () => _openRateSheet(t),
                     child: Text('Write one',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -1057,10 +1099,35 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
                     color: c.white,
-                    borderRadius: BorderRadius.circular(22)),
-                child: const Center(
-                    child:
-                        Text('No reviews yet — be the first to rate.')),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                        color: c.dustSoft.withValues(alpha: 0.6))),
+                child: Column(
+                  children: [
+                    Icon(Icons.rate_review_outlined,
+                        size: 32, color: c.teal),
+                    const SizedBox(height: 8),
+                    const Text('No reviews yet — be the first to rate.'),
+                    const SizedBox(height: 12),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _openRateSheet(t),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 12),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                              colors: [c.tealDeep, c.teal]),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Text('Rate first',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           )
@@ -1068,36 +1135,44 @@ class _TeachersScreenState extends State<TeachersScreen> {
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             sliver: SliverList.builder(
-              itemCount: reviews.length,
+              itemCount: sortedReviews.length,
               addAutomaticKeepAlives: false,
               addRepaintBoundaries: true,
-              itemBuilder: (ctx, i) => _reviewTile(c, reviews[i]),
+              itemBuilder: (ctx, i) =>
+                  _reviewTile(c, sortedReviews[i]),
             ),
           ),
         const SliverToBoxAdapter(child: SizedBox(height: 96)),
       ],
+      ),
     );
   }
 
+  /// Single identity header, LinkedIn-style: cover banner with a floating
+  /// back button, overlapping avatar, name + designation, one big score
+  /// with stars + count, and a full-width Rate CTA.
   Widget _detailHero(AppColors c, Teacher t) {
     return Container(
       decoration: BoxDecoration(
           color: c.white, borderRadius: BorderRadius.circular(28),
-          boxShadow: const [
+          border: Border.all(color: c.dustSoft.withValues(alpha: 0.6)),
+          boxShadow: [
             BoxShadow(
-                color: Colors.black12,
+                color: c.tealInk.withValues(alpha: 0.07),
                 blurRadius: 20,
-                offset: Offset(0, 10)),
+                offset: const Offset(0, 10)),
           ]),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Stack(
+            clipBehavior: Clip.none,
             children: [
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(28)),
                 child: SizedBox(
-                  height: 130,
+                  height: 118,
                   width: double.infinity,
                   child: t.imageUrl.isEmpty
                       ? Container(
@@ -1111,6 +1186,8 @@ class _TeachersScreenState extends State<TeachersScreen> {
                       : Image.network(
                           t.imageUrl,
                           fit: BoxFit.cover,
+                          cacheWidth: 800,
+                          gaplessPlayback: true,
                           errorBuilder: (_, _, _) => Container(
                             decoration: BoxDecoration(
                               gradient: LinearGradient(colors: [
@@ -1123,7 +1200,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 ),
               ),
               Container(
-                height: 130,
+                height: 118,
                 decoration: BoxDecoration(
                   borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(28)),
@@ -1131,109 +1208,168 @@ class _TeachersScreenState extends State<TeachersScreen> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.25),
                       Colors.black.withValues(alpha: 0.45),
                     ],
                   ),
                 ),
               ),
               Positioned(
-                left: 14,
-                bottom: 12,
+                left: 12,
+                top: 12,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => setState(() {
+                    open = null;
+                    reviews = [];
+                  }),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.arrow_back,
+                            size: 16, color: Colors.white),
+                        Text(' All',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 16,
+                bottom: -30,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: ClipOval(
+                    child: SizedBox(
+                      width: 62,
+                      height: 62,
+                      child: t.imageUrl.isEmpty
+                          ? _avatarFallback(c, t.name, 62)
+                          : Image.network(
+                              t.imageUrl,
+                              fit: BoxFit.cover,
+                              cacheWidth: 128,
+                              gaplessPlayback: true,
+                              errorBuilder: (_, _, _) =>
+                                  _avatarFallback(c, t.name, 62),
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
                 right: 14,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(t.departmentName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  color: Colors.white70, fontSize: 11)),
-                          Text(t.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: display(c,
-                                  size: 20, color: Colors.white)),
-                        ],
+                bottom: 12,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.star, size: 17, color: Colors.amber),
+                      const SizedBox(width: 4),
+                      Text(
+                        t.reviewCount == 0
+                            ? 'New'
+                            : t.overallRating.toStringAsFixed(1),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                            color: c.tealDeep),
                       ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16)),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.star,
-                              size: 17, color: Colors.amber),
-                          const SizedBox(width: 4),
-                          Text(
-                            t.reviewCount == 0
-                                ? 'New'
-                                : t.overallRating.toStringAsFixed(1),
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w800, fontSize: 16),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(16, 40, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
-                  child: SizedBox(
-                    width: 58,
-                    height: 58,
-                    child: t.imageUrl.isEmpty
-                        ? _avatarFallback(c, t.name, 58)
-                        : Image.network(
-                            t.imageUrl,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) =>
-                                _avatarFallback(c, t.name, 58),
-                          ),
-                  ),
+                Text(t.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: display(c, size: 21)),
+                const SizedBox(height: 2),
+                Text(
+                  t.designation.isEmpty
+                      ? t.departmentName
+                      : '${t.designation} · ${t.departmentName.isEmpty ? _shortDept(t) : t.departmentName}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: body(c,
+                      size: 12.5,
+                      color: c.tealInk.withValues(alpha: 0.65)),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        t.designation.isEmpty
-                            ? _shortDept(t)
-                            : '${t.designation} · ${_shortDept(t)}',
-                        style: body(c,
-                            size: 12,
-                            color: c.tealInk.withValues(alpha: 0.65)),
-                      ),
-                      const SizedBox(height: 4),
-                      _starRow(t.overallRating, size: 16),
-                      const SizedBox(height: 2),
-                      Text(
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _starRow(t.overallRating, size: 16),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
                         t.reviewCount == 0
                             ? 'No reviews yet'
-                            : '${t.reviewCount} student reviews',
+                            : '${t.reviewCount} student review${t.reviewCount == 1 ? '' : 's'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                            fontSize: 11.5,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                             color: c.tealInk.withValues(alpha: 0.6)),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _openRateSheet(t),
+              child: Container(
+                width: double.infinity,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                      colors: [c.tealDeep, c.teal]),
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                        color: c.teal.withValues(alpha: 0.4),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6)),
+                  ],
+                ),
+                child: const Text('Rate this teacher',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15)),
+              ),
             ),
           ),
         ],
@@ -1241,7 +1377,9 @@ class _TeachersScreenState extends State<TeachersScreen> {
     );
   }
 
-  Widget _dialsCard(AppColors c, Teacher t) {
+  /// Rating breakdown, one labeled row per dimension: icon + bar +
+  /// `4.6/5`. Reads at a glance — no decoding cryptic dials.
+  Widget _breakdownCard(AppColors c, Teacher t) {
     if (t.reviewCount == 0) {
       return Container(
         width: double.infinity,
@@ -1274,12 +1412,13 @@ class _TeachersScreenState extends State<TeachersScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-          color: c.white, borderRadius: BorderRadius.circular(26),
-          boxShadow: const [
+          color: c.white, borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: c.dustSoft.withValues(alpha: 0.6)),
+          boxShadow: [
             BoxShadow(
-                color: Colors.black12,
-                blurRadius: 18,
-                offset: Offset(0, 8)),
+                color: c.tealInk.withValues(alpha: 0.06),
+                blurRadius: 16,
+                offset: const Offset(0, 8)),
           ]),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1295,88 +1434,95 @@ class _TeachersScreenState extends State<TeachersScreen> {
               const Icon(Icons.insights_outlined, size: 16),
             ],
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              _dial(c, 'Grading', t.gradingPct, t.avgGrading, c.teal),
-              _dial(c, 'Leniency', t.leniencyPct, t.avgLeniency, c.board),
-              _dial(c, 'Subject', t.subjectPct, t.avgSubject, c.clay),
-            ],
-          ),
+          const SizedBox(height: 12),
+          _breakdownRow(c, Icons.task_alt_outlined, 'Grading fairness',
+              t.avgGrading, c.teal),
+          const SizedBox(height: 10),
+          _breakdownRow(c, Icons.spa_outlined, 'Leniency & support',
+              t.avgLeniency, c.board),
+          const SizedBox(height: 10),
+          _breakdownRow(c, Icons.menu_book_outlined, 'Subject knowledge',
+              t.avgSubject, c.clay),
         ],
       ),
     );
   }
 
-  Widget _dial(
-      AppColors c, String label, int pct, double avg, Color color) {
-    return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
-        decoration: BoxDecoration(
-            color: c.cream2, borderRadius: BorderRadius.circular(18)),
-        child: Column(
-          children: [
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                SizedBox(
-                  width: 66,
-                  height: 66,
-                  child: CircularProgressIndicator(
-                    value: (pct / 100).clamp(0.0, 1.0),
-                    strokeWidth: 8,
-                    strokeCap: StrokeCap.round,
-                    backgroundColor: c.dustSoft.withValues(alpha: 0.8),
-                    valueColor: AlwaysStoppedAnimation(color),
-                  ),
-                ),
-                Text('$pct%',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 13)),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: c.tealInk.withValues(alpha: 0.65))),
-            Text('${avg.toStringAsFixed(1)} / 5',
-                style: const TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w800)),
-          ],
+  Widget _breakdownRow(
+      AppColors c, IconData icon, String label, double avg, Color color) {
+    final pct = (avg / 5).clamp(0.0, 1.0);
+    return Row(
+      children: [
+        Container(
+          alignment: Alignment.center,
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, size: 18, color: color),
         ),
-      ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w700)),
+                  ),
+                  Text('${avg.toStringAsFixed(1)}/5',
+                      style: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w800)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: pct,
+                  minHeight: 6,
+                  backgroundColor: c.dustSoft.withValues(alpha: 0.7),
+                  valueColor: AlwaysStoppedAnimation(color),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
   Widget _reviewTile(AppColors c, TeacherReview r) {
-    final avatarColors = [c.teal, c.clay, c.board, c.tealDeep];
-    final avatarBg = avatarColors[r.studentName.length % avatarColors.length];
+    final date = teacherReviewDate(r.createdAt);
     return Container(
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-          color: c.cream2, borderRadius: BorderRadius.circular(20)),
+          color: c.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: c.dustSoft.withValues(alpha: 0.6)),
+          boxShadow: [
+            BoxShadow(
+                color: c.tealInk.withValues(alpha: 0.05),
+                blurRadius: 12,
+                offset: const Offset(0, 5)),
+          ]),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              CircleAvatar(
+              UserAvatar(
+                userKey: r.studentName,
+                fallbackName: r.studentName,
                 radius: 15,
-                backgroundColor: avatarBg,
-                child: Text(
-                  r.studentName.isEmpty
-                      ? '?'
-                      : r.studentName[0].toUpperCase(),
-                  style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800),
-                ),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -1388,7 +1534,12 @@ class _TeachersScreenState extends State<TeachersScreen> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                             fontWeight: FontWeight.w700, fontSize: 13)),
-                    _starRow(r.average, size: 11),
+                    if (date.isNotEmpty)
+                      Text(date,
+                          style: TextStyle(
+                              fontSize: 11,
+                              color:
+                                  c.tealInk.withValues(alpha: 0.5))),
                   ],
                 ),
               ),
@@ -1396,7 +1547,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: c.teal.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12)),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1411,16 +1562,34 @@ class _TeachersScreenState extends State<TeachersScreen> {
             ],
           ),
           if (r.comment.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(r.comment, style: const TextStyle(fontSize: 14, height: 1.35)),
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: c.dustSoft.withValues(alpha: 0.45),
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(14),
+                  bottomLeft: Radius.circular(14),
+                  bottomRight: Radius.circular(14),
+                ),
+              ),
+              child:
+                  Text(r.comment, style: const TextStyle(fontSize: 14, height: 1.35)),
+            ),
           ],
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 6,
+            runSpacing: 6,
             children: [
-              _miniStat(c, 'Grading ${r.ratingGrading}'),
-              _miniStat(c, 'Leniency ${r.ratingLeniency}'),
-              _miniStat(c, 'Subject ${r.ratingSubject}'),
+              _miniStat(c, Icons.task_alt_outlined,
+                  'Grading ${r.ratingGrading}'),
+              _miniStat(c, Icons.spa_outlined,
+                  'Leniency ${r.ratingLeniency}'),
+              _miniStat(c, Icons.menu_book_outlined,
+                  'Subject ${r.ratingSubject}'),
             ],
           ),
         ],
@@ -1428,15 +1597,23 @@ class _TeachersScreenState extends State<TeachersScreen> {
     );
   }
 
-  Widget _miniStat(AppColors c, String label) {
+  Widget _miniStat(AppColors c, IconData icon, String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-          color: Colors.white,
+          color: c.cream2,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: c.dustSoft)),
-      child: Text(label,
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: c.tealInk.withValues(alpha: 0.6)),
+          const SizedBox(width: 4),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w700)),
+        ],
+      ),
     );
   }
 }
@@ -1487,6 +1664,18 @@ class _RateSheetState extends State<_RateSheet> {
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
+    final initial = widget.teacher.name.isEmpty
+        ? '?'
+        : widget.teacher.name[0].toUpperCase();
+    Widget fallback() => Container(
+          color: c.teal.withValues(alpha: 0.14),
+          alignment: Alignment.center,
+          child: Text(initial,
+              style: TextStyle(
+                  color: c.tealDeep,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18)),
+        );
     return Padding(
       padding:
           EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -1520,15 +1709,13 @@ class _RateSheetState extends State<_RateSheet> {
                       width: 48,
                       height: 48,
                       child: widget.teacher.imageUrl.isEmpty
-                          ? Container(
-                              color: c.dustSoft,
-                              child: const Icon(Icons.person))
+                          ? fallback()
                           : Image.network(
                               widget.teacher.imageUrl,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => Container(
-                                  color: c.dustSoft,
-                                  child: const Icon(Icons.person)),
+                              cacheWidth: 96,
+                              gaplessPlayback: true,
+                              errorBuilder: (_, _, _) => fallback(),
                             ),
                     ),
                   ),

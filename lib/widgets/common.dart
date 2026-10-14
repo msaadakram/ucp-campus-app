@@ -89,7 +89,7 @@ class ProgressRing extends StatelessWidget {
               valueColor: AlwaysStoppedAnimation(color),
             ),
           ),
-          Text('$value', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
+          Text('$value', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color)),
         ],
       ),
     );
@@ -200,6 +200,9 @@ class SettingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
+    // Icon contrasts against ANY tone chip in both modes (board and
+    // dark-mode tealInk chips are light → dark icon, the rest → white).
+    final fg = tone.computeLuminance() > 0.5 ? c.tealInk : Colors.white;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.dustSoft))),
@@ -208,7 +211,7 @@ class SettingRow extends StatelessWidget {
           Container(
             width: 36, height: 36,
             decoration: BoxDecoration(color: tone, borderRadius: BorderRadius.circular(12)),
-            child: Icon(icon, size: 18, color: Colors.white),
+            child: Icon(icon, size: 18, color: fg),
           ),
           const SizedBox(width: 12),
           Expanded(

@@ -89,10 +89,10 @@ class PortalError extends StatelessWidget {
                             decoration: BoxDecoration(
                                 color: c.tealInk,
                                 borderRadius: BorderRadius.circular(16)),
-                            child: const Text('Re-login',
+                            child: Text('Re-login',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                    color: Colors.white,
+                                    color: c.cream,
                                     fontWeight: FontWeight.bold)),
                           ),
                         ),
@@ -161,6 +161,49 @@ class PortalLoadingBar extends StatelessWidget {
         backgroundColor: c.teal.withValues(alpha: 0.15),
         valueColor: AlwaysStoppedAnimation<Color>(c.teal),
       ),
+    );
+  }
+}
+
+/// Bottom-docked status slot shared by the portal pages (timetable,
+/// attendance, results, fee challan): refresh-failed retry + saved-data
+/// age float above the tab bar instead of pushing content around.
+/// Screens keep their inline loading bar; these two live here.
+/// When neither applies, [child] passes through untouched.
+class PortalBottomNotices extends StatelessWidget {
+  final Widget child;
+  final bool refreshFailed;
+  final VoidCallback onRetry;
+  /// Epoch millis of the shown snapshot; null hides the saved-data pill.
+  final int? cachedAtMs;
+  const PortalBottomNotices({
+    super.key,
+    required this.child,
+    required this.refreshFailed,
+    required this.onRetry,
+    this.cachedAtMs,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!refreshFailed && cachedAtMs == null) return child;
+    return Stack(
+      children: [
+        child,
+        Positioned(
+          left: 16,
+          right: 16,
+          bottom: 16,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (refreshFailed) PortalRefreshFailed(onRetry: onRetry),
+              if (cachedAtMs != null)
+                PortalCachedNotice(savedAtMs: cachedAtMs!),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

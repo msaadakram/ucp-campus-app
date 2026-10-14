@@ -299,7 +299,12 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(vertical: 6),
                           decoration: BoxDecoration(color: _tone(s[0] as String, c), borderRadius: BorderRadius.circular(12)),
-                          child: Column(children: [Text(s[0] as String, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13)), Text((s[1] as double) <= -900 ? '< −2σ' : '≥ ${s[1]}σ', style: const TextStyle(fontSize: 9, color: Colors.white70)), Text((s[2] as double).toStringAsFixed(2), style: const TextStyle(fontSize: 10, color: Colors.white))]),
+                          child: Builder(builder: (_) {
+                            final onDark = _tone(s[0] as String, c) == c.tealInk;
+                            final fg = onDark ? c.cream : Colors.white;
+                            final fgSoft = onDark ? c.cream.withValues(alpha: 0.7) : Colors.white70;
+                            return Column(children: [Text(s[0] as String, style: TextStyle(fontWeight: FontWeight.bold, color: fg, fontSize: 13)), Text((s[1] as double) <= -900 ? '< −2σ' : '≥ ${s[1]}σ', style: TextStyle(fontSize: 9, color: fgSoft)), Text((s[2] as double).toStringAsFixed(2), style: TextStyle(fontSize: 10, color: fg))]);
+                          }),
                         ),
                     ],
                   ),
@@ -343,10 +348,10 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('NEED SGPA', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white70)),
+                            Text('NEED SGPA', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: c.cream.withValues(alpha: 0.7))),
                             Text(
                               credits == 0 ? '—' : requiredSgpa.toStringAsFixed(2),
-                              style: display(c, size: 18, color: Colors.white),
+                              style: display(c, size: 18, color: c.cream),
                             ),
                           ],
                         ),
@@ -429,7 +434,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                             child: GestureDetector(
                               behavior: HitTestBehavior.opaque,
                               onTap: widget.onSessionExpired,
-                              child: Container(padding: const EdgeInsets.symmetric(vertical: 10), decoration: BoxDecoration(color: c.tealInk, borderRadius: BorderRadius.circular(12)), child: const Text('Re-login', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
+                              child: Container(padding: const EdgeInsets.symmetric(vertical: 10), decoration: BoxDecoration(color: c.tealInk, borderRadius: BorderRadius.circular(12)), child: Text('Re-login', textAlign: TextAlign.center, style: TextStyle(color: c.cream, fontWeight: FontWeight.bold, fontSize: 13))),
                             ),
                           ),
                         ],
@@ -476,8 +481,8 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                                       borderRadius: BorderRadius.circular(20),
                                     ),
                                     child: Column(children: [
-                                      Text(terms[i].term, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: portalTermIdx == i ? Colors.white : c.tealInk)),
-                                      Text('SGPA ${terms[i].sgpa}', style: TextStyle(fontSize: 11, color: portalTermIdx == i ? Colors.white70 : c.tealInk.withValues(alpha: 0.6))),
+                                      Text(terms[i].term, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: portalTermIdx == i ? c.cream : c.tealInk)),
+                                      Text('SGPA ${terms[i].sgpa}', style: TextStyle(fontSize: 11, color: portalTermIdx == i ? c.cream.withValues(alpha: 0.7) : c.tealInk.withValues(alpha: 0.6))),
                                     ]),
                                   ),
                                 ),
@@ -507,7 +512,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                             width: double.infinity,
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             decoration: BoxDecoration(color: c.tealInk, borderRadius: BorderRadius.circular(14)),
-                            child: Text('Use ${t.term} as base (CGPA ${t.cgpa})', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                            child: Text('Use ${t.term} as base (CGPA ${t.cgpa})', textAlign: TextAlign.center, style: TextStyle(color: c.cream, fontWeight: FontWeight.bold, fontSize: 14)),
                           ),
                         ),
                       ],
@@ -524,7 +529,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => setState(() { uid++; rows.add(GpaRow(id: uid, name: 'New course', cr: 3, marks: 60, mean: 60, sd: 10)); open = uid; }),
-                child: Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: c.tealInk, borderRadius: BorderRadius.circular(20)), child: const Row(children: [Icon(Icons.add, size: 16, color: Colors.white), Text(' Add', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))])),
+                child: Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: c.tealInk, borderRadius: BorderRadius.circular(20)), child: Row(children: [Icon(Icons.add, size: 16, color: c.cream), Text(' Add', style: TextStyle(color: c.cream, fontWeight: FontWeight.bold))])),
               ),
             ],
           ),
@@ -546,7 +551,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                         padding: const EdgeInsets.all(16),
                         child: Row(
                           children: [
-                            Container(width: 48, height: 48, decoration: BoxDecoration(color: _tone(g[0] as String, c), borderRadius: BorderRadius.circular(16)), child: Center(child: Text(g[0] as String, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)))),
+                            Container(width: 48, height: 48, decoration: BoxDecoration(color: _tone(g[0] as String, c), borderRadius: BorderRadius.circular(16)), child: Center(child: Text(g[0] as String, style: TextStyle(color: _tone(g[0] as String, c) == c.tealInk ? c.cream : Colors.white, fontWeight: FontWeight.w800, fontSize: 18)))),
                             const SizedBox(width: 12),
                             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(r.name, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis), Text(mode == GpaMode.relative ? '${r.cr} cr · ${r.marks} marks · z ${z >= 0 ? '+' : ''}${z.toStringAsFixed(2)} · ${(g[2] as double).toStringAsFixed(2)} pts' : '${r.cr} cr · ${r.marks} marks · ${(g[2] as double).toStringAsFixed(2)} pts', style: TextStyle(fontSize: 12, color: c.tealInk.withValues(alpha: 0.55)))])),
                           ],
@@ -946,8 +951,12 @@ class _TimetableScreenState extends State<TimetableScreen> {
       if (tt.term.isNotEmpty) tt.term,
       if (tt.month.isNotEmpty) tt.month,
     ].join(' · ');
-    return UHead(
-      height: 184,
+    return PortalBottomNotices(
+      refreshFailed: refreshFailed,
+      onRetry: _load,
+      cachedAtMs: cachedOffline ? cachedAt : null,
+      child: UHead(
+      height: 300,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -955,9 +964,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
             const PortalLoadingBar(),
             const SizedBox(height: 12),
           ],
-          if (refreshFailed) PortalRefreshFailed(onRetry: _load),
-          if (cachedOffline && cachedAt != null)
-            PortalCachedNotice(savedAtMs: cachedAt!),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -971,8 +977,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         style: body(c,
                             size: 14,
                             color: Colors.white.withValues(alpha: 0.78))),
-                    if (cachedOffline && cachedAt != null)
-                      PortalCachedNotice(savedAtMs: cachedAt!),
                   ]),
               GestureDetector(
                   behavior: HitTestBehavior.opaque,
@@ -1100,155 +1104,334 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 // Never fade the whole card: full-opacity text stays crisp.
                 final past = day == todayName && nowH >= _toH(s.end);
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Column(children: [
-                        const SizedBox(height: 4),
-                        Container(
-                            width: 14,
-                            height: 14,
-                            decoration: BoxDecoration(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 54,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                s.start,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                  color: live ? c.clay : c.tealInk,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                s.end,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: c.tealInk.withValues(alpha: 0.5),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Column(
+                          children: [
+                            Container(
+                              width: 14,
+                              height: 14,
+                              decoration: BoxDecoration(
                                 color: live
                                     ? c.clay
                                     : past
-                                        ? tone.withValues(alpha: 0.45)
+                                        ? tone.withValues(alpha: 0.4)
                                         : tone,
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                    color: live
-                                        ? c.clay.withValues(alpha: 0.3)
-                                        : c.cream2,
-                                    width: live ? 4 : 3))),
-                      ]),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(children: [
-                              const Icon(Icons.schedule_outlined, size: 13),
-                              Flexible(
-                                child: Text(
-                                    ' ${s.start} – ${s.end}',
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold),
-                                    overflow: TextOverflow.ellipsis),
+                                  color: c.cream2,
+                                  width: 3,
+                                ),
                               ),
-                              if (live)
-                                Container(
-                                  margin:
-                                      const EdgeInsets.only(left: 6),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                      color: c.clay,
-                                      borderRadius:
-                                          BorderRadius.circular(10)),
-                                  child: const Text('NOW',
-                                      style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white)),
+                            ),
+                            Expanded(
+                              child: Container(
+                                width: 2,
+                                margin: const EdgeInsets.symmetric(
+                                  vertical: 4,
                                 ),
-                              if (!live && past)
-                                Container(
-                                  margin:
-                                      const EdgeInsets.only(left: 6),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                      color: c.tealInk
-                                          .withValues(alpha: 0.12),
-                                      borderRadius:
-                                          BorderRadius.circular(10)),
-                                  child: Text('Done',
-                                      style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          color: c.tealInk.withValues(
-                                              alpha: 0.6))),
-                                ),
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 2),
                                 decoration: BoxDecoration(
-                                    color: tone.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(10)),
-                                child: Text(
-                                    s.isLab ? 'Lab' : 'Lecture',
-                                    style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        color: tone)),
-                              ),
-                            ]),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                  color: tone,
-                                  borderRadius: BorderRadius.circular(24)),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(s.subject,
-                                            style: const TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.w800,
-                                                fontSize: 17)),
-                                      ),
-                                      GestureDetector(
-                                          behavior:
-                                              HitTestBehavior.opaque,
-                                          onTap: () => setState(() => on
-                                              ? remind.remove(id)
-                                              : remind.add(id)),
-                                          child: Container(
-                                              width: 36,
-                                              height: 36,
-                                              decoration: BoxDecoration(
-                                                  color: on
-                                                      ? Colors.white
-                                                      : Colors.white
-                                                          .withValues(
-                                                              alpha: 0.2),
-                                                  shape: BoxShape.circle),
-                                              child: Icon(
-                                                  Icons.notifications_outlined,
-                                                  size: 16,
-                                                  color: on
-                                                      ? c.tealInk
-                                                      : Colors.white))),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(s.teacher,
-                                      style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.white70)),
-                                  const SizedBox(height: 4),
-                                  Wrap(
-                                    spacing: 6,
-                                    children: [
-                                      _chip(s.room),
-                                      if (s.section.isNotEmpty)
-                                        _chip(s.section),
-                                    ],
-                                  ),
-                                ],
+                                  color: c.dustSoft,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
                               ),
                             ),
                           ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: live
+                                  ? c.teal.withValues(alpha: 0.1)
+                                  : c.white,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color:
+                                    c.dustSoft.withValues(alpha: 0.6),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: c.tealInk.withValues(alpha: 0.06),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 6),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 4,
+                                  margin: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: live ? c.clay : tone,
+                                    borderRadius:
+                                        BorderRadius.circular(2),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(14),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment
+                                                        .start,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      Flexible(
+                                                        child: Text(
+                                                          s.subject,
+                                                          maxLines: 2,
+                                                          overflow:
+                                                              TextOverflow
+                                                                  .ellipsis,
+                                                          style:
+                                                              const TextStyle(
+                                                            fontWeight:
+                                                                FontWeight
+                                                                    .w800,
+                                                            fontSize: 15,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      if (live)
+                                                        Container(
+                                                          margin:
+                                                              const EdgeInsets
+                                                                  .only(
+                                                            left: 6,
+                                                          ),
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .symmetric(
+                                                            horizontal: 8,
+                                                            vertical: 2,
+                                                          ),
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            color: c.clay,
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                              10,
+                                                            ),
+                                                          ),
+                                                          child:
+                                                              const Text(
+                                                            'NOW',
+                                                            style:
+                                                                TextStyle(
+                                                              fontSize: 10,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              color:
+                                                                  Colors
+                                                                      .white,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      if (!live && past)
+                                                        Container(
+                                                          margin:
+                                                              const EdgeInsets
+                                                                  .only(
+                                                            left: 6,
+                                                          ),
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .symmetric(
+                                                            horizontal: 8,
+                                                            vertical: 2,
+                                                          ),
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            color: c.tealInk
+                                                                .withValues(
+                                                              alpha: 0.12,
+                                                            ),
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                              10,
+                                                            ),
+                                                          ),
+                                                          child: Text(
+                                                            'Done',
+                                                            style:
+                                                                TextStyle(
+                                                              fontSize: 10,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              color: c.tealInk
+                                                                  .withValues(
+                                                                alpha: 0.6,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    children: [
+                                                      Icon(
+                                                        Icons.person_outline,
+                                                        size: 12,
+                                                        color: c.tealInk
+                                                            .withValues(
+                                                          alpha: 0.5,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(
+                                                        width: 4,
+                                                      ),
+                                                      Flexible(
+                                                        child: Text(
+                                                          s.teacher,
+                                                          maxLines: 1,
+                                                          overflow:
+                                                              TextOverflow
+                                                                  .ellipsis,
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: c.tealInk
+                                                                .withValues(
+                                                              alpha: 0.6,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            GestureDetector(
+                                              behavior:
+                                                  HitTestBehavior.opaque,
+                                              onTap: () => setState(
+                                                () => on
+                                                    ? remind.remove(id)
+                                                    : remind.add(id),
+                                              ),
+                                              child: Container(
+                                                width: 34,
+                                                height: 34,
+                                                decoration: BoxDecoration(
+                                                  color: on
+                                                      ? c.teal
+                                                      : c.dustSoft
+                                                          .withValues(
+                                                    alpha: 0.7,
+                                                  ),
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: Icon(
+                                                  on
+                                                      ? Icons.notifications
+                                                      : Icons
+                                                          .notifications_outlined,
+                                                  size: 16,
+                                                  color: on
+                                                      ? Colors.white
+                                                      : c.tealInk.withValues(
+                                                          alpha: 0.6,
+                                                        ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Wrap(
+                                          spacing: 6,
+                                          runSpacing: 6,
+                                          children: [
+                                            _slotChip(c, s.room),
+                                            if (s.section.isNotEmpty)
+                                              _slotChip(c, s.section),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 5,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: tone.withValues(
+                                                  alpha: 0.14,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(
+                                                  12,
+                                                ),
+                                              ),
+                                              child: Text(
+                                                s.isLab
+                                                    ? 'Lab'
+                                                    : 'Lecture',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight:
+                                                      FontWeight.w800,
+                                                  color: tone,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               }),
@@ -1257,6 +1440,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
           _datesheetCard(c),
           const SizedBox(height: 96),
         ],
+      ),
       ),
     );
   }
@@ -1272,172 +1456,312 @@ class _TimetableScreenState extends State<TimetableScreen> {
     );
   }
 
+  /// Muted info pill for the light lecture cards (room, section).
+  Widget _slotChip(AppColors c, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+          color: c.dustSoft.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(12)),
+      child: Text(text,
+          style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: c.tealInk.withValues(alpha: 0.7))),
+    );
+  }
+
+  /// Weekly calendar grid, Google-Calendar style: fitted to real class
+  /// hours (no 8–22 dead space), horizontally scrollable readable
+  /// columns, today highlighted, live "now" line, lab/lecture colors
+  /// matching the list. Tap a block jumps to that day's list.
   Widget _gridView(AppColors c, List<String> days) {
-    const startH = 8;
-    const endH = 22;
-    const cellH = 56.0;
-    final tones = [c.teal, c.clay, c.board, c.dust, c.tealDeep];
-    final totalH = (endH - startH) * cellH;
+    final slots = data?.slots ?? const <TimetableSlot>[];
+    if (slots.isEmpty || days.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+            color: c.white, borderRadius: BorderRadius.circular(24)),
+        child: Text('No classes scheduled.',
+            textAlign: TextAlign.center,
+            style: body(c,
+                size: 14, color: c.tealInk.withValues(alpha: 0.55))),
+      );
+    }
+    var minH = 24;
+    var maxH = 0;
+    for (final s in slots) {
+      final a = _toH(s.start).floor();
+      final b = _toH(s.end).ceil();
+      if (a < minH) minH = a;
+      if (b > maxH) maxH = b;
+    }
+    minH = (minH - 1).clamp(6, 21);
+    maxH = (maxH + 1).clamp(minH + 3, 23);
+    const cellH = 52.0;
+    const colW = 104.0;
+    const gutterW = 40.0;
+    final totalH = (maxH - minH) * cellH;
+    final todayName = _todayName();
+    final nowH = TimeOfDay.now().hour + TimeOfDay.now().minute / 60;
+    final showNow = nowH >= minH && nowH <= maxH;
+
+    Widget hourLabels() => Stack(
+          children: [
+            for (int h = minH; h <= maxH; h++)
+              Positioned(
+                top: (h - minH) * cellH - 7,
+                left: 0,
+                right: 4,
+                child: Text(
+                  '${h.toString().padLeft(2, '0')}:00',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                      fontSize: 10,
+                      color: c.tealInk.withValues(alpha: 0.45)),
+                ),
+              ),
+          ],
+        );
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-          color: c.white, borderRadius: BorderRadius.circular(24)),
-      child: Column(
-        children: [
-          Row(children: [
-            const SizedBox(width: 40),
-            for (final d in days)
-              Expanded(
-                  child: Center(
-                      child: Text(d.substring(0, 3),
-                          style: const TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.bold)))),
+          color: c.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: c.dustSoft.withValues(alpha: 0.6)),
+          boxShadow: [
+            BoxShadow(
+                color: c.tealInk.withValues(alpha: 0.06),
+                blurRadius: 14,
+                offset: const Offset(0, 6)),
           ]),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: totalH,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                SizedBox(
-                    width: 40,
-                    child: Stack(children: [
-                      // Hour grid lines extend across via per-column stack below;
-                      // labels stay fixed on the left gutter.
-                      for (int i = 0; i <= endH - startH; i++)
-                        Positioned(
-                            top: i * cellH - 6,
-                            child: Text(
-                                '${(startH + i).toString().padLeft(2, '0')}:00',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    color: c.tealInk
-                                        .withValues(alpha: 0.45)))),
-                    ])),
-                for (int d = 0; d < days.length; d++)
-                  Expanded(
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 4),
-                      decoration: BoxDecoration(
-                          color: c.dustSoft.withValues(alpha: 0.4),
-                          borderRadius: BorderRadius.circular(12)),
-                      child: LayoutBuilder(builder: (ctx, cons) {
-                        final daySlots = data!.slots
-                            .where((x) => x.day == days[d])
-                            .toList()
-                          ..sort((a, b) =>
-                              _toH(a.start).compareTo(_toH(b.start)));
-                        // Assign overlap lanes: slots overlapping in time
-                        // share the column width side-by-side instead of
-                        // stacking fully on top of each other.
-                        final lanes = <List<TimetableSlot>>[];
-                        final laneOf = <TimetableSlot, int>{};
-                        for (final s in daySlots) {
-                          final s0 = _toH(s.start);
-                          final s1 = _toH(s.end);
-                          var placed = false;
-                          for (var li = 0; li < lanes.length; li++) {
-                            final clash = lanes[li].any((o) =>
-                                s0 < _toH(o.end) && _toH(o.start) < s1);
-                            if (!clash) {
-                              lanes[li].add(s);
-                              laneOf[s] = li;
-                              placed = true;
-                              break;
-                            }
-                          }
-                          if (!placed) {
-                            lanes.add([s]);
-                            laneOf[s] = lanes.length - 1;
-                          }
-                        }
-                        final laneCount =
-                            lanes.isEmpty ? 1 : lanes.length;
-                        return Stack(
+                const SizedBox(width: gutterW),
+                for (final d in days)
+                  Container(
+                    width: colW,
+                    margin: const EdgeInsets.only(right: 6),
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: BoxDecoration(
+                      color: d == todayName
+                          ? c.teal.withValues(alpha: 0.12)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(d.substring(0, 3),
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: d == todayName
+                                    ? c.tealDeep
+                                    : c.tealInk)),
+                        const SizedBox(height: 2),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            for (int i = 0; i <= endH - startH; i++)
-                              Positioned(
-                                top: i * cellH,
-                                left: 0,
-                                right: 0,
-                                child: Container(
-                                    height: 1,
-                                    color: c.tealInk
-                                        .withValues(alpha: 0.08)),
+                            Text(
+                                '${slots.where((s) => s.day == d).length}',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: c.tealInk.withValues(
+                                        alpha: 0.55))),
+                            if (d == todayName) ...[
+                              const SizedBox(width: 4),
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Colors.red,
+                                  shape: BoxShape.circle,
+                                ),
                               ),
-                            for (final s in daySlots)
-                              Builder(builder: (_) {
-                                final rawTop =
-                                    (_toH(s.start) - startH) * cellH;
-                                final rawH =
-                                    ((_toH(s.end) - _toH(s.start)) *
-                                            cellH) -
-                                        3;
-                                final h = rawH < 34 ? 34.0 : rawH;
-                                final top = rawTop
-                                    .clamp(0, (totalH - h).clamp(0, totalH))
-                                    .toDouble();
-                                final tone = tones[d % tones.length];
-                                final li = laneOf[s] ?? 0;
-                                // Split width only when lanes actually overlap.
-                                final w = laneCount > 1
-                                    ? (cons.maxWidth - 4) / laneCount
-                                    : cons.maxWidth - 4;
-                                final left = 2 + li * w;
-                                return Positioned(
-                                  top: top,
-                                  height: h,
-                                  left: left,
-                                  width: w - 2,
-                                  child: GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onTap: () => setState(() {
-                                      day = days[d];
-                                      grid = false;
-                                    }),
-                                    child: Container(
-                                        padding:
-                                            const EdgeInsets.all(5),
-                                        decoration: BoxDecoration(
-                                            color: tone,
-                                            borderRadius:
-                                                BorderRadius.circular(8)),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          mainAxisSize:
-                                              MainAxisSize.min,
-                                          children: [
-                                            Text(s.subject,
-                                                style: const TextStyle(
-                                                    fontSize: 9,
-                                                    fontWeight:
-                                                        FontWeight.bold,
-                                                    color: Colors.white),
-                                                overflow:
-                                                    TextOverflow.ellipsis,
-                                                maxLines: 2),
-                                            Text(s.start,
-                                                style: const TextStyle(
-                                                    fontSize: 8,
-                                                    color: Colors.white70),
-                                                overflow:
-                                                    TextOverflow.ellipsis,
-                                                maxLines: 1),
-                                          ],
-                                        )),
-                                  ),
-                                );
-                              }),
+                            ],
                           ],
-                        );
-                      }),
+                        ),
+                      ],
                     ),
                   ),
               ],
             ),
-          ),
-        ],
+            const SizedBox(height: 6),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(width: gutterW, height: totalH, child: hourLabels()),
+                for (final d in days)
+                  Container(
+                    width: colW,
+                    height: totalH,
+                    margin: const EdgeInsets.only(right: 6),
+                    decoration: BoxDecoration(
+                        color: c.dustSoft.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(12)),
+                    child: LayoutBuilder(builder: (ctx, cons) {
+                      final daySlots = slots
+                          .where((x) => x.day == d)
+                          .toList()
+                        ..sort((a, b) =>
+                            _toH(a.start).compareTo(_toH(b.start)));
+                      // Overlap lanes share the column side-by-side.
+                      final lanes = <List<TimetableSlot>>[];
+                      final laneOf = <TimetableSlot, int>{};
+                      for (final s in daySlots) {
+                        final s0 = _toH(s.start);
+                        final s1 = _toH(s.end);
+                        var placed = false;
+                        for (var li = 0; li < lanes.length; li++) {
+                          final clash = lanes[li].any((o) =>
+                              s0 < _toH(o.end) && _toH(o.start) < s1);
+                          if (!clash) {
+                            lanes[li].add(s);
+                            laneOf[s] = li;
+                            placed = true;
+                            break;
+                          }
+                        }
+                        if (!placed) {
+                          lanes.add([s]);
+                          laneOf[s] = lanes.length - 1;
+                        }
+                      }
+                      final laneCount =
+                          lanes.isEmpty ? 1 : lanes.length;
+                      return Stack(
+                        children: [
+                          for (int h = minH; h <= maxH; h++)
+                            Positioned(
+                              top: (h - minH) * cellH,
+                              left: 0,
+                              right: 0,
+                              child: Container(
+                                  height: 1,
+                                  color: c.tealInk
+                                      .withValues(alpha: 0.08)),
+                            ),
+                          if (showNow && d == todayName)
+                            Positioned(
+                              top: (nowH - minH) * cellH - 1,
+                              left: 0,
+                              right: 0,
+                              child: Container(
+                                  height: 2, color: Colors.red),
+                            ),
+                          for (final s in daySlots)
+                            Builder(builder: (_) {
+                              final rawTop =
+                                  (_toH(s.start) - minH) * cellH;
+                              final rawH =
+                                  ((_toH(s.end) - _toH(s.start)) *
+                                          cellH) -
+                                      3;
+                              final h = rawH < 36 ? 36.0 : rawH;
+                              final top = rawTop
+                                  .clamp(
+                                      0,
+                                      (totalH - h)
+                                          .clamp(0, totalH))
+                                  .toDouble();
+                              final tone =
+                                  s.isLab ? c.clay : c.teal;
+                              final live = d == todayName &&
+                                  nowH >= _toH(s.start) &&
+                                  nowH < _toH(s.end);
+                              final li = laneOf[s] ?? 0;
+                              final w = laneCount > 1
+                                  ? (cons.maxWidth - 4) / laneCount
+                                  : cons.maxWidth - 4;
+                              final left = 2 + li * w;
+                              return Positioned(
+                                top: top,
+                                height: h,
+                                left: left,
+                                width: w - 2,
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: () => setState(() {
+                                    day = d;
+                                    grid = false;
+                                  }),
+                                  child: Container(
+                                      padding:
+                                          const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 5),
+                                      decoration: BoxDecoration(
+                                          color: tone,
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                          border: live
+                                              ? Border.all(
+                                                  color: Colors.white,
+                                                  width: 2)
+                                              : null,
+                                          boxShadow: live
+                                              ? [
+                                                  BoxShadow(
+                                                      color: tone.withValues(
+                                                          alpha: 0.5),
+                                                      blurRadius: 8,
+                                                      offset:
+                                                          const Offset(
+                                                              0, 3))
+                                                ]
+                                              : null),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisSize:
+                                            MainAxisSize.min,
+                                        children: [
+                                          Text(s.subject,
+                                              style: const TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight:
+                                                      FontWeight.bold,
+                                                  color: Colors.white),
+                                              overflow:
+                                                  TextOverflow.ellipsis,
+                                              maxLines:
+                                                  h >= 64 ? 2 : 1),
+                                          Text(
+                                              '${s.start}–${s.end}',
+                                              style: const TextStyle(
+                                                  fontSize: 8.5,
+                                                  color: Colors.white70),
+                                              overflow:
+                                                  TextOverflow.ellipsis,
+                                              maxLines: 1),
+                                          if (h >= 72)
+                                            Text(s.room,
+                                                style: const TextStyle(
+                                                    fontSize: 8.5,
+                                                    color: Colors.white70),
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                                maxLines: 1),
+                                        ],
+                                      )),
+                                ),
+                              );
+                            }),
+                        ],
+                      );
+                    }),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

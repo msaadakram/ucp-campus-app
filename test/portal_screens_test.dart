@@ -81,6 +81,29 @@ void main() {
       expect(find.text('Linear Algebra'), findsOneWidget);
     });
 
+    testWidgets('timetable grid fits hours with blocks + now-state',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(_wrap(TimetableScreen(
+        fetchHtml: (path) async =>
+            path.contains('datesheet') ? _dsEmpty : _ttHtml,
+      )));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.grid_view_outlined));
+      await tester.pumpAndSettle();
+      // Both day columns render with readable blocks (scrollable).
+      expect(find.text('Object Oriented Programming - Lab'),
+          findsOneWidget);
+      expect(find.text('Linear Algebra'), findsOneWidget);
+      // Fitted hours: 08:00 label present, no 22:00 dead space.
+      expect(find.text('08:00'), findsWidgets);
+      expect(find.text('22:00'), findsNothing);
+      // Back to list via a block tap.
+      await tester.tap(
+          find.text('Object Oriented Programming - Lab'));
+      await tester.pumpAndSettle();
+      expect(find.text('B-CL203 ( Lab )'), findsOneWidget);
+    });
+
     testWidgets('attendance shows courses, expands records',
         (WidgetTester tester) async {
       await tester.pumpWidget(_wrap(const AttendanceScreen(

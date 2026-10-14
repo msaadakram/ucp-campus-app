@@ -41,6 +41,7 @@ dependencies:
   image_picker: ^1.1.2
   connectivity_plus: ^7.3.2
   path_provider: ^2.1.6
+  open_filex: ^4.7.0
 
 dev_dependencies:
   flutter_test:
@@ -66,6 +67,8 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/avatars/
+    - assets/logo/ucp_logo.png
     - assets/heroes/hero-skater.jpg
     - assets/heroes/hero-autumn.jpg
     - assets/heroes/hero-mono.jpg

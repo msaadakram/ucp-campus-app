@@ -77,11 +77,59 @@ void main() {
     expect(find.text('Login here now'), findsOneWidget);
     expect(find.textContaining('laptop'), findsOneWidget);
 
-    // "Later" dismisses without logging out.
-    await tester.tap(find.text('Later'));
+    // "Stay without live" dismisses without logging out.
+    await tester.tap(find.text('Stay without live'));
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Session expired'), findsNothing);
     expect(find.text('My courses'), findsOneWidget);
+  });
+
+  testWidgets('staying without live stops cookie refresh, keeps relaunch',
+      (WidgetTester tester) async {
+    final backend = _MemoryBackend(
+      sid: 'dead-1',
+      email: 'a@ucp.edu.pk',
+      savedAt: _recentMs(),
+    );
+    var renews = 0;
+    await tester.pumpWidget(CampusApp(
+      authHooks: AuthTestHooks(
+        backend: backend,
+        validate: (_) async => false,
+        renew: (_) async {
+          renews++;
+          return RenewOutcome(failCode: 'login_required');
+        },
+        monitorInterval: const Duration(milliseconds: 200),
+        startAuthed: true,
+      ),
+    ));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Session expired'), findsOneWidget);
+    await tester.tap(find.text('Stay without live'));
+    await tester.pump(const Duration(milliseconds: 100));
+    final frozen = renews;
+    // Heartbeats keep validating but never mint cookies again…
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(renews, frozen);
+    // …never re-pops, stays usable, and keeps the stored session…
+    expect(find.text('Session expired'), findsNothing);
+    expect(find.text('My courses'), findsOneWidget);
+    expect(backend.sid, 'dead-1');
+    // …so a fresh launch retries auto sign-in on its own.
+    await tester.pumpWidget(CampusApp(
+      authHooks: AuthTestHooks(
+        backend: backend,
+        validate: (_) async => true,
+        monitorInterval: const Duration(minutes: 5),
+      ),
+    ));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('My courses'), findsOneWidget);
+    expect(find.text('Try again'), findsNothing);
   });
 
   testWidgets('silent heal shows banner instead of popup',

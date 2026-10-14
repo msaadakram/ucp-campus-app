@@ -193,7 +193,11 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
     final due = list.where((i) => !i.isPaid).toList();
     final dueTotal = due.fold<double>(0, (s, i) => s + _amount(i.amount));
     final allPaid = list.isNotEmpty && due.isEmpty;
-    return UHead(
+    return PortalBottomNotices(
+      refreshFailed: refreshFailed,
+      onRetry: _load,
+      cachedAtMs: cachedOffline ? cachedAt : null,
+      child: UHead(
       height: 144,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -202,7 +206,6 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
             const PortalLoadingBar(),
             const SizedBox(height: 12),
           ],
-          if (refreshFailed) PortalRefreshFailed(onRetry: _load),
           Text('Fee challan',
               style: display(c, size: 28, color: Colors.white)),
           Text(
@@ -214,8 +217,6 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
               style: body(c,
                   size: 14, color: Colors.white.withValues(alpha: 0.78))),
           const SizedBox(height: 20),
-          if (cachedOffline && cachedAt != null)
-            PortalCachedNotice(savedAtMs: cachedAt!),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),
@@ -394,6 +395,7 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
           const SizedBox(height: 96),
         ],
       ),
+      ),
     );
   }
 }
@@ -446,7 +448,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => code = x.code),
-                      child: Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: code == x.code ? Colors.white : Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)), child: Text(x.code, style: TextStyle(fontWeight: FontWeight.bold, color: code == x.code ? c.tealInk : Colors.white))),
+                      child: Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: code == x.code ? Colors.white : Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)), child: Text(x.code, style: TextStyle(fontWeight: FontWeight.bold, color: code == x.code ? c.tealDeep : Colors.white))),
                     ),
                   ),
               ],

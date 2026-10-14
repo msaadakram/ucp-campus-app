@@ -12,6 +12,33 @@ class ProfilePrefs {
   bool big;
   bool motion;
   ProfilePrefs({this.theme = ThemeModePref.light, this.palette = AppPalette.skater, this.big = false, this.motion = true});
+
+  /// Device snapshot so the theme survives restarts until the user
+  /// changes it again (see PrefsStore). Tolerant: unknown/corrupt
+  /// values fall back to defaults instead of crashing startup.
+  Map<String, dynamic> toJson() => {
+        'theme': theme.name,
+        'palette': palette.name,
+        'big': big,
+        'motion': motion,
+      };
+
+  factory ProfilePrefs.fromJson(Map<String, dynamic> json) {
+    var theme = ThemeModePref.light;
+    try {
+      theme = ThemeModePref.values.byName('${json['theme']}');
+    } catch (_) {}
+    var palette = AppPalette.skater;
+    try {
+      palette = AppPalette.values.byName('${json['palette']}');
+    } catch (_) {}
+    return ProfilePrefs(
+      theme: theme,
+      palette: palette,
+      big: json['big'] == true,
+      motion: json['motion'] != false,
+    );
+  }
 }
 
 class ProfileScreen extends StatefulWidget {
@@ -97,7 +124,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Stack(
             children: [
               Positioned.fill(child: Image.asset(hero, fit: BoxFit.cover, alignment: const Alignment(0.5, -0.3))),
-              Positioned.fill(child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, c.tealInk.withValues(alpha: 0.8)])))),
+              Positioned.fill(child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withValues(alpha: 0.55)])))),
               Positioned(
                 left: 20, bottom: 20,
                 child: Column(

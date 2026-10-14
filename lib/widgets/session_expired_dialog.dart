@@ -7,8 +7,10 @@ import 'common.dart';
 /// because the same account signed in somewhere else (e.g. the laptop).
 ///
 /// Two choices: [onLoginNow] drops straight into the interactive Microsoft
-/// sign-in to mint fresh cookies; [onLater] dismisses and keeps the app
-/// usable offline until the next automatic retry.
+/// sign-in to mint fresh cookies; [onLater] ("Stay without live")
+/// dismisses and keeps the app usable on saved data with no cookie
+/// refresh until the user asks. The stored session is never wiped here,
+/// so the next app launch retries auto sign-in on its own.
 class SessionExpiredDialog extends StatelessWidget {
   final String message;
   /// Raw failure code (e.g. `login_required`) shown tiny for diagnosis.
@@ -104,7 +106,7 @@ class SessionExpiredDialog extends StatelessWidget {
                 TextButton(
                   onPressed: onLater,
                   child: Text(
-                    'Later',
+                    'Stay without live',
                     style: body(c, size: 14, weight: FontWeight.w600, color: c.teal),
                   ),
                 ),

@@ -34,7 +34,13 @@ void main() {
     expect(find.text('Course material'), findsOneWidget);
     await _openCommunityFeed(tester);
     await _tapNav(tester, 'Web');
-    expect(find.text('Web view'), findsOneWidget);
+    // Browser toolbar with the live URL (domain emphasized via RichText).
+    final urlBar = find.byWidgetPredicate(
+      (w) =>
+          w is RichText &&
+          w.text.toPlainText().contains('horizon.ucp.edu.pk'),
+    );
+    expect(urlBar, findsOneWidget);
     // NOTE: the Web tab also has a "Profile" shortcut chip, so the bottom
     // nav item (last in tree order) is tapped explicitly here.
     final profileNav = find.text('Profile').last;

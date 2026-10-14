@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ucp/app.dart';
 import 'package:ucp/auth/dashboard_parser.dart';
+import 'package:ucp/auth/offline.dart';
 import 'package:ucp/auth/session_manager.dart';
+import 'package:ucp/auth/session_monitor.dart';
 import 'package:ucp/auth/student_portal.dart';
 import 'package:ucp/data/seed.dart';
 import 'package:ucp/screens/auth_home.dart';
@@ -111,9 +115,8 @@ void main() {
     expect(find.textContaining('expired'), findsOneWidget);
   });
 
-  testWidgets('session-expired popup offers login-here-now and later',
-      (WidgetTester tester) async {
-    var loginNow = false;
+  testWidgets('session-expired popup offers login-now or stay-without-live',
+      (WidgetTester tester) async {    var loginNow = false;
     var later = false;
     final colors = AppColors.of(AppPalette.skater, false);
     await tester.pumpWidget(
@@ -141,7 +144,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(loginNow, isTrue);
     expect(later, isFalse);
-    await tester.tap(find.text('Later'));
+    await tester.tap(find.text('Stay without live'));
     await tester.pumpAndSettle();
     expect(later, isTrue);
   });
@@ -221,6 +224,118 @@ void main() {
     expect(find.text('3.77'), findsOneWidget);
   });
 
+  testWidgets('saved session opens home instantly, no blocking animation',
+      (WidgetTester tester) async {
+    // Hermetic: earlier production-mode boots leave the global probe
+    // offline in this isolate; the background engine reads that flag.
+    OfflineMonitor.resetDebug();
+    final backend = _HookDashBackend();
+    await backend.save(sessionId: 'live-sid', email: 's@ucp.edu.pk');
+    var validations = 0;
+    await tester.pumpWidget(CampusApp(
+      authHooks: AuthTestHooks(
+        backend: backend,
+        validate: (_) async {
+          validations++;
+          return true;
+        },
+        monitorInterval: const Duration(minutes: 5),
+      ),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    // Home immediately — never the blocking "Signing you in…" screen.
+    expect(find.text('My courses'), findsOneWidget);
+    expect(find.text('Signing you in…'), findsNothing);
+    expect(find.text('Hey, welcome back.'), findsNothing);
+    await tester.pumpAndSettle();
+    expect(validations, 1); // engine verified in the background
+    expect(find.text('My courses'), findsOneWidget);
+    expect(find.text('Try again'), findsNothing); // success: no banner
+  });
+
+  testWidgets('dead saved session keeps app usable with retry banner',
+      (WidgetTester tester) async {
+    OfflineMonitor.resetDebug();
+    final backend = _HookDashBackend();
+    await backend.save(sessionId: 'dead-sid', email: 's@ucp.edu.pk');
+    var validations = 0;
+    await tester.pumpWidget(CampusApp(
+      authHooks: AuthTestHooks(
+        backend: backend,
+        validate: (_) async {
+          validations++;
+          return false;
+        },
+        renew: (_) async => RenewOutcome(failCode: 'login_required'),
+        monitorInterval: const Duration(minutes: 5),
+      ),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    // Still usable instantly on the saved world.
+    expect(find.text('My courses'), findsOneWidget);
+    await tester.pumpAndSettle();
+    // Banner offers retry / fresh sign-in; app stays on home.
+    expect(find.text('Try again'), findsOneWidget);
+    expect(find.text('Sign in'), findsOneWidget);
+    expect(find.text('My courses'), findsOneWidget);
+    final before = validations;
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+    expect(validations, greaterThan(before));
+  });
+
+  testWidgets('offline saved-data pill shows above the tab bar',
+      (WidgetTester tester) async {
+    OfflineMonitor.debugOverride(OfflineMonitor.debug());
+    addTearDown(OfflineMonitor.resetDebug);
+    OfflineMonitor.instance.offline.value = true;
+    await tester.pumpWidget(const CampusApp(skipLogin: true));
+    await tester.pumpAndSettle();
+    expect(find.text('You’re offline — showing saved data'),
+        findsOneWidget);
+    // Tab bar still present underneath the pill.
+    expect(find.text('Home'), findsOneWidget);
+  });
+
+  testWidgets('signing pill shows above the tab bar while verifying',
+      (WidgetTester tester) async {
+    OfflineMonitor.resetDebug();
+    final backend = _HookDashBackend();
+    await backend.save(sessionId: 'slow-sid', email: 's@ucp.edu.pk');
+    final gate = Completer<bool>();
+    await tester.pumpWidget(CampusApp(
+      authHooks: AuthTestHooks(
+        backend: backend,
+        validate: (_) => gate.future,
+        monitorInterval: const Duration(minutes: 5),
+      ),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    // Home usable instantly, pill proving the engine is working.
+    expect(find.text('My courses'), findsOneWidget);
+    expect(find.text('Trying to sign in…'), findsOneWidget);
+    gate.complete(true);
+    await tester.pumpAndSettle();
+    expect(find.text('Trying to sign in…'), findsNothing);
+    expect(find.text('My courses'), findsOneWidget);
+  });
+
+  testWidgets('startup paints in the saved theme from the first frame',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(CampusApp(
+      skipLogin: true,
+      initialPrefs: ProfilePrefs(theme: ThemeModePref.dark),
+    ));
+    await tester.pumpAndSettle();
+    final scaffold =
+        tester.widget<Scaffold>(find.byType(Scaffold).first);
+    expect(scaffold.backgroundColor,
+        AppColors.of(AppPalette.skater, true).cream2);
+  });
+
   testWidgets('greeting matches the time of day', (WidgetTester tester) async {
     expect(greetingForHour(0), 'Good night,');
     expect(greetingForHour(4), 'Good night,');
@@ -248,15 +363,86 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Web view'), findsOneWidget);
-    expect(find.text('Dashboard'), findsOneWidget);
+    // Browser toolbar shows the live URL (domain emphasized via RichText).
+    Finder urlWith(String part) => find.byWidgetPredicate(
+          (w) =>
+              w is RichText &&
+              w.text.toPlainText().contains(part),
+        );
+    expect(urlWith('horizon.ucp.edu.pk'), findsOneWidget);
+    expect(urlWith('/student/dashboard'), findsOneWidget);
     expect(find.text('Portal preview unavailable in tests'), findsOneWidget);
+    // No shortcut chips or reload button on the web view.
+    expect(find.text('Dashboard'), findsNothing);
+    expect(find.text('Portal'), findsNothing);
+    expect(find.text('Reload'), findsNothing);
     // No profile shortcut on the web view.
     expect(find.text('Profile'), findsNothing);
-    await tester.tap(find.text('Portal'));
+    // Tapping the address bar opens the editor; go loads the new URL.
+    await tester.tap(urlWith('horizon.ucp.edu.pk'));
     await tester.pumpAndSettle();
-    // Shortcut switches without any platform WebView.
-    expect(find.text('Portal preview unavailable in tests'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'example.com/portal');
+    await tester.testTextInput.receiveAction(TextInputAction.go);
+    await tester.pumpAndSettle();
+    expect(urlWith('example.com'), findsOneWidget);
+    expect(urlWith('/portal'), findsOneWidget);
+  });
+
+  testWidgets('home explore grid opens every menu page',
+      (WidgetTester tester) async {
+    final hits = <String>[];
+    final colors = AppColors.of(AppPalette.skater, false);
+    await tester.pumpWidget(
+      AppScope(
+        colors: colors,
+        palette: AppPalette.skater,
+        child: MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: HomeScreen(
+                onOpen: (_) {},
+                toProfile: () => hits.add('profile'),
+                onMenu: () {},
+                onGpa: () => hits.add('gpa'),
+                onBoard: (_) {},
+                onAttend: () => hits.add('attendance'),
+                onTimetable: () => hits.add('timetable'),
+                onTeachers: () => hits.add('teachers'),
+                onMaterial: () => hits.add('material'),
+                onFee: () => hits.add('fee'),
+                onResults: () => hits.add('results'),
+                onCommunity: () => hits.add('community'),
+                onWeb: () => hits.add('web'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Explore campus'), findsOneWidget);
+    for (final label in [
+      'Teacher reviews',
+      'Timetable',
+      'Attendance',
+      'Course material',
+      'GPA calculator',
+      'Fee challan',
+      'Results',
+      'Community',
+      'Web view',
+      'Profile & settings',
+    ]) {
+      expect(find.text(label), findsOneWidget);
+    }
+    await tester.ensureVisible(find.text('Results'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Results'));
+    await tester.ensureVisible(find.text('Community'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Community'));
+    expect(hits, ['results', 'community']);
   });
 
   testWidgets('home shows live dashboard name, stats and badge',

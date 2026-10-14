@@ -2,10 +2,17 @@
     <!-- Required for Microsoft OAuth, Horizon portal and API calls -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- Pre-Android 10 only: copy completed portal downloads into the public
+         Download folder. Scoped-storage devices (API 29+) use MediaStore and
+         need no permission. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28"/>
     <application
-        android:label="ucp"
+        android:label="UCP University"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
             android:exported="true"

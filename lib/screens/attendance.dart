@@ -178,7 +178,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     final avg = list.isEmpty
         ? 0.0
         : list.map((e) => e.percent).reduce((a, b) => a + b) / list.length;
-    return UHead(
+    return PortalBottomNotices(
+      refreshFailed: refreshFailed,
+      onRetry: _load,
+      cachedAtMs: cachedOffline ? cachedAt : null,
+      child: UHead(
       height: 150,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -187,14 +191,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             const PortalLoadingBar(),
             const SizedBox(height: 12),
           ],
-          if (refreshFailed) PortalRefreshFailed(onRetry: _load),
           Text('Attendance', style: display(c, size: 28, color: Colors.white)),
           Text('${list.length} courses · overall ${avg.toStringAsFixed(1)}%',
               style: body(c,
                   size: 14, color: Colors.white.withValues(alpha: 0.78))),
           const SizedBox(height: 16),
-          if (cachedOffline && cachedAt != null)
-            PortalCachedNotice(savedAtMs: cachedAt!),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),
@@ -221,7 +222,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                         ),
                       ),
                       Text('${avg.toStringAsFixed(0)}%',
-                          style: display(c, size: 16, color: Colors.white)),
+                          style: display(c, size: 16, color: c.cream)),
                     ],
                   ),
                 ),
@@ -231,7 +232,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('Overall attendance',
-                          style: display(c, size: 18, color: Colors.white)),
+                          style: display(c, size: 18, color: c.cream)),
                       Text(
                           avg >= 75
                               ? 'Above the 75% requirement. Keep it up.'
@@ -405,6 +406,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             }),
           const SizedBox(height: 96),
         ],
+      ),
       ),
     );
   }

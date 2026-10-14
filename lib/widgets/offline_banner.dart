@@ -34,16 +34,16 @@ class OfflineBanner extends StatelessWidget {
             BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2)),
           ],
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.wifi_off_outlined, size: 16, color: Colors.white),
-            SizedBox(width: 8),
+            Icon(Icons.wifi_off_outlined, size: 16, color: c.cream),
+            const SizedBox(width: 8),
             Flexible(
               child: Text(
                 'You’re offline — showing saved data',
                 style: TextStyle(
-                    color: Colors.white,
+                    color: c.cream,
                     fontSize: 13,
                     fontWeight: FontWeight.w600),
               ),

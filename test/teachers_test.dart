@@ -277,8 +277,51 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Usman Aamer'), findsWidgets);
-      expect(find.textContaining('G 94%'), findsWidgets);
+      expect(find.textContaining('4.7 (50)'), findsWidgets);
       svc.dispose();
+    });
+
+    testWidgets('detail shows breakdown, dated reviews and sort',
+        (tester) async {
+      tester.view.physicalSize = const Size(320 * 3, 2000 * 3);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final colors = AppColors.of(AppPalette.skater, false);
+      final svc = FakeTeacherService();
+      await tester.pumpWidget(
+        AppScope(
+          colors: colors,
+          palette: AppPalette.skater,
+          child: MaterialApp(
+            home: Scaffold(
+              body: TeachersScreen(service: svc, myEmail: 't@ucp.edu.pk'),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Usman Aamer').first);
+      await tester.pumpAndSettle();
+      // Single identity header + labeled breakdown + rate CTA.
+      expect(find.text('Rate this teacher'), findsOneWidget);
+      expect(find.text('Grading fairness'), findsOneWidget);
+      expect(find.text('Leniency & support'), findsOneWidget);
+      expect(find.text('Subject knowledge'), findsOneWidget);
+      expect(find.text('2 reviews'), findsOneWidget);
+      // Seeded fake reviews render with per-dimension chips.
+      expect(find.textContaining('Grading 5'), findsWidgets);
+      svc.dispose();
+    });
+  });
+
+  group('teacherReviewDate', () {
+    test('formats ISO stamps, blanks garbage', () {
+      expect(teacherReviewDate('2026-03-15T10:00:00Z'), 'Mar 2026');
+      expect(teacherReviewDate(''), '');
+      expect(teacherReviewDate('not-a-date'), '');
     });
   });
 }

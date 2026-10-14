@@ -91,10 +91,14 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
                 Positioned(
                   left: 24, top: 48,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(color: c.cream, borderRadius: BorderRadius.circular(20)),
-                    child: Text('UCP', style: display(c, size: 14)),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.asset(
+                      'assets/logo/ucp_logo.png',
+                      width: 46,
+                      height: 46,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
               ],
@@ -230,7 +234,6 @@ class _LoginScreenState extends State<LoginScreen>
                     width: 76,
                     height: 76,
                     decoration: BoxDecoration(
-                      color: c.teal,
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
@@ -239,9 +242,13 @@ class _LoginScreenState extends State<LoginScreen>
                             blurRadius: 0),
                       ],
                     ),
-                    child: Center(
-                      child: Text('UCP',
-                          style: display(c, size: 20, color: Colors.white)),
+                    child: ClipOval(
+                      child: Image.asset(
+                        'assets/logo/ucp_logo.png',
+                        width: 76,
+                        height: 76,
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   ),
                 ),
@@ -263,6 +270,15 @@ class _LoginScreenState extends State<LoginScreen>
   }
 }
 
+/// One card in the home "Explore campus" grid — mirrors a hamburger entry.
+class _ExploreTile {
+  final String label;
+  final String sub;
+  final IconData icon;
+  final VoidCallback? onTap;
+  const _ExploreTile(this.label, this.sub, this.icon, this.onTap);
+}
+
 class HomeScreen extends StatefulWidget {  final ValueChanged<Course> onOpen;
   final VoidCallback toProfile;
   final VoidCallback onMenu;
@@ -270,11 +286,17 @@ class HomeScreen extends StatefulWidget {  final ValueChanged<Course> onOpen;
   final ValueChanged<Course> onBoard;
   final VoidCallback? onAttend;
   final VoidCallback? onTimetable;
+  final VoidCallback? onTeachers;
+  final VoidCallback? onMaterial;
+  final VoidCallback? onFee;
+  final VoidCallback? onResults;
+  final VoidCallback? onCommunity;
+  final VoidCallback? onWeb;
   /// Live portal data. Null while loading/failed → bundled sample content.
   final DashboardData? dashboard;
   /// Real weekly slots, used to enrich portal courses with rooms/times.
   final List<TimetableSlot> timetableSlots;
-  const HomeScreen({super.key, required this.onOpen, required this.toProfile, required this.onMenu, required this.onGpa, required this.onBoard, this.dashboard, this.onAttend, this.onTimetable, this.timetableSlots = const []});
+  const HomeScreen({super.key, required this.onOpen, required this.toProfile, required this.onMenu, required this.onGpa, required this.onBoard, this.dashboard, this.onAttend, this.onTimetable, this.onTeachers, this.onMaterial, this.onFee, this.onResults, this.onCommunity, this.onWeb, this.timetableSlots = const []});
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -818,7 +840,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('${course.code} · ${course.credits} cr'.toUpperCase(), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.75))),
+                                Text('${course.code} · ${course.credits} cr'.toUpperCase(), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: toneFg(course.tone, c).withValues(alpha: 0.75))),
                                 Text(course.title, style: display(c, size: 18, color: course.tone == CourseTone.board ? c.tealInk : Colors.white)),
                                 Text(course.time, style: TextStyle(fontSize: 14, color: (course.tone == CourseTone.board ? c.tealInk : Colors.white).withValues(alpha: 0.8))),
                               ],
@@ -873,6 +895,107 @@ class _HomeScreenState extends State<HomeScreen> {
                     body(c, size: 14, color: c.tealInk.withValues(alpha: 0.55)),
               ),
             ),
+          const SizedBox(height: 24),
+          Text('Explore campus', style: display(c, size: 20)),
+          const SizedBox(height: 4),
+          Text('Every page from the menu, one tap away',
+              style: body(c,
+                  size: 13,
+                  color: c.tealInk.withValues(alpha: 0.55))),
+          const SizedBox(height: 12),
+          Builder(builder: (_) {
+            final tiles = [
+              _ExploreTile('Teacher reviews', 'Rate & explore',
+                  Icons.star_outlined, widget.onTeachers),
+              _ExploreTile('Timetable', 'Weekly classes',
+                  Icons.calendar_month_outlined, widget.onTimetable),
+              _ExploreTile('Attendance', 'Daily record',
+                  Icons.fact_check_outlined, widget.onAttend),
+              _ExploreTile('Course material', 'Slides & papers',
+                  Icons.book_outlined, widget.onMaterial),
+              _ExploreTile('GPA calculator', 'Plan your grades',
+                  Icons.calculate_outlined, widget.onGpa),
+              _ExploreTile('Fee challan', 'Challans & dues',
+                  Icons.receipt_outlined, widget.onFee),
+              _ExploreTile('Results', 'Grades & PLO',
+                  Icons.workspace_premium_outlined, widget.onResults),
+              _ExploreTile('Community', 'Campus feed', Icons.forum_outlined,
+                  widget.onCommunity),
+              _ExploreTile('Web view', 'Horizon portal',
+                  Icons.language_outlined, widget.onWeb),
+              _ExploreTile('Profile & settings', 'Theme & account',
+                  Icons.person_outline, widget.toProfile),
+            ].where((t) => t.onTap != null).toList();
+            if (tiles.isEmpty) return const SizedBox.shrink();
+            const accents = [
+              Color(0xFF0E7C6B),
+              Color(0xFFD9734E),
+              Color(0xFF1E3A4C),
+              Color(0xFF0A5C50),
+              Color(0xFF7C5CBF),
+            ];
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: tiles.length,
+              gridDelegate:
+                  const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 1.12,
+              ),
+              itemBuilder: (_, i) {
+                final t = tiles[i];
+                final accent = accents[i % accents.length];
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: t.onTap,
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: c.white,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          alignment: Alignment.center,
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: accent,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(t.icon,
+                              size: 22, color: Colors.white),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          t.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: body(c,
+                              size: 14, weight: FontWeight.w800),
+                        ),
+                        Text(
+                          t.sub,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: body(c,
+                              size: 12,
+                              color:
+                                  c.tealInk.withValues(alpha: 0.55)),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          }),
           const SizedBox(height: 96),
         ],
       ),
@@ -921,9 +1044,9 @@ class DetailScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              GestureDetector(onTap: back, child: Container(alignment: Alignment.center, width: 40, height: 40, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.25), shape: BoxShape.circle), child: const Icon(Icons.arrow_back, color: Colors.white))),
+              GestureDetector(onTap: back, child: Container(alignment: Alignment.center, width: 40, height: 40, decoration: BoxDecoration(color: toneFg(course.tone, c).withValues(alpha: 0.25), shape: BoxShape.circle), child: Icon(Icons.arrow_back, color: toneFg(course.tone, c)))),
               const SizedBox(height: 24),
-              Text(course.code.toUpperCase(), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.75))),
+              Text(course.code.toUpperCase(), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: toneFg(course.tone, c).withValues(alpha: 0.75))),
               Text(course.title, style: display(c, size: 36, color: course.tone == CourseTone.board ? c.tealInk : Colors.white)),
               const SizedBox(height: 8),
               Text(course.prof, style: TextStyle(color: (course.tone == CourseTone.board ? c.tealInk : Colors.white).withValues(alpha: 0.85))),
