@@ -51,6 +51,16 @@ class _SlowLikeService extends FakeCommunityService {
   }
 }
 
+/// Counts feed fetches to prove pull-to-refresh refires the load.
+class _CountingService extends FakeCommunityService {
+  int fetches = 0;
+  @override
+  Future<List<Post>> fetchPosts({required String myEmail}) async {
+    fetches++;
+    return super.fetchPosts(myEmail: myEmail);
+  }
+}
+
 Future<void> openThread(WidgetTester tester) async {
   final title = find.text('Study group for the Data Structures midterm?');
   await tester.ensureVisible(title);
@@ -60,6 +70,33 @@ Future<void> openThread(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('short feed shows the caught-up note at the end',
+      (tester) async {
+    final svc = FakeCommunityService();
+    await tester.pumpWidget(
+        wrap(CommunityScreen(service: svc, myEmail: 't@ucp.edu.pk')));
+    await tester.pumpAndSettle();
+    // 4 seed posts < page size: no more pages, end note visible.
+    expect(find.text("You're all caught up"), findsOneWidget);
+    svc.dispose();
+  });
+  testWidgets('pull down refetches the feed like teacher pages',
+      (tester) async {
+    final svc = _CountingService();
+    await tester.pumpWidget(
+        wrap(CommunityScreen(service: svc, myEmail: 't@ucp.edu.pk')));
+    await tester.pumpAndSettle();
+    expect(svc.fetches, 1);
+    // Drag down from the top of the feed past the refresh threshold.
+    await tester.fling(
+        find.byType(RefreshIndicator).first, const Offset(0, 400), 1200);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(svc.fetches, greaterThanOrEqualTo(2));
+    svc.dispose();
+  });
+
   test('localStatsFromPosts derives real members from feed', () {
     final posts = seedPosts();
     final stats = localStatsFromPosts(posts);

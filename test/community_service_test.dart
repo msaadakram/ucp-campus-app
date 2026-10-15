@@ -103,6 +103,26 @@ void main() {
       svc.dispose();
     });
 
+    test('paged fetch returns newest first with cursor', () async {
+      final svc = FakeCommunityService();
+      const me = 'me@ucp.edu.pk';
+      final page1 = await svc.fetchPostPage(myEmail: me, limit: 2);
+      expect(page1.map((p) => p.id).toList(), ['p1', 'p2']);
+      final page2 = await svc.fetchPostPage(
+        myEmail: me,
+        limit: 2,
+        beforeIso: page1.last.createdAt,
+      );
+      expect(page2.map((p) => p.id).toList(), ['p3', 'p4']);
+      final page3 = await svc.fetchPostPage(
+        myEmail: me,
+        limit: 2,
+        beforeIso: page2.last.createdAt,
+      );
+      expect(page3, isEmpty);
+      svc.dispose();
+    });
+
     test('vote toggle math mirrors UI score+vote', () async {
       final svc = FakeCommunityService();
       const me = 'me@ucp.edu.pk';
@@ -358,6 +378,29 @@ void main() {
       expect(posts.first.comments.length, 1);
       expect(posts.first.comments.first.replies.length, 1);
       expect(posts.first.comments.first.replies.first.text, 'nice');
+      svc.dispose();
+    });
+
+    test('page fetch sends limit + before cursor, maps createdAt',
+        () async {
+      final svc = service(MockClient((req) async {
+        expect(req.url.path, '/api/posts');
+        expect(req.url.queryParameters['limit'], '10');
+        expect(req.url.queryParameters['before'],
+            '2026-09-30T10:00:00.000');
+        return http.Response(
+          feedBody,
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }));
+      final posts = await svc.fetchPostPage(
+        myEmail: 'me@ucp.edu.pk',
+        limit: 10,
+        beforeIso: '2026-09-30T10:00:00.000',
+      );
+      expect(posts.length, 1);
+      expect(posts.first.createdAt, '2026-10-01T11:00:00');
       svc.dispose();
     });
 

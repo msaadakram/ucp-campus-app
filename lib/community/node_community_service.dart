@@ -109,6 +109,29 @@ class NodeCommunityService extends CommunityService {
     return [for (final p in items) mapPostJson(p as Map<String, dynamic>)];
   }
 
+  @override
+  Future<List<Post>> fetchPostPage({
+    required String myEmail,
+    int limit = 15,
+    String? beforeIso,
+  }) async {
+    final params = <String, String>{'limit': '$limit'};
+    if (beforeIso != null && beforeIso.isNotEmpty) {
+      params['before'] = beforeIso;
+    }
+    final uri = Uri.parse('$baseUrl/api/posts').replace(
+      queryParameters: params,
+    );
+    final res = await _client
+        .get(uri, headers: _headers())
+        .timeout(requestTimeout);
+    if (res.statusCode != 200) _throwFor(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final items = (body['posts'] as List?) ?? [];
+    // ignore: avoid_dynamic_calls
+    return [for (final p in items) mapPostJson(p as Map<String, dynamic>)];
+  }
+
   /// Real header numbers from `GET /api/stats` (members = distinct
   /// contributors, online = SSE subscribers). Throws on error so the UI can
   /// keep the last good value.
@@ -139,6 +162,7 @@ class NodeCommunityService extends CommunityService {
       body: '${json['body'] ?? ''}',
       time: _timeLabel(json),
       age: _ageMinutes(json),
+      createdAt: '${json['created_at'] ?? ''}',
       score: _asInt(json['score']),
       vote: _asInt(json['vote']),
       imageUrl: json['imageUrl']?.toString() ?? json['image_url']?.toString(),

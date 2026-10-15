@@ -60,6 +60,12 @@ class _CommunityScreenState extends State<CommunityScreen> {
   final Set<String> _likingPosts = {};
   final Set<String> _likingComments = {};
 
+  /// Infinite scroll: page size + cursor state. Loaded pages accumulate
+  /// in [posts] (never dropped on scroll); refresh merges page one.
+  static const int _pageSize = 15;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+
   /// Focus for the thread comment field so the comment button can jump
   /// straight to writing (it was dead in thread view: onOpen is null there).
   late final FocusNode _commentFocus;
@@ -121,9 +127,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
     // Posts + stats in parallel so a slow/missing stats endpoint can never
     // hold the feed hostage (the old sequential await stuck the header on
     // "Connecting…" when /api/stats 404'd on older backends).
+    // Page one only: older pages already loaded stay put (see _mergePage).
     try {
       final results = await Future.wait([
-        svc.fetchPosts(myEmail: _email),
+        svc.fetchPostPage(myEmail: _email, limit: _pageSize),
         svc.fetchStats().then<CommunityStats?>((s) => s).catchError((_) => null),
       ]);
       if (!mounted) return;
@@ -139,11 +146,13 @@ class _CommunityScreenState extends State<CommunityScreen> {
         );
       }
       setState(() {
-        posts = fresh;
+        _mergePage(fresh);
+        _loadingMore = false;
+        _hasMore = fresh.length >= _pageSize;
         loading = false;
         error = null;
         stats = live;
-        if (openId != null && !fresh.any((p) => p.id == openId)) {
+        if (openId != null && !posts.any((p) => p.id == openId)) {
           openId = null;
           replyTo = null;
         }
@@ -161,6 +170,56 @@ class _CommunityScreenState extends State<CommunityScreen> {
         error = 'Could not load the campus feed. Check connection and retry.';
         if (live != null) stats = live;
       });
+    }
+  }
+
+  /// Merges a fresh page-one into the accumulated feed: known posts update
+  /// in place (votes/comments reconcile), genuinely new posts land on top,
+  /// older already-loaded pages are kept. Newest first by `createdAt`.
+  void _mergePage(List<Post> page) {
+    final byId = <String, Post>{for (final p in posts) p.id: p};
+    for (final p in page) {
+      byId[p.id] = p;
+    }
+    final merged = byId.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    posts = merged;
+  }
+
+  /// Next older page when the feed scrolls near the bottom. Appends only
+  /// unknown ids (no duplicates after refresh races), stops when a short
+  /// page proves the end.
+  Future<void> _loadMore() async {
+    final svc = widget.service;
+    if (svc == null || _loadingMore || !_hasMore || !mounted) return;
+    String? cursor;
+    for (final p in posts) {
+      if (p.createdAt.isNotEmpty &&
+          (cursor == null || p.createdAt.compareTo(cursor) < 0)) {
+        cursor = p.createdAt;
+      }
+    }
+    if (cursor == null) {
+      setState(() => _hasMore = false);
+      return;
+    }
+    setState(() => _loadingMore = true);
+    try {
+      final page = await svc.fetchPostPage(
+        myEmail: _email,
+        limit: _pageSize,
+        beforeIso: cursor,
+      );
+      if (!mounted) return;
+      final known = posts.map((p) => p.id).toSet();
+      final fresh = page.where((p) => !known.contains(p.id)).toList();
+      setState(() {
+        posts = [...posts, ...fresh];
+        _loadingMore = false;
+        _hasMore = page.length >= _pageSize;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingMore = false);
     }
   }
 
@@ -282,7 +341,12 @@ class _CommunityScreenState extends State<CommunityScreen> {
         .where((p) => flair == 'All' || p.flair == flair)
         .toList();
     f.sort((a, b) {
-      if (sort == 'New') return a.age.compareTo(b.age);
+      // Newest first by server timestamp; age as a fallback tiebreak.
+      if (sort == 'New') {
+        final r = b.createdAt.compareTo(a.createdAt);
+        if (r != 0) return r;
+        return a.age.compareTo(b.age);
+      }
       if (sort == 'Top') return (b.score + b.vote).compareTo(a.score + a.vote);
       return ((b.score + b.vote) / (b.age + 60)).compareTo((a.score + a.vote) / (a.age + 60));
     });
@@ -356,7 +420,21 @@ class _CommunityScreenState extends State<CommunityScreen> {
     }
     return Stack(
       children: [
-        UHead(
+        NotificationListener<ScrollNotification>(
+          onNotification: (n) {
+            // Infinite scroll: prefetch the next older page before the
+            // user hits the bottom.
+            if (n is ScrollUpdateNotification &&
+                n.metrics.extentAfter < 600) {
+              _loadMore();
+            }
+            return false;
+          },
+          child: RefreshIndicator(
+          color: c.teal,
+          backgroundColor: c.white,
+          onRefresh: _reload,
+          child: UHead(
       height: 112,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -390,10 +468,38 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 ),
               ),
             ),
+          if (_loadingMore)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(c.teal),
+                  ),
+                ),
+              ),
+            )
+          else if (!_hasMore && shown.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                child: Text(
+                  "You're all caught up",
+                  style: body(c,
+                      size: 13,
+                      color: c.tealInk.withValues(alpha: 0.5)),
+                ),
+              ),
+            ),
           const SizedBox(height: 96),
         ],
       ),
     ),
+        ),
+      ),
         if (composing)
           Positioned.fill(
             child: Column(
@@ -847,8 +953,13 @@ class _CommunityScreenState extends State<CommunityScreen> {
           Row(children: [GestureDetector(onTap: () => setState(() { openId = null; replyTo = null; }), child: const Row(children: [Icon(Icons.arrow_back, size: 18), Text(' r/campus', style: TextStyle(fontWeight: FontWeight.w600))]))]),
           const SizedBox(height: 12),
           Expanded(
-            child: SingleChildScrollView(
-              child: Column(
+            child: RefreshIndicator(
+              color: c.teal,
+              backgroundColor: c.white,
+              onRefresh: _reload,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Column(
                 children: [
                   _postCard(context, c, post,
                       onCommentTap: () =>
@@ -869,6 +980,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 ],
               ),
             ),
+          ),
           ),
           SafeArea(
             top: false,

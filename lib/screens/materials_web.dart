@@ -346,8 +346,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
   WebViewController? _controller;
   String _path = '/student/dashboard';
   String _currentUrl = _cachedUrl;
-  bool _canGoBack = false;
-  bool _canGoForward = false;
   bool _editingUrl = false;
   final TextEditingController _urlField = TextEditingController();
   double _progress = 0;
@@ -423,7 +421,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
         _path = _cachedPath;
         _currentUrl = _cachedUrl;
       });
-      unawaited(_updateNavState());
       return;
     }
     final controller = WebViewController()
@@ -451,7 +448,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
                 if (ok != true) await _injectDownloadHook();
               } catch (_) {}
             });
-            unawaited(_updateNavState());
           },
           onNavigationRequest: (request) {
             final uri = Uri.tryParse(request.url);
@@ -527,7 +523,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
     if (uri == null || !mounted) return;
     setState(() => _currentUrl = uri.toString());
     _cachedUrl = uri.toString();
-    unawaited(_updateNavState());
     if (uri.host == _host && uri.path.startsWith('/web/login')) {
       setState(() {
         _expired = true;
@@ -542,23 +537,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
     } else if (mounted) {
       setState(() => _expired = false);
     }
-  }
-
-  /// Refreshes back/forward availability after navigations.
-  Future<void> _updateNavState() async {
-    final controller = _controller;
-    if (controller == null || !mounted) return;
-    try {
-      final back = await controller.canGoBack();
-      final fwd = await controller.canGoForward();
-      if (!mounted) return;
-      if (back != _canGoBack || fwd != _canGoForward) {
-        setState(() {
-          _canGoBack = back;
-          _canGoForward = fwd;
-        });
-      }
-    } catch (_) {}
   }
 
   /// Go button / keyboard action in the URL bar.
@@ -942,26 +920,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
     );
   }
 
-  /// Slim flat toolbar button (back / forward).
-  Widget _flatNavButton(
-      IconData icon, bool enabled, VoidCallback? onTap) {
-    return SizedBox(
-      width: 32,
-      child: IconButton(
-        padding: EdgeInsets.zero,
-        iconSize: 20,
-        style: IconButton.styleFrom(
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          minimumSize: const Size(32, 32),
-        ),
-        color: Colors.white,
-        disabledColor: Colors.white38,
-        icon: Icon(icon),
-        onPressed: enabled ? onTap : null,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
@@ -973,10 +931,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
         children: [
           Row(
             children: [
-              _flatNavButton(Icons.arrow_back, _canGoBack,
-                  () => _controller?.goBack()),
-              _flatNavButton(Icons.arrow_forward, _canGoForward,
-                  () => _controller?.goForward()),
               Expanded(child: _omnibox(c)),
               const SizedBox(width: 6),
               DownloadIconButton(

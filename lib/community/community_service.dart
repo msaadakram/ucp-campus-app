@@ -63,6 +63,26 @@ abstract class CommunityService {
   /// [supportsRealtime] is false.
   Future<void> ensureRealtime(Future<void> Function() onEvent);
 
+  /// Paged feed for infinite scroll: newest first, `beforeIso` excludes
+  /// everything newer (an ISO `created_at` cursor; null = first page).
+  /// Default slices the full fetch client-side so fakes and old doubles
+  /// keep working; [NodeCommunityService] pages server-side.
+  Future<List<Post>> fetchPostPage({
+    required String myEmail,
+    int limit = 15,
+    String? beforeIso,
+  }) async {
+    final all = await fetchPosts(myEmail: myEmail);
+    final older = beforeIso == null || beforeIso.isEmpty
+        ? all
+        : all.where((p) {
+            if (p.createdAt.isEmpty) return true;
+            return p.createdAt.compareTo(beforeIso) < 0;
+          }).toList();
+    older.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return older.take(limit).toList();
+  }
+
   /// Live header numbers. Default returns zeros so older test doubles keep
   /// compiling; real backends override. UI never fails the feed if this
   /// throws — it keeps the last good value.

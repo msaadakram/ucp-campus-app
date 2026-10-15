@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ucp/app.dart';
 import 'package:ucp/auth/dashboard_parser.dart';
+import 'package:ucp/auth/microsoft_oauth.dart';
 import 'package:ucp/auth/offline.dart';
 import 'package:ucp/auth/session_manager.dart';
 import 'package:ucp/auth/session_monitor.dart';
@@ -126,7 +127,7 @@ void main() {
         child: MaterialApp(
           home: Scaffold(
             body: SessionExpiredDialog(
-              message: 'Your portal session expired.',
+              message: MicrosoftOAuth.sessionExpiredDuringUse,
               detail: 'login_required',
               onLoginNow: () => loginNow = true,
               onLater: () => later = true,
@@ -137,14 +138,14 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Session expired'), findsOneWidget);
-    expect(find.text('Your portal session expired.'), findsOneWidget);
-    expect(find.textContaining('laptop'), findsOneWidget);
+    expect(find.text(MicrosoftOAuth.sessionExpiredDuringUse),
+        findsOneWidget);
     expect(find.textContaining('login_required'), findsOneWidget);
-    await tester.tap(find.text('Login here now'));
+    await tester.tap(find.text('Relogin now'));
     await tester.pumpAndSettle();
     expect(loginNow, isTrue);
     expect(later, isFalse);
-    await tester.tap(find.text('Stay without live'));
+    await tester.tap(find.text('Stay logged out'));
     await tester.pumpAndSettle();
     expect(later, isTrue);
   });

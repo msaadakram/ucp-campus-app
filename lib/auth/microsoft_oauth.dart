@@ -110,6 +110,14 @@ class MicrosoftOAuth {
     }.contains(code);
   }
 
+  /// Shown when the portal session dies while the app is open and
+  /// silent renewal is disabled: the user picks relogin or staying
+  /// logged out instead of an invisible auto sign-in.
+  static const sessionExpiredDuringUse =
+      'Your portal sign-in expired — someone may have signed in on '
+      'another device (e.g. your laptop). Relogin to go live again, '
+      'or stay logged out on your saved data.';
+
   /// User-facing message when a silent renewal fails.
   ///
   /// [code] is the Microsoft error, `'timeout'` when Microsoft never

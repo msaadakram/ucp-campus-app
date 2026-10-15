@@ -126,7 +126,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   bool _signInFailed = false;
   String? _signInFailMessage;
 
-  /// "Stay without live": the user dismissed the expiry popup and keeps
+  /// "Stay logged out": the user dismissed the expiry popup and keeps
   /// using saved data. While set, no renewal is attempted and no cookies
   /// are minted or overwritten. In-memory only — a fresh app launch starts
   /// again at false and retries auto sign-in with the kept session.
@@ -213,7 +213,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
 
   /// Renewal seam: test hooks resolve without mounting a (platform) WebView.
   Future<RenewOutcome> _performRenew(String email) async {
-    // "Stay without live": never mint cookies until the user explicitly
+    // "Stay logged out": never mint cookies until the user explicitly
     // asks (Try again / Login now). The watchdog treats this as a quiet
     // non-interaction failure, so no popup re-fires for the dead session.
     if (_stayWithoutLive) {
@@ -461,6 +461,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   }
   /// Builds (or rebuilds) the foreground watchdog. Called whenever the app
   /// becomes authenticated; stopped on logout/dispose.
+  /// Mid-use policy: NO silent renewal while the user works — a dead
+  /// session pops the relogin / stay-logged-out choice instead.
   void _startMonitor() {
     _monitor?.stop();
     if (widget.skipLogin) return;
@@ -492,6 +494,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       },
       onDead: (message, code) => _handleSessionDead(message, code),
       interval: widget.authHooks?.monitorInterval ?? SessionMonitor.heartbeat,
+      autoRenew: false,
     );
     _monitor = monitor;
     monitor.start();
@@ -614,7 +617,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     });
   }
 
-  /// "Login here now": keep the (still valid) Microsoft cookies, drop only
+  /// "Relogin now": keep the (still valid) Microsoft cookies, drop only
   /// the dead Horizon session, and open the interactive sign-in. A fresh
   /// success clears the popup guard.
   Future<void> _reloginNow() async {
@@ -965,7 +968,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                             detail: _expiredCode,
                             onLoginNow: _reloginNow,
                             onLater: () => setState(() {
-                              // Stay without live: usable on saved data,
+                              // Stay logged out: usable on saved data,
                               // no cookie refresh; the kept session lets
                               // the next launch retry auto sign-in.
                               _expiredMessage = null;

@@ -104,6 +104,21 @@ void main() {
       expect(find.text('B-CL203 ( Lab )'), findsOneWidget);
     });
 
+    testWidgets('attendance pull down reloads cached content',
+        (tester) async {
+      await tester.pumpWidget(_wrap(AttendanceScreen(
+        debugHtml: _attHtml,
+      )));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Multivariable Calculus'),
+          findsOneWidget);
+      await tester.fling(
+          find.byType(RefreshIndicator).first, const Offset(0, 400), 1200);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Multivariable Calculus'),
+          findsOneWidget);
+    });
+
     testWidgets('attendance shows courses, expands records',
         (WidgetTester tester) async {
       await tester.pumpWidget(_wrap(const AttendanceScreen(

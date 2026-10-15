@@ -19,7 +19,9 @@ class _Harness {
     RenewOutcome? renewOutcome,
   }) : renewOutcome = renewOutcome ?? RenewOutcome(sessionId: 'sid-2');
 
-  SessionMonitor build({Duration interval = const Duration(seconds: 30)}) {
+  SessionMonitor build(
+      {Duration interval = const Duration(seconds: 30),
+      bool autoRenew = true}) {
     return SessionMonitor(
       readSession: () async =>
           sid == null ? null : MonitorSnapshot(sid!, email),
@@ -37,6 +39,7 @@ class _Harness {
       },
       onDead: (m, _) async => deadMessage = m,
       interval: interval,
+      autoRenew: autoRenew,
     );
   }
 }
@@ -87,6 +90,16 @@ void main() {
       expect(h.renewals, 1);
       expect(h.renewedSid, isNull);
       expect(h.deadMessage, isNull);
+    });
+
+    test('autoRenew false: dead session pops choice, never renews',
+        () async {
+      final h = _Harness(alive: false);
+      final m = h.build(autoRenew: false);
+      await m.checkNow();
+      expect(h.renewals, 0); // no silent cookie minting during use
+      expect(h.renewedSid, isNull);
+      expect(h.deadMessage, contains('expired'));
     });
 
     test('no stored session -> quiet no-op', () async {

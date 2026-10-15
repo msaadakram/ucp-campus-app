@@ -182,7 +182,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       refreshFailed: refreshFailed,
       onRetry: _load,
       cachedAtMs: cachedOffline ? cachedAt : null,
-      child: UHead(
+      child: RefreshIndicator(
+        color: c.teal,
+        backgroundColor: c.white,
+        onRefresh: _load,
+        child: UHead(
       height: 150,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -406,6 +410,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             }),
           const SizedBox(height: 96),
         ],
+      ),
       ),
       ),
     );

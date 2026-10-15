@@ -259,7 +259,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
               ),
             ),
             clipBehavior: Clip.antiAlias,
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 30),
             child: Stack(
               children: [
                 Positioned(
@@ -271,6 +271,11 @@ class _TeachersScreenState extends State<TeachersScreen> {
                   left: 50,
                   bottom: -84,
                   child: _decoCircle(170, 0.05),
+                ),
+                Positioned(
+                  right: 72,
+                  bottom: -46,
+                  child: _decoRing(96, 0.10),
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -369,6 +374,21 @@ class _TeachersScreenState extends State<TeachersScreen> {
     );
   }
 
+  /// Outlined ring for header decoration (pairs with [_decoCircle]).
+  Widget _decoRing(double size, double alpha) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white.withValues(alpha: alpha),
+          width: 10,
+        ),
+      ),
+    );
+  }
+
   Widget _setupNotice(AppColors c) {
     return UHead(
       height: 112,
@@ -406,111 +426,131 @@ class _TeachersScreenState extends State<TeachersScreen> {
     );
   }
 
+  /// Editorial hero: eyebrow + count badge, oversized title, tagline.
   Widget _header(AppColors c) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Teachers',
-                  style: display(c, size: 30, color: Colors.white)),
-              const SizedBox(height: 2),
-              Text(
-                'Photos · ratings · student reviews',
-                style: body(c,
-                    size: 13.5, color: Colors.white.withValues(alpha: 0.8)),
+        Row(
+          children: [
+            Flexible(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text('RATE · REVIEW',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 10,
+                        letterSpacing: 1.1)),
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.25)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.verified_outlined,
+                      size: 14, color: Colors.white),
+                  const SizedBox(width: 5),
+                  Text(
+                    teachers.isEmpty ? 'UCP' : '${teachers.length}',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11.5),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.18),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.verified_outlined,
-                  size: 15, color: Colors.white),
-              const SizedBox(width: 6),
-              Text(
-                teachers.isEmpty ? 'UCP' : '${teachers.length} listed',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12),
-              ),
-            ],
-          ),
+        const SizedBox(height: 10),
+        Text('Teachers',
+            style: display(c, size: 34, color: Colors.white)),
+        const SizedBox(height: 2),
+        Text(
+          'Find the mentors worth learning from.',
+          style: body(c,
+              size: 13.5,
+              color: Colors.white.withValues(alpha: 0.82)),
         ),
       ],
     );
   }
 
+  /// Three glass stat cards with icons — faculty size, average score,
+  /// review volume — instead of one divider strip.
   Widget _statsStrip(AppColors c) {
     if (teachers.isEmpty) return const SizedBox.shrink();
-    final rated =
-        teachers.where((t) => t.reviewCount > 0).toList();
+    final rated = teachers.where((t) => t.reviewCount > 0).toList();
     final avg = rated.isEmpty
         ? 0.0
         : rated.map((t) => t.overallRating).reduce((a, b) => a + b) /
             rated.length;
     final totalReviews =
         teachers.fold<int>(0, (a, t) => a + t.reviewCount);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
-      ),
-      child: Row(
-        children: [
-          Expanded(child: _statItem(c, '${teachers.length}', 'teachers')),
-          _statDivider(),
-          Expanded(child: _statItem(c, avg.toStringAsFixed(1), 'avg rating')),
-          _statDivider(),
-          Expanded(child: _statItem(c, '$totalReviews', 'reviews')),
-          const SizedBox(width: 4),
-          const Icon(Icons.auto_awesome_outlined,
-              size: 16, color: Colors.white70),
-        ],
-      ),
-    );
-  }
-
-  Widget _statItem(AppColors c, String value, String label) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
+    return Row(
       children: [
-        Text(value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-                fontSize: 16)),
-        Text(label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7), fontSize: 10)),
+        Expanded(
+            child: _statCard(
+                c, Icons.people_outline, '${teachers.length}', 'faculty')),
+        const SizedBox(width: 8),
+        Expanded(
+            child: _statCard(
+                c, Icons.star_outline, avg.toStringAsFixed(1), 'avg score')),
+        const SizedBox(width: 8),
+        Expanded(
+            child: _statCard(
+                c, Icons.forum_outlined, '$totalReviews', 'reviews')),
       ],
     );
   }
 
-  Widget _statDivider() {
+  Widget _statCard(
+      AppColors c, IconData icon, String value, String label) {
     return Container(
-      width: 1,
-      height: 30,
-      margin: const EdgeInsets.symmetric(horizontal: 10),
-      color: Colors.white.withValues(alpha: 0.25),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(18),
+        border:
+            Border.all(color: Colors.white.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: Colors.white.withValues(alpha: 0.85)),
+          const SizedBox(height: 6),
+          Text(value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 17)),
+          Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7), fontSize: 10)),
+        ],
+      ),
     );
   }
 

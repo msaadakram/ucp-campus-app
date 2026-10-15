@@ -209,7 +209,11 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
     final requiredSgpa = credits == 0
         ? 0.0
         : (targetCgpa * (prevCr + credits) - prevCgpa * prevCr) / credits;
-    return UHead(
+    return RefreshIndicator(
+      color: c.teal,
+      backgroundColor: c.white,
+      onRefresh: _loadPortal,
+      child: UHead(
       height: 112,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -621,6 +625,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
           const SizedBox(height: 24),
         ],
       ),
+      ),
     );
   }
 
@@ -955,7 +960,11 @@ class _TimetableScreenState extends State<TimetableScreen> {
       refreshFailed: refreshFailed,
       onRetry: _load,
       cachedAtMs: cachedOffline ? cachedAt : null,
-      child: UHead(
+      child: RefreshIndicator(
+        color: c.teal,
+        backgroundColor: c.white,
+        onRefresh: _load,
+        child: UHead(
       height: 300,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1440,6 +1449,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
           _datesheetCard(c),
           const SizedBox(height: 96),
         ],
+      ),
       ),
       ),
     );

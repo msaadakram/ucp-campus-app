@@ -16,6 +16,10 @@ CComment _c(String author, String text, String time, int score,
         replies: replies);
 
 /// Seed content powering widget tests (and nothing else in production).
+/// `createdAt` staggers with `age` so paging/sort tests see real order.
+String _agoIso(int minutes) =>
+    DateTime.now().subtract(Duration(minutes: minutes)).toIso8601String();
+
 List<Post> seedPosts() => [
       Post(
           id: 'p1',
@@ -26,6 +30,7 @@ List<Post> seedPosts() => [
               'Thinking Library room 3, Thursday 5pm. We can split topics — trees, heaps, graphs. Drop a comment if you want in.',
           time: '12m',
           age: 12,
+          createdAt: _agoIso(12),
           score: 42,
           comments: [
             _c('omar.k', "I'm in! I can take graphs + BFS/DFS.", '10m', 12,
@@ -41,6 +46,7 @@ List<Post> seedPosts() => [
               'Studio 3, 7pm till late. Teams of up to 4. Beginners very welcome. Sign up on the student portal.',
           time: '1h',
           age: 60,
+          createdAt: _agoIso(60),
           score: 128,
           comments: [
             _c('leo.b', 'Is there a theme this time?', '48m', 9, [
@@ -57,6 +63,7 @@ List<Post> seedPosts() => [
               'Uploaded handwritten notes on eigenvalues/eigenvectors to the MA 201 material folder. Hope it helps someone before the quiz.',
           time: '3h',
           age: 180,
+          createdAt: _agoIso(180),
           score: 86,
           comments: [_c('ayaan.w', 'Legend. Page 3 saved me.', '2h', 7)]),
       Post(
@@ -68,6 +75,7 @@ List<Post> seedPosts() => [
               'Both in great condition. Rs 3,500 for the pair, can meet at the cafeteria.',
           time: '5h',
           age: 300,
+          createdAt: _agoIso(300),
           score: 17),
     ];
 
@@ -109,6 +117,23 @@ class FakeCommunityService extends CommunityService {
       _applyCommentVotes(p.comments, myEmail);
     }
     return _posts;
+  }
+
+  /// Server-style paging over the in-memory list: newest first, `beforeIso`
+  /// excludes everything newer (mirrors `GET /api/posts?before=`).
+  @override
+  Future<List<Post>> fetchPostPage({
+    required String myEmail,
+    int limit = 15,
+    String? beforeIso,
+  }) async {
+    await fetchPosts(myEmail: myEmail);
+    final ordered = List<Post>.of(_posts)
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final older = beforeIso == null || beforeIso.isEmpty
+        ? ordered
+        : ordered.where((p) => p.createdAt.compareTo(beforeIso) < 0).toList();
+    return older.take(limit).toList();
   }
 
   /// Real member count: distinct contributor emails across posts, comments
@@ -253,6 +278,7 @@ class FakeCommunityService extends CommunityService {
       body: body,
       time: 'now',
       age: 0,
+      createdAt: DateTime.now().toIso8601String(),
       score: 1,
       imageUrl: imageUrl,
     );

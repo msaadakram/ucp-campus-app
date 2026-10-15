@@ -74,11 +74,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Session expired'), findsOneWidget);
-    expect(find.text('Login here now'), findsOneWidget);
+    expect(find.text('Relogin now'), findsOneWidget);
     expect(find.textContaining('laptop'), findsOneWidget);
 
-    // "Stay without live" dismisses without logging out.
-    await tester.tap(find.text('Stay without live'));
+    // "Stay logged out" dismisses without logging out.
+    await tester.tap(find.text('Stay logged out'));
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Session expired'), findsNothing);
     expect(find.text('My courses'), findsOneWidget);
@@ -107,7 +107,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Session expired'), findsOneWidget);
-    await tester.tap(find.text('Stay without live'));
+    await tester.tap(find.text('Stay logged out'));
     await tester.pump(const Duration(milliseconds: 100));
     final frozen = renews;
     // Heartbeats keep validating but never mint cookies again…
@@ -132,7 +132,7 @@ void main() {
     expect(find.text('Try again'), findsNothing);
   });
 
-  testWidgets('silent heal shows banner instead of popup',
+  testWidgets('dead session pops choice without silent heal',
       (WidgetTester tester) async {
     final backend = _MemoryBackend(
       sid: 'dead-2',
@@ -145,8 +145,7 @@ void main() {
         backend: backend,
         validate: (_) async {
           validated++;
-          // First validation (old sid) fails; post-renew sid passes.
-          return validated > 1;
+          return false;
         },
         renew: (_) async => RenewOutcome(sessionId: 'fresh-9'),
         monitorInterval: const Duration(milliseconds: 200),
@@ -156,11 +155,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('Session expired'), findsNothing);
-    expect(
-      find.textContaining('Session refreshed automatically'),
-      findsOneWidget,
-    );
-    expect(backend.sid, 'fresh-9');
+    // No silent heal mid-use: the choice popup appears, cookies untouched.
+    expect(find.text('Session expired'), findsOneWidget);
+    expect(find.text('Relogin now'), findsOneWidget);
+    expect(find.text('Stay logged out'), findsOneWidget);
+    expect(backend.sid, 'dead-2');
+    expect(validated, greaterThanOrEqualTo(1));
   });
 }

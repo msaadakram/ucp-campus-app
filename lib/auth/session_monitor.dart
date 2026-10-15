@@ -38,6 +38,12 @@ class SessionMonitor {
   final Future<void> Function(String message, String code) onDead;
   final Duration interval;
 
+  /// Foreground policy: when false, a dead session goes straight to
+  /// [onDead] with NO silent renewal — the user chooses relogin or
+  /// staying logged out. True keeps the old heal-silently-first flow
+  /// (used by cold-start verification).
+  final bool autoRenew;
+
   Timer? _timer;
   bool _checking = false;
 
@@ -48,6 +54,7 @@ class SessionMonitor {
     required this.onRenewed,
     required this.onDead,
     this.interval = heartbeat,
+    this.autoRenew = true,
   });
 
   void start({bool immediate = false}) {
@@ -78,6 +85,21 @@ class SessionMonitor {
         return; // timeout/offline: stay logged in, retry next tick.
       }
       if (alive) return; // alive: nothing to do
+
+      if (!autoRenew) {
+        // Mid-use policy: never mint cookies silently. Confirm the death
+        // (a second miss, not a blip) then hand the choice to the user.
+        try {
+          if (await validate(snap.sessionId)) return;
+        } catch (_) {
+          return; // went offline mid-check: stay quiet, retry next tick.
+        }
+        await onDead(
+          MicrosoftOAuth.sessionExpiredDuringUse,
+          'session_expired',
+        );
+        return;
+      }
 
       final outcome = await renew(snap.email);
       final fresh = outcome.sessionId;

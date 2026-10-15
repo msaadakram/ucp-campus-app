@@ -117,8 +117,11 @@ class Post {
   int vote;
   bool saved;
   final String? imageUrl;
+  /// Raw ISO `created_at` from the backend: pagination cursor + exact
+  /// newest-first ordering. '' when unknown (old seeds); never shown.
+  final String createdAt;
   final List<CComment> comments;
-  Post({required this.id, required this.author, required this.flair, required this.title, required this.body, required this.time, required this.age, required this.score, this.vote = 0, this.saved = false, this.imageUrl, List<CComment>? comments}) : comments = comments ?? [];
+  Post({required this.id, required this.author, required this.flair, required this.title, required this.body, required this.time, required this.age, required this.score, this.vote = 0, this.saved = false, this.imageUrl, this.createdAt = '', List<CComment>? comments}) : comments = comments ?? [];
 }
 
 int countComments(List<CComment> cs) => cs.fold(0, (n, x) => n + 1 + countComments(x.replies));

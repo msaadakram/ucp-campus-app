@@ -278,6 +278,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Usman Aamer'), findsWidgets);
       expect(find.textContaining('4.7 (50)'), findsWidgets);
+      // New editorial header: eyebrow, title, icon stat cards.
+      expect(find.text('RATE · REVIEW'), findsOneWidget);
+      expect(find.text('Teachers'), findsOneWidget);
+      expect(find.text('faculty'), findsOneWidget);
+      expect(find.text('avg score'), findsOneWidget);
       svc.dispose();
     });
 
