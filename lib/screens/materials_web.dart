@@ -363,6 +363,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
   bool _sheetOpen = false;
   String? _barDismissedForId;
   final Map<String, _BlobAssembly> _blobAsm = {};
+  /// Oversized blob payloads already refused (never reassembled).
+  final Set<String> _blobRejected = {};
   /// POST bodies by download URL so form downloads can be retried.
   final Map<String, Map<String, String>> _postSpecs = {};
   /// Last start time by URL for double-report dedupe (click + fetch hooks).
@@ -646,7 +648,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
   void _onBlobChunk(Map<String, dynamic> msg) async {
     final id = '${msg['blobId'] ?? ''}';
-    if (id.isEmpty) return;
+    if (id.isEmpty || _blobRejected.contains(id)) return;
     if ('${msg['error'] ?? ''}'.isNotEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -659,6 +661,21 @@ class _WebViewScreenState extends State<WebViewScreen> {
     final total = int.tryParse('${msg['total'] ?? 0}') ?? 0;
     final index = int.tryParse('${msg['index'] ?? -1}') ?? -1;
     if (total <= 0 || index < 0 || total > 5000) return;
+    // ~150 MB ceiling: reassembled blobs live in memory; anything bigger
+    // risks killing the app on low-end phones.
+    if (total > 800) {
+      _blobAsm.remove(id);
+      if (_blobRejected.length > 50) _blobRejected.clear();
+      _blobRejected.add(id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'That file is too large to save from the preview.')),
+        );
+      }
+      return;
+    }
     final asm = _blobAsm.putIfAbsent(
       id,
       () => _BlobAssembly(
@@ -697,16 +714,21 @@ class _WebViewScreenState extends State<WebViewScreen> {
         fileName: done.fileName,
         mimeType: done.mimeType,
       );
+      var savedNote = 'Saved to app files';
       if (pub != null) {
         final i = _downloads.indexWhere((e) => e.id == done.id);
         if (i >= 0) {
           _downloads[i] = _downloads[i].copyWith(publicPath: pub);
           if (mounted) setState(() {});
         }
+        savedNote = 'Saved to Download/UCP';
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${done.fileName} downloaded')),
+          SnackBar(
+              content: Text(pub != null
+                  ? '${done.fileName} · $savedNote'
+                  : '${done.fileName} downloaded ($savedNote — open Downloads to move it)')),
         );
       }
     } else if (done.sessionExpired) {
@@ -721,6 +743,37 @@ class _WebViewScreenState extends State<WebViewScreen> {
     } else if (done.status == DownloadStatus.failed && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(done.error ?? 'Download failed.')),
+      );
+    }
+  }
+
+  /// Copies a finished download into the phone's public Download folder
+  /// on demand (sheet action). Updates the item so the UI shows where it
+  /// lives; never throws.
+  Future<void> _saveToPublic(PortalDownload d) async {
+    final path = d.filePath;
+    if (path == null) return;
+    final pub = await PublicDownloads.save(
+      appFilePath: path,
+      fileName: d.fileName,
+      mimeType: d.mimeType,
+    );
+    if (!mounted) return;
+    if (pub != null) {
+      final i = _downloads.indexWhere((e) => e.id == d.id);
+      if (i >= 0) {
+        setState(() {
+          _downloads[i] = _downloads[i].copyWith(publicPath: pub);
+        });
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Saved to Download/UCP')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'Could not reach the Download folder — file stays in app files.')),
       );
     }
   }
@@ -794,6 +847,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
         onCancel: (d) => _downloader.cancel(d.id),
         onRetry: _retryDownload,
         onDelete: _deleteDownload,
+        onSaveToPublic: _saveToPublic,
         saveLocationLabel: Platform.isAndroid
             ? 'Downloads/UCP folder'
             : 'app files',

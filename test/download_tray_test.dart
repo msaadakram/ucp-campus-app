@@ -94,6 +94,7 @@ void main() {
             onCancel: (_) {},
             onRetry: (d) => retried = d.id,
             onDelete: (_) async {},
+            onSaveToPublic: (_) async {},
             saveLocationLabel: 'Downloads/UCP folder',
           ),
         ),
@@ -112,6 +113,48 @@ void main() {
         dl(id: 'c', name: 'live.pdf', received: 500, total: 1000));
     await tester.pumpAndSettle();
     expect(find.text('live.pdf'), findsOneWidget);
+  });
+
+  testWidgets('sheet shows save location + move-to-Downloads action',
+      (tester) async {
+    PortalDownload done(String id, String? pub) => PortalDownload(
+          id: id,
+          url: 'https://horizon.ucp.edu.pk/x/$id',
+          fileName: '$id.pdf',
+          totalBytes: 1000,
+          receivedBytes: 1000,
+          status: DownloadStatus.complete,
+          filePath: '/tmp/$id.pdf',
+          publicPath: pub,
+        );
+    final controller = StreamController<PortalDownload>.broadcast();
+    addTearDown(controller.close);
+    var saved = '';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DownloadsSheet(
+            initial: [done('a', null), done('b', 'Download/UCP/b.pdf')],
+            updates: controller.stream,
+            onOpen: (_) async {},
+            onCancel: (_) {},
+            onRetry: (_) {},
+            onDelete: (_) async {},
+            onSaveToPublic: (d) async => saved = d.id,
+            saveLocationLabel: 'Downloads/UCP folder',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // App-files item names its location and offers the move action…
+    expect(find.textContaining('App files'), findsOneWidget);
+    expect(find.byTooltip('Save to Downloads'), findsOneWidget);
+    await tester.tap(find.byTooltip('Save to Downloads'));
+    await tester.pump();
+    expect(saved, 'a');
+    // …public item shows its folder and needs no action.
+    expect(find.textContaining('Download/UCP'), findsOneWidget);
   });
 
   test('formatBytes + icon mapping', () {

@@ -293,6 +293,7 @@ class DownloadsSheet extends StatefulWidget {
   final void Function(PortalDownload item) onCancel;
   final void Function(PortalDownload item) onRetry;
   final Future<void> Function(PortalDownload item) onDelete;
+  final Future<void> Function(PortalDownload item) onSaveToPublic;
   final String saveLocationLabel;
 
   const DownloadsSheet({
@@ -303,6 +304,7 @@ class DownloadsSheet extends StatefulWidget {
     required this.onCancel,
     required this.onRetry,
     required this.onDelete,
+    required this.onSaveToPublic,
     required this.saveLocationLabel,
   });
 
@@ -387,6 +389,8 @@ class _DownloadsSheetState extends State<DownloadsSheet> {
                     onOpen: () => widget.onOpen(ordered[i]),
                     onCancel: () => widget.onCancel(ordered[i]),
                     onRetry: () => widget.onRetry(ordered[i]),
+                    onSaveToPublic: () =>
+                        widget.onSaveToPublic(ordered[i]),
                     onDelete: () async {
                       await widget.onDelete(ordered[i]);
                       if (mounted) {
@@ -409,6 +413,7 @@ class _RowTile extends StatelessWidget {
   final VoidCallback onOpen;
   final VoidCallback onCancel;
   final VoidCallback onRetry;
+  final VoidCallback onSaveToPublic;
   final VoidCallback onDelete;
 
   const _RowTile({
@@ -416,6 +421,7 @@ class _RowTile extends StatelessWidget {
     required this.onOpen,
     required this.onCancel,
     required this.onRetry,
+    required this.onSaveToPublic,
     required this.onDelete,
   });
 
@@ -423,13 +429,19 @@ class _RowTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final d = item;
     final pct = d.progress;
+    // Exact save location so "where is my file?" is never a mystery.
+    final location = d.status == DownloadStatus.complete
+        ? (d.publicPath != null
+            ? 'Download/UCP · ${formatBytes(d.receivedBytes)}'
+            : 'App files · ${formatBytes(d.receivedBytes)}')
+        : null;
     final detail = switch (d.status) {
       DownloadStatus.downloading => pct >= 0
           ? '${(pct * 100).toStringAsFixed(0)}% · ${formatBytes(d.receivedBytes)} of ${formatBytes(d.totalBytes)}'
           : '${formatBytes(d.receivedBytes)} downloaded…',
       DownloadStatus.queued => 'Waiting…',
       DownloadStatus.complete =>
-        '${formatBytes(d.receivedBytes)} · completed',
+        'Completed · $location',
       DownloadStatus.failed => d.error ?? 'Failed.',
       DownloadStatus.canceled => 'Canceled.',
     };
@@ -462,11 +474,18 @@ class _RowTile extends StatelessWidget {
                 icon: const Icon(Icons.close),
                 onPressed: onCancel)
           else ...[
-            if (d.status == DownloadStatus.complete)
+            if (d.status == DownloadStatus.complete) ...[
               IconButton(
                   tooltip: 'Open',
                   icon: const Icon(Icons.open_in_new_outlined),
                   onPressed: onOpen),
+              // Still in app files only: one tap moves it to Downloads.
+              if (d.publicPath == null && d.filePath != null)
+                IconButton(
+                    tooltip: 'Save to Downloads',
+                    icon: const Icon(Icons.drive_folder_upload_outlined),
+                    onPressed: onSaveToPublic),
+            ],
             if (d.status == DownloadStatus.failed ||
                 d.status == DownloadStatus.canceled)
               IconButton(

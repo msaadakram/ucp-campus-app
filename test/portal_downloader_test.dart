@@ -83,6 +83,22 @@ void main() {
   });
 
   group('PortalDownloader.start', () {
+    test('uses a browser user agent (bot-blocking portals)', () async {
+      final dir = await tempDir();
+      String? ua;
+      final dl = downloaderWith((req) {
+        ua = req.headers['User-Agent'];
+        return bytesRes([1], headers: {'content-type': 'application/pdf'});
+      }, dir);
+      final done = await dl.start(
+          url: 'https://horizon.ucp.edu.pk/web/content/9',
+          sessionId: 'sid');
+      expect(done.status, DownloadStatus.complete);
+      expect(ua, contains('Chrome/'));
+      expect(ua, isNot(contains('UCP-Campus-App')));
+      dl.dispose();
+    });
+
     test('saves bytes with server filename + progress', () async {
       final dir = await tempDir();
       final payload = List<int>.generate(4096, (i) => i % 256);

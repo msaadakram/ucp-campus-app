@@ -88,7 +88,14 @@ Future<Directory> _defaultDownloadDir() async {
 /// (including redirect hops) carries `Cookie: session_id=...`. Redirects
 /// are followed manually to detect bounces to `/web/login` — those mean
 /// the session died and surface as [PortalDownload.sessionExpired].
+///
+/// Requests carry a desktop-Chrome user agent (NOT a bot-like custom one):
+/// portal front-ends with bot protection challenge unknown agents while
+/// the in-app WebView sails through.
 class PortalDownloader {
+  static const browserUA = 'Mozilla/5.0 (X11; Linux x86_64) '
+      'AppleWebKit/537.36 (KHTML, like Gecko) '
+      'Chrome/126.0.0.0 Safari/537.36';
   final http.Client Function() _clientFactory;
   final DownloadDirProvider _dirProvider;
   final _updates = StreamController<PortalDownload>.broadcast();
@@ -318,7 +325,7 @@ class PortalDownloader {
     for (var hop = 0; hop <= _maxHops; hop++) {
       final req = http.Request(currentMethod, Uri.parse(current));
       req.followRedirects = false;
-      req.headers['User-Agent'] = 'UCP-Campus-App/1.0';
+      req.headers['User-Agent'] = PortalDownloader.browserUA;
       if (sessionId != null && sessionId.isNotEmpty) {
         req.headers['Cookie'] = 'session_id=$sessionId';
       }

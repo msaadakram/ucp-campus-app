@@ -29,6 +29,7 @@ import 'screens/community.dart';
 import 'screens/fee_board.dart';
 import 'screens/teachers.dart';
 import 'screens/gpa_timetable.dart';
+import 'gpa_vault/vault_home_screen.dart';
 import 'screens/materials_web.dart';
 import 'screens/oauth_webview.dart';
 import 'screens/profile.dart';
@@ -703,10 +704,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           );
           break;
         case 'gpa':
-          screen = GpaCalcScreen(
-            sessionId: sessionId,
-            onSessionExpired: () => _checkSessionNow(),
-          );
+          screen = const VaultHomeScreen();
+          break;
+        case 'vault':
+          // Legacy alias: older menu state may still reference 'vault'.
+          screen = const VaultHomeScreen();
           break;
         case 'timetable':
           screen = TimetableScreen(
