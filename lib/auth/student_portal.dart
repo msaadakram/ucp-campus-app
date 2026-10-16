@@ -81,14 +81,36 @@ String _subjectKey(String s) => s.trim().toLowerCase();
 /// 3-credit course counts 3x a 1-credit lab). Courses with no credit info
 /// fall back to weight 1. Returns 0-100. Pure and unit-tested.
 double overallAttendance(List<PortalCourse> courses) {
-  if (courses.isEmpty) return 0;
+  return overallAttendanceWeighted(
+    {for (final c in courses) c.name: c.attendance},
+    {for (final c in courses) c.name: c.credits},
+  );
+}
+
+/// Credit-weighted mean of per-course percentages shared by Home and the
+/// Attendance page, so both screens always agree. [credits] maps course
+/// name (any case) to credit hours; courses without a known credit load
+/// weigh 1, exactly like [overallAttendance] treats 0-credit courses.
+double overallAttendanceWeighted(
+  Map<String, double> percents, [
+  Map<String, double>? credits,
+]) {
+  if (percents.isEmpty) return 0;
+  // Portal headings vary in case/whitespace; match case-insensitively.
+  final weightsByName = credits == null
+      ? const <String, double>{}
+      : {
+          for (final e in credits.entries)
+            e.key.trim().toLowerCase(): e.value
+        };
   var weighted = 0.0;
   var weights = 0.0;
-  for (final c in courses) {
-    final w = c.credits > 0 ? c.credits : 1.0;
-    weighted += c.attendance.clamp(0, 100) * w;
+  percents.forEach((name, pct) {
+    final raw = weightsByName[name.trim().toLowerCase()] ?? 0;
+    final w = raw > 0 ? raw : 1.0;
+    weighted += pct.clamp(0, 100) * w;
     weights += w;
-  }
+  });
   if (weights == 0) return 0;
   return (weighted / weights).clamp(0, 100);
 }

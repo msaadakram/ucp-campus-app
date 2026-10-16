@@ -6,12 +6,14 @@ class UHead extends StatelessWidget {
   final double height;
   final Widget child;
   final EdgeInsetsGeometry padding;
-  const UHead({super.key, required this.height, required this.child, this.padding = const EdgeInsets.fromLTRB(20, 24, 20, 24)});
+  final ScrollController? controller;
+  const UHead({super.key, required this.height, required this.child, this.padding = const EdgeInsets.fromLTRB(20, 24, 20, 24), this.controller});
 
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       primary: false,
+      controller: controller,
       child: Stack(
         children: [
           _BandInner(height: height, fallback: null),

@@ -460,6 +460,77 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       // Keep previous data / sample fallback; next login or resume retries.
     }
   }
+  /// Pull-to-refresh on Home: refetches EVERY portal page backing the app
+  /// (dashboard, timetable, datesheet, attendance, invoices, results) in
+  /// parallel, parses each, and updates live Home state plus the memory
+  /// and on-disk caches — so Home repaints and every other tab opens on
+  /// new data. Never throws: failures keep previous data; an expired
+  /// session routes to the watchdog (relogin popup). Stale runs discarded.
+  Future<void> _refreshAllPortal() async {
+    final sid = sessionId;
+    if (sid == null || !mounted) return;
+    if (OfflineMonitor.instance.isOffline) return;
+    final run = ++_dashRun;
+    try {
+      final api = PortalApi();
+      final results = await Future.wait([
+        api.fetchDashboard(sid),
+        api.fetchPage(PortalRoutes.timetable, sid).catchError((_) => ''),
+        api.fetchPage(PortalRoutes.attendance, sid).catchError((_) => ''),
+        api.fetchPage(PortalRoutes.invoices, sid).catchError((_) => ''),
+        api.fetchPage(PortalRoutes.results, sid).catchError((_) => ''),
+        api.fetchPage(PortalRoutes.datesheet, sid).catchError((_) => ''),
+      ]);
+      if (!mounted || run != _dashRun) return;
+      final dashHtml = results[0] as String;
+      final ttHtml = results[1] as String;
+      final attHtml = results[2] as String;
+      final invHtml = results[3] as String;
+      final resHtml = results[4] as String;
+      final dsHtml = results[5] as String;
+
+      final parsed = parseDashboard(dashHtml);
+      List<TimetableSlot> slots = timetableSlots;
+      if (ttHtml.isNotEmpty) {
+        final tt = parseTimetable(ttHtml);
+        slots = tt.slots;
+        final ds = dsHtml.isNotEmpty
+            ? parseDatesheet(dsHtml)
+            : PortalCache.datesheet;
+        PortalCache.putTimetable(tt, ds ?? const DatesheetData());
+        unawaited(PageCache.savePage('timetable', ttHtml));
+        unawaited(PageCache.savePage('datesheet', dsHtml));
+      }
+      if (attHtml.isNotEmpty) {
+        PortalCache.putAttendance(parseAttendance(attHtml));
+        unawaited(PageCache.savePage('attendance', attHtml));
+      }
+      if (invHtml.isNotEmpty) {
+        PortalCache.putInvoices(parseInvoices(invHtml));
+        unawaited(PageCache.savePage('invoices', invHtml));
+      }
+      if (resHtml.isNotEmpty) {
+        PortalCache.putResults(parseResults(resHtml));
+        unawaited(PageCache.savePage('results', resHtml));
+      }
+      if (!parsed.isEmpty) {
+        setState(() {
+          dashboard = parsed;
+          timetableSlots = slots;
+        });
+        unawaited(_backend.saveDashboard(jsonEncode(parsed.toJson())));
+      } else if (mounted) {
+        setState(() => timetableSlots = slots);
+      }
+    } on OdooApiException catch (e) {
+      if (e.message.contains('expired') || e.message.contains('login')) {
+        _checkSessionNow();
+      }
+      // Otherwise keep previous data; spinner dismisses regardless.
+    } catch (_) {
+      // Keep previous data / sample fallback.
+    }
+  }
   /// Builds (or rebuilds) the foreground watchdog. Called whenever the app
   /// becomes authenticated; stopped on logout/dispose.
   /// Mid-use policy: NO silent renewal while the user works — a dead
@@ -686,7 +757,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     } else {
       switch (tab) {
         case 'home':
-          screen = HomeScreen(onOpen: (c) => setState(() { course = c; courseLive = dashboard != null && dashboard!.courses.isNotEmpty; }), toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; tab = 'board'; }); }, dashboard: dashboard, timetableSlots: timetableSlots, onAttend: () => go('attendance'), onTimetable: () => go('timetable'), onTeachers: () => go('teachers'), onMaterial: () => go('material'), onFee: () => go('fee'), onResults: () => go('results'), onCommunity: () => go('community'), onWeb: () => go('web'));
+          screen = HomeScreen(onOpen: (c) => setState(() { course = c; courseLive = dashboard != null && dashboard!.courses.isNotEmpty; }), toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; tab = 'board'; }); }, dashboard: dashboard, timetableSlots: timetableSlots, onAttend: () => go('attendance'), onTimetable: () => go('timetable'), onTeachers: () => go('teachers'), onMaterial: () => go('material'), onFee: () => go('fee'), onResults: () => go('results'), onCommunity: () => go('community'), onWeb: () => go('web'), onRefreshAll: _refreshAllPortal);
           break;
         case 'material':
           screen = const MaterialsScreen();
@@ -704,11 +775,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           );
           break;
         case 'gpa':
-          screen = const VaultHomeScreen();
+          screen = const VaultHomeScreen(initialTab: 1);
           break;
         case 'vault':
           // Legacy alias: older menu state may still reference 'vault'.
-          screen = const VaultHomeScreen();
+          screen = const VaultHomeScreen(initialTab: 1);
           break;
         case 'timetable':
           screen = TimetableScreen(
@@ -720,6 +791,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           screen = AttendanceScreen(
             sessionId: sessionId,
             onSessionExpired: () => _checkSessionNow(),
+            portalCourses: dashboard?.courses ?? const [],
           );
           break;
         case 'results':

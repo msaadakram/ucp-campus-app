@@ -309,6 +309,33 @@ void main() {
       expect(overallAttendance([]), 0);
     });
 
+    test('attendance page agrees with home (same weighted formula)', () {
+      // Regression: the page used a simple mean (72%) while Home showed
+      // the credit-weighted overall (68%). Both now share one function.
+      const percents = {
+        'Heavy Theory': 60.0,
+        'Heavy Lab': 60.0,
+        'Light A': 100.0,
+        'Light B': 100.0,
+      };
+      const credits = {
+        'heavy theory': 3.0,
+        'heavy lab': 3.0,
+        'light a': 1.0,
+        'light b': 1.0,
+      };
+      final page = overallAttendanceWeighted(percents, credits);
+      expect(page, closeTo(70.0, 0.001)); // not the naive mean of 80.0
+      // Case-insensitive matching: portal headings vary in case.
+      expect(
+        overallAttendanceWeighted({'HEAVY THEORY': 60.0}, credits),
+        60.0,
+      );
+      // Unknown courses weigh 1, empty maps to 0.
+      expect(overallAttendanceWeighted({'X': 50.0}, {}), 50.0);
+      expect(overallAttendanceWeighted({}, credits), 0);
+    });
+
     test('coursesToday / coursesThisWeek filter by real schedule', () {
       const a = PortalCourse(
           name: 'Alpha',

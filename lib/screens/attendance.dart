@@ -19,8 +19,15 @@ class AttendanceScreen extends StatefulWidget {
   final VoidCallback? onSessionExpired;
   /// Test seam: canned page HTML (skips all network).
   final String? debugHtml;
+  /// Dashboard courses for credit weights, so the overall matches Home's
+  /// tile exactly (same formula, same weights). Null = equal weights.
+  final List<PortalCourse> portalCourses;
   const AttendanceScreen(
-      {super.key, this.sessionId, this.onSessionExpired, this.debugHtml});
+      {super.key,
+      this.sessionId,
+      this.onSessionExpired,
+      this.debugHtml,
+      this.portalCourses = const []});
   @override
   State<AttendanceScreen> createState() => _AttendanceScreenState();
 }
@@ -175,9 +182,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       );
     }
     final list = courses!;
-    final avg = list.isEmpty
-        ? 0.0
-        : list.map((e) => e.percent).reduce((a, b) => a + b) / list.length;
+    // Same credit-weighted formula as Home's tile (see
+    // overallAttendanceWeighted): both screens always agree.
+    final avg = overallAttendanceWeighted(
+      {for (final e in list) e.name: e.percent},
+      {for (final p in widget.portalCourses) p.name: p.credits},
+    );
     return PortalBottomNotices(
       refreshFailed: refreshFailed,
       onRetry: _load,

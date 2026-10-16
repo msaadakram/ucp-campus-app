@@ -28,6 +28,36 @@ class _VaultCalculatorScreenState extends State<VaultCalculatorScreen> {
   int resultCr = 0;
   double? blendedCgpa;
 
+  /// Scrolls the result card into view after Calculate, with glow pulse.
+  final ScrollController _scrollCtrl = ScrollController();
+  final GlobalKey _resultKey = GlobalKey();
+  int _flash = 0;
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _scrollToResult() {
+    final ctx = _resultKey.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOut,
+        alignment: 0.0,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+      );
+    } else if (_scrollCtrl.hasClients) {
+      _scrollCtrl.animateTo(
+        0,
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
   void _calculate() {
     final res = vaultCalculateGpa([
       for (final r in rows)
@@ -61,7 +91,9 @@ class _VaultCalculatorScreenState extends State<VaultCalculatorScreen> {
       resultGpa = vaultRound2(res.gpa);
       resultCr = res.totalCreditHours;
       blendedCgpa = blended;
+      _flash++;
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToResult());
   }
 
   Future<void> _editPreviousData() async {
@@ -170,6 +202,7 @@ class _VaultCalculatorScreenState extends State<VaultCalculatorScreen> {
       onRefresh: () async => setState(() {}),
       child: UHead(
         height: 112,
+        controller: _scrollCtrl,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -205,31 +238,68 @@ class _VaultCalculatorScreenState extends State<VaultCalculatorScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            WhiteCard(
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                          child: Text('CGPA: ${resultGpa?.toStringAsFixed(2) ?? '0'}',
-                              style: body(c, weight: FontWeight.w800))),
-                      Expanded(
-                          child: Text('Credit Hours: $resultCr',
-                              style: body(c, weight: FontWeight.w800))),
-                    ],
-                  ),
-                  if (prevCgpa > 0 && prevCr > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        'Previous: ${prevCgpa.toStringAsFixed(2)} · $prevCr cr'
-                        '${blendedCgpa != null ? ' → Blended ${blendedCgpa!.toStringAsFixed(2)}' : ''}',
-                        style: body(c,
-                            size: 12,
-                            color: c.tealInk.withValues(alpha: 0.65)),
-                      ),
+            Container(
+              key: _resultKey,
+              child: TweenAnimationBuilder<double>(
+              key: ValueKey(_flash),
+              tween: Tween(begin: 0, end: 1),
+              duration: const Duration(milliseconds: 900),
+              builder: (ctx, t, child) {
+                // Glow pulse: strong right after Calculate, fades to 0.
+                final pulse = _flash == 0 ? 0.0 : (1 - t);
+                return Transform.scale(
+                  scale: 1 + 0.03 * pulse,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(24),
+                      border: pulse > 0.01
+                          ? Border.all(
+                              color: c.teal
+                                  .withValues(alpha: 0.8 * pulse),
+                              width: 2)
+                          : null,
+                      boxShadow: pulse > 0.01
+                          ? [
+                              BoxShadow(
+                                color: c.teal
+                                    .withValues(alpha: 0.55 * pulse),
+                                blurRadius: 18 * pulse,
+                                offset: const Offset(0, 6),
+                              )
+                            ]
+                          : const [],
                     ),
-                ],
+                    child: child,
+                  ),
+                );
+              },
+              child: WhiteCard(
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                            child: Text('CGPA: ${resultGpa?.toStringAsFixed(2) ?? '0'}',
+                                style: body(c, weight: FontWeight.w800))),
+                        Expanded(
+                            child: Text('Credit Hours: $resultCr',
+                                style: body(c, weight: FontWeight.w800))),
+                      ],
+                    ),
+                    if (prevCgpa > 0 && prevCr > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Previous: ${prevCgpa.toStringAsFixed(2)} · $prevCr cr'
+                          '${blendedCgpa != null ? ' → Blended ${blendedCgpa!.toStringAsFixed(2)}' : ''}',
+                          style: body(c,
+                              size: 12,
+                              color: c.tealInk.withValues(alpha: 0.65)),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
               ),
             ),
             const SizedBox(height: 12),

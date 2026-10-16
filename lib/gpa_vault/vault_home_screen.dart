@@ -8,13 +8,31 @@ import 'vault_grading_screen.dart';
 import 'vault_semesters_screen.dart';
 
 class VaultHomeScreen extends StatefulWidget {
-  const VaultHomeScreen({super.key});
+  /// Which of [Semesters=0, Calculator=1, Grading=2] shows first.
+  /// Defaults to 1 so the GPA menu opens straight on the calculator
+  /// (the middle option), matching CourseVault's GpaCalculatorActivity.
+  final int initialTab;
+  const VaultHomeScreen({super.key, this.initialTab = 1});
   @override
   State<VaultHomeScreen> createState() => _VaultHomeScreenState();
 }
 
 class _VaultHomeScreenState extends State<VaultHomeScreen> {
-  int tab = 0;
+  late int tab;
+
+  @override
+  void initState() {
+    super.initState();
+    tab = widget.initialTab.clamp(0, 2);
+  }
+
+  @override
+  void didUpdateWidget(VaultHomeScreen old) {
+    super.didUpdateWidget(old);
+    if (widget.initialTab != old.initialTab) {
+      tab = widget.initialTab.clamp(0, 2);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

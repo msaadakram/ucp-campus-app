@@ -286,7 +286,10 @@ class HomeScreen extends StatefulWidget {  final ValueChanged<Course> onOpen;
   final ValueChanged<Course> onBoard;
   final VoidCallback? onAttend;
   final VoidCallback? onTimetable;
-  final VoidCallback? onTeachers;
+  /// Pull-to-refresh on Home: refetch every portal page (dashboard,
+  /// timetable, attendance, invoices, results, datesheet) and repaint.
+  /// Null (tests) = plain scroll, no refresh.
+  final Future<void> Function()? onRefreshAll;  final VoidCallback? onTeachers;
   final VoidCallback? onMaterial;
   final VoidCallback? onFee;
   final VoidCallback? onResults;
@@ -296,7 +299,7 @@ class HomeScreen extends StatefulWidget {  final ValueChanged<Course> onOpen;
   final DashboardData? dashboard;
   /// Real weekly slots, used to enrich portal courses with rooms/times.
   final List<TimetableSlot> timetableSlots;
-  const HomeScreen({super.key, required this.onOpen, required this.toProfile, required this.onMenu, required this.onGpa, required this.onBoard, this.dashboard, this.onAttend, this.onTimetable, this.onTeachers, this.onMaterial, this.onFee, this.onResults, this.onCommunity, this.onWeb, this.timetableSlots = const []});
+  const HomeScreen({super.key, required this.onOpen, required this.toProfile, required this.onMenu, required this.onGpa, required this.onBoard, this.dashboard, this.onAttend, this.onTimetable, this.onTeachers, this.onMaterial, this.onFee, this.onResults, this.onCommunity, this.onWeb, this.onRefreshAll, this.timetableSlots = const []});
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -381,7 +384,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final nameParts =
         (live?.studentName ?? '').split(' ').where((w) => w.isNotEmpty).toList();
     final displayName = nameParts.isEmpty ? 'Ayaan' : nameParts.first;
-    return UHead(
+    final refresh = widget.onRefreshAll;
+    final page = UHead(
       height: 120,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -999,6 +1003,13 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 96),
         ],
       ),
+    );
+    if (refresh == null) return page;
+    return RefreshIndicator(
+      color: c.teal,
+      backgroundColor: c.white,
+      onRefresh: refresh,
+      child: page,
     );
   }
 }

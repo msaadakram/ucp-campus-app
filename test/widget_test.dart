@@ -337,6 +337,37 @@ void main() {
         AppColors.of(AppPalette.skater, true).cream2);
   });
 
+  testWidgets('home pull down fires refresh-all', (tester) async {
+    var refreshed = 0;
+    final colors = AppColors.of(AppPalette.skater, false);
+    await tester.pumpWidget(
+      AppScope(
+        colors: colors,
+        palette: AppPalette.skater,
+        child: MaterialApp(
+          home: Scaffold(
+            body: HomeScreen(
+              onOpen: (_) {},
+              toProfile: () {},
+              onMenu: () {},
+              onGpa: () {},
+              onBoard: (_) {},
+              onRefreshAll: () async => refreshed++,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(RefreshIndicator), findsOneWidget);
+    await tester.fling(
+        find.byType(RefreshIndicator).first, const Offset(0, 400), 1200);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(refreshed, greaterThanOrEqualTo(1));
+  });
+
   testWidgets('greeting matches the time of day', (WidgetTester tester) async {
     expect(greetingForHour(0), 'Good night,');
     expect(greetingForHour(4), 'Good night,');
