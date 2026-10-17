@@ -13,6 +13,7 @@ import 'auth/session_manager.dart';
 import 'auth/offline.dart';
 import 'auth/page_cache.dart';
 import 'auth/portal_cache.dart';
+import 'auth/course_cache.dart';
 import 'auth/prefs_store.dart';
 import 'auth/session_monitor.dart';
 import 'auth/session_store.dart';
@@ -26,6 +27,7 @@ import 'data/seed.dart';
 import 'screens/attendance.dart';
 import 'screens/auth_home.dart';
 import 'screens/community.dart';
+import 'screens/course_detail.dart';
 import 'screens/fee_board.dart';
 import 'screens/teachers.dart';
 import 'screens/gpa_timetable.dart';
@@ -91,6 +93,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   String tab = 'home';
   Course? course;
   bool courseLive = false;
+  /// Live portal course backing the open course hub (null = bundled
+  /// sample: fall back to the old static detail screen).
+  PortalCourse? portalCourse;
   Course boardOf = courses[0];
   ProfilePrefs prefs = ProfilePrefs();
   bool menu = false;
@@ -608,6 +613,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       setState(() {
         course = null;
         courseLive = false;
+        portalCourse = null;
       });
       return true;
     }
@@ -673,7 +679,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     unawaited(_monitor!.checkNow());
   }
 
-  void go(String t) => setState(() { tab = t; course = null; courseLive = false; menu = false; });
+  void go(String t) => setState(() { tab = t; course = null; courseLive = false; portalCourse = null; menu = false; });
 
   /// The watchdog proved the portal session dead and silent renewal failed:
   /// show the "someone logged in elsewhere?" popup instead of silently
@@ -716,6 +722,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   Future<void> _logout({String? message}) async {
     _monitor?.stop();
     PortalCache.clear();
+    CourseDetailCache.clear();
     _healTimer?.cancel();
     _healNotice = false;
     _finishSilentRenew(null); // abort any background renewal
@@ -753,11 +760,42 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
 
     Widget screen;
     if (course != null) {
-      screen = DetailScreen(course: course!, slots: timetableSlots, isLive: courseLive, back: () => setState(() { course = null; courseLive = false; }));
+      final pc = portalCourse;
+      if (pc != null && pc.infoUrl.isNotEmpty) {
+        // Live per-course hub (dashboard infoUrl → 7 portal tabs).
+        screen = CourseDetailScreen(
+          portalCourse: pc,
+          sessionId: sessionId,
+          onSessionExpired: () => _checkSessionNow(),
+          back: () => setState(() {
+            course = null;
+            courseLive = false;
+            portalCourse = null;
+          }),
+        );
+      } else {
+        screen = DetailScreen(course: course!, slots: timetableSlots, isLive: courseLive, back: () => setState(() { course = null; courseLive = false; portalCourse = null; }));
+      }
     } else {
       switch (tab) {
         case 'home':
-          screen = HomeScreen(onOpen: (c) => setState(() { course = c; courseLive = dashboard != null && dashboard!.courses.isNotEmpty; }), toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; tab = 'board'; }); }, dashboard: dashboard, timetableSlots: timetableSlots, onAttend: () => go('attendance'), onTimetable: () => go('timetable'), onTeachers: () => go('teachers'), onMaterial: () => go('material'), onFee: () => go('fee'), onResults: () => go('results'), onCommunity: () => go('community'), onWeb: () => go('web'), onRefreshAll: _refreshAllPortal);
+          screen = HomeScreen(onOpen: (c) {
+            // Match the tapped card back to its live portal course so
+            // the hub can fetch the 7 per-course tabs. Bundled sample
+            // cards (offline/tests) have no portal match → static detail.
+            PortalCourse? match;
+            final dash = dashboard;
+            if (dash != null && dash.courses.isNotEmpty) {
+              final key = c.title.trim().toLowerCase();
+              for (final pc in dash.courses) {
+                if (pc.name.trim().toLowerCase() == key) {
+                  match = pc;
+                  break;
+                }
+              }
+            }
+            setState(() { course = c; courseLive = dashboard != null && dashboard!.courses.isNotEmpty; portalCourse = match; });
+          }, toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; tab = 'board'; }); }, dashboard: dashboard, timetableSlots: timetableSlots, onAttend: () => go('attendance'), onTimetable: () => go('timetable'), onTeachers: () => go('teachers'), onMaterial: () => go('material'), onFee: () => go('fee'), onResults: () => go('results'), onCommunity: () => go('community'), onWeb: () => go('web'), onRefreshAll: _refreshAllPortal);
           break;
         case 'material':
           screen = const MaterialsScreen();

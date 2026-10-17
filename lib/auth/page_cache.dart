@@ -94,6 +94,18 @@ class PageCache {
           if (await f.exists()) await f.delete();
         } catch (_) {}
       }
+      // Per-course snapshots (`portal_course_<id>_<tab>.html`) are
+      // dynamic — clear by prefix glob instead of a fixed list.
+      try {
+        await for (final e in d.list()) {
+          final name = e.path.split('/').last;
+          if (name.startsWith('portal_course_') && name.endsWith('.html')) {
+            try {
+              await File(e.path).delete();
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
     } catch (_) {}
   }
 }
