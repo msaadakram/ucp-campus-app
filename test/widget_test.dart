@@ -624,6 +624,10 @@ void main() {
               onBoard: (_) {},
               dashboard: data,
               timetableSlots: slots,
+              // Fixed Sunday noon: today has no classes, so the hero
+              // wraps to Monday's Alpha and the timeline shows its
+              // day-off card — deterministic on every run day.
+              nowOverride: () => DateTime(2026, 10, 18, 12),
             ),
           ),
         ),
@@ -868,6 +872,10 @@ void main() {
               onBoard: (_) {},
               dashboard: data,
               timetableSlots: slots,
+              // Fixed Sunday: the Monday-only "Other" slot means today
+              // truly has no classes — the empty state is guaranteed
+              // whatever day the suite runs.
+              nowOverride: () => DateTime(2026, 10, 18, 12),
             ),
           ),
         ),

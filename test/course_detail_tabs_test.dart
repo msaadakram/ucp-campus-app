@@ -39,6 +39,9 @@ const _material2 = '<table><thead><tr><th>Sr No.</th>'
     '</tr></thead><tbody><tr><td>1</td><td>OOP-WEEK1.cpp</td>'
     '<td>Week 1 code</td>'
     '<td><a href="/student/class/material/download/abc123">dl</a></td>'
+    '</tr><tr><td>2</td><td>CP223 Outline.docx</td>'
+    '<td>Course Outline</td>'
+    '<td><a href="/student/class/material/download/def456">dl</a></td>'
     '</tr></tbody></table>';
 
 const _grade2 = '<table><thead><tr><th>Assessment Type</th>'
@@ -69,6 +72,12 @@ void main() {
     await t.tap(find.text('Material'));
     await t.pumpAndSettle();
     expect(find.text('OOP-WEEK1.cpp'), findsOneWidget);
+    // Subject-wise sections render with their headers + file counts.
+    // (Section header AND the fixture's file description say
+    // "Course Outline", so findsWidgets.)
+    expect(find.text('Week 1'), findsOneWidget);
+    expect(find.text('Course Outline'), findsWidgets);
+    expect(find.text('1 file'), findsWidgets);
   });
 
   testWidgets('grades tab shows summary bar', (t) async {

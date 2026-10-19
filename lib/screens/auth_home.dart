@@ -299,13 +299,21 @@ class HomeScreen extends StatefulWidget {  final ValueChanged<Course> onOpen;
   final DashboardData? dashboard;
   /// Real weekly slots, used to enrich portal courses with rooms/times.
   final List<TimetableSlot> timetableSlots;
-  const HomeScreen({super.key, required this.onOpen, required this.toProfile, required this.onMenu, required this.onGpa, required this.onBoard, this.dashboard, this.onAttend, this.onTimetable, this.onTeachers, this.onMaterial, this.onFee, this.onResults, this.onCommunity, this.onWeb, this.onRefreshAll, this.timetableSlots = const []});
+  /// Test seam: fixed clock for the schedule-driven UI (UP NEXT hero,
+  /// Ongoing filter, today timeline, live badges). Null = wall clock.
+  final DateTime Function()? nowOverride;
+  const HomeScreen({super.key, required this.onOpen, required this.toProfile, required this.onMenu, required this.onGpa, required this.onBoard, this.dashboard, this.onAttend, this.onTimetable, this.onTeachers, this.onMaterial, this.onFee, this.onResults, this.onCommunity, this.onWeb, this.onRefreshAll, this.nowOverride, this.timetableSlots = const []});
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
   String filter = 'All';
+
+  /// Schedule-dependent UI reads this so tests can pin a fixed day/time
+  /// (the wall clock made "next class"/"no classes today" assertions
+  /// weekday-flaky).
+  DateTime get _now => widget.nowOverride?.call() ?? DateTime.now();
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
@@ -332,7 +340,7 @@ class _HomeScreenState extends State<HomeScreen> {
           return baseCourses.where((x) => x.progress < 80).toList();
         }
         final today = coursesToday(
-            liveCourses, widget.timetableSlots, DateTime.now());
+            liveCourses, widget.timetableSlots, _now);
         return [
           for (final pc in today) mapCourse(pc, liveCourses.indexOf(pc))
         ];
@@ -345,7 +353,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final list = applyFilter();
-    final greeting = greetingForHour(DateTime.now().hour);
+    final greeting = greetingForHour(_now.hour);
     // First two tiles mirror the portal stats (CGPA, Earned Cr). The third
     // tile is the credit-weighted overall attendance parsed from the real
     // enrolled course cards — the portal's own "Total Cr" stat sits at 0.0
@@ -452,7 +460,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 20),
           Builder(builder: (_) {
-            final now = DateTime.now();
+            final now = _now;
             final upcoming = widget.timetableSlots.isEmpty
                 ? const <TimetableSlot>[]
                 : upcomingClasses(widget.timetableSlots, now, 3);
@@ -528,7 +536,7 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           }),
           Builder(builder: (_) {
-            final now = DateTime.now();
+            final now = _now;
             // Real schedule loaded: full "today" timeline. Otherwise fall
             // back to the portal's own today line, if the dashboard has it.
             if (widget.timetableSlots.isEmpty) {

@@ -4,7 +4,7 @@ import '../auth/course_detail.dart';
 import '../theme/palette.dart';
 import 'course_detail_widgets.dart';
 
-/// News tab body.
+/// News tab body: announcement cards with icon tile, date pill, body.
 Widget courseNewsBody(AppColors c, List<CourseNewsItem> items) {
   if (items.isEmpty) {
     return courseEmptyCard(
@@ -13,33 +13,46 @@ Widget courseNewsBody(AppColors c, List<CourseNewsItem> items) {
   return Column(
     children: [
       for (final n in items)
-        Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-              color: c.white, borderRadius: BorderRadius.circular(18)),
-          child: Column(
+        courseCard(
+          c,
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                      child: Text(n.subject,
+              courseIconTile(c, Icons.campaign_outlined, c.teal),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                            child: Text(n.subject,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: body(c,
+                                    size: 15, weight: FontWeight.w800))),
+                        if (n.hasAttachment)
+                          Icon(Icons.attach_file,
+                              size: 16, color: c.teal),
+                      ],
+                    ),
+                    if (n.date.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      courseChip(c, n.date,
+                          bg: c.teal.withValues(alpha: 0.10),
+                          fg: c.tealDeep),
+                    ],
+                    if (n.description.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(n.description,
                           style: body(c,
-                              size: 15, weight: FontWeight.bold))),
-                  if (n.hasAttachment)
-                    Icon(Icons.attach_file, size: 16, color: c.teal),
-                ],
+                              size: 13,
+                              color: c.tealInk.withValues(alpha: 0.75))),
+                    ],
+                  ],
+                ),
               ),
-              if (n.date.isNotEmpty)
-                Text(n.date,
-                    style: body(c,
-                        size: 12,
-                        color: c.tealInk.withValues(alpha: 0.55))),
-              if (n.description.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(n.description, style: body(c, size: 13)),
-              ],
             ],
           ),
         ),

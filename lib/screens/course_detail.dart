@@ -29,6 +29,21 @@ class CourseDetailScreen extends StatefulWidget {
   /// Test seam: canned page HTML per tab key, skips all network.
   final Map<String, String>? debugHtml;
 
+  /// Test seam: downloader override (fakes record calls; production
+  /// creates a real one lazily).
+  final PortalDownloader? downloader;
+
+  /// Test seam: file-opener override. Null (production) opens via
+  /// OpenFilex. Set to record auto-opens in widget tests.
+  final Future<void> Function(String path)? onOpenFile;
+
+  /// First tab to load ('news' by default). The bottom-bar Material
+  /// entry opens the hub straight on 'material'.
+  final String initialTab;
+
+  /// Opens the live leaderboard for this course (Grades tab button).
+  final void Function(String courseName)? onOpenLeaderboard;
+
   const CourseDetailScreen({
     super.key,
     required this.portalCourse,
@@ -36,6 +51,10 @@ class CourseDetailScreen extends StatefulWidget {
     this.sessionId,
     this.onSessionExpired,
     this.debugHtml,
+    this.downloader,
+    this.onOpenFile,
+    this.initialTab = 'news',
+    this.onOpenLeaderboard,
   });
 
   @override
@@ -98,14 +117,17 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
   @override
   void initState() {
     super.initState();
-    ctl = CourseDetailController(
+      ctl = CourseDetailController(
       portalCourse: widget.portalCourse,
       sessionId: widget.sessionId,
       debugHtml: widget.debugHtml,
     );
     ctl.addListener(_onCtl);
-    ctl.loadTab('news');
+    ctl.loadTab(_validTab(widget.initialTab));
   }
+
+  static String _validTab(String t) =>
+      courseDetailTabs.contains(t) ? t : 'news';
 
   @override
   void didUpdateWidget(CourseDetailScreen old) {
@@ -122,7 +144,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
         debugHtml: widget.debugHtml,
       );
       ctl.addListener(_onCtl);
-      ctl.loadTab('news');
+      ctl.loadTab(_validTab(widget.initialTab));
     }
   }
 
@@ -144,10 +166,41 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
     if (_busyDownload != null) return;
     var url = item.downloadUrl;
     if (url.isEmpty) return;
+    _downloader ??= widget.downloader ?? PortalDownloader();
+    // Already in storage from an earlier download? Open it directly —
+    // no re-fetch. "Download again" in the snackbar forces a fresh copy.
+    final saved =
+        item.fileName.isEmpty ? null : await _downloader!.findDownloaded(item.fileName);
+    if (saved != null) {
+      if (!mounted) return;
+      _openFile(saved);
+      final c = AppScope.colorsOf(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Opening saved ${item.fileName}'),
+          backgroundColor: c.teal,
+          action: SnackBarAction(
+            label: 'Download again',
+            textColor: Colors.white,
+            onPressed: () => _fetchAndOpen(item),
+          ),
+        ),
+      );
+      return;
+    }
+    await _fetchAndOpen(item);
+  }
+
+  /// Downloads the file, then AUTO-OPENS it once (the requested
+  /// "open after one-time download" behavior).
+  Future<void> _fetchAndOpen(CourseMaterialItem item) async {
+    if (_busyDownload != null) return;
+    var url = item.downloadUrl;
+    if (url.isEmpty) return;
     if (url.startsWith('/')) url = 'https://horizon.ucp.edu.pk$url';
     setState(() => _busyDownload = item.downloadUrl);
     try {
-      _downloader ??= PortalDownloader();
+      _downloader ??= widget.downloader ?? PortalDownloader();
       final dl = await _downloader!.start(
         url: url,
         sessionId: widget.sessionId,
@@ -158,6 +211,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
       final c = AppScope.colorsOf(context);
       final ok = dl.status == DownloadStatus.complete && dl.filePath != null;
       if (ok) {
+        _openFile(dl.filePath!); // auto-open right after the download
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Saved ${dl.fileName}'),
@@ -185,10 +239,27 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
   }
 
   Future<void> _openFile(String path) async {
+    final opener = widget.onOpenFile;
+    if (opener != null) {
+      try {
+        await opener(path);
+      } catch (_) {}
+      return;
+    }
     try {
       await OpenFilex.open(path);
     } catch (_) {}
   }
+
+  /// Soft translucent disc for the hero band (same motif as Teachers).
+  Widget _deco(double size, double alpha) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: alpha),
+          shape: BoxShape.circle,
+        ),
+      );
 
   Widget buildScaffold(BuildContext context) {
     final c = AppScope.colorsOf(context);
@@ -208,82 +279,101 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
         onRelogin: widget.onSessionExpired,
       );
     }
+    final sel = ctl.tab;
     return UHead(
-      height: 200,
+      height: 258,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.back,
-            child: Row(
-              children: [
-                const Icon(Icons.arrow_back,
-                    color: Colors.white, size: 20),
-                const SizedBox(width: 6),
-                Text('Courses',
-                    style: body(c,
-                        size: 14,
-                        weight: FontWeight.w600,
-                        color: Colors.white)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(pc.name.isEmpty ? 'Course' : pc.name,
-              style: display(c, size: 24, color: Colors.white)),
-          Text(
-              '${pc.code} · ${pc.teacher}${pc.credits > 0 ? ' · ${pc.credits} cr' : ''}',
-              style: body(c,
-                  size: 13,
-                  color: Colors.white.withValues(alpha: 0.8))),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(18)),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
+          // Hero band: glass back pill + code chips + title + tab bar.
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                  right: -40, top: -50, child: _deco(140, 0.07)),
+              Positioned(
+                  left: 60, top: -60, child: _deco(110, 0.05)),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  for (final t in courseDetailTabs)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => ctl.loadTab(t),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                              color: ctl.tab == t
-                                  ? Colors.white
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(14)),
-                          child: Row(
-                            children: [
-                              Icon(_tabIcon(t),
-                                  size: 14,
-                                  color: ctl.tab == t
-                                      ? c.tealInk
-                                      : Colors.white),
-                              const SizedBox(width: 4),
-                              Text(courseTabLabel(t),
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: ctl.tab == t
-                                          ? c.tealInk
-                                          : Colors.white)),
-                            ],
-                          ),
-                        ),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: widget.back,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.arrow_back,
+                              color: Colors.white, size: 16),
+                          Text('  Courses',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13)),
+                        ],
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      if (pc.code.isNotEmpty) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(pc.code.toUpperCase(),
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11)),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      if (pc.credits > 0)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text('${pc.credits} cr',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11)),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(pc.name.isEmpty ? 'Course' : pc.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: display(c, size: 25, color: Colors.white)),
+                  if (pc.teacher.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(pc.teacher,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: body(c,
+                            size: 13,
+                            color: Colors.white.withValues(alpha: 0.8))),
+                  ],
+                  const SizedBox(height: 14),
+                  _tabBar(c, sel),
                 ],
               ),
-            ),
+            ],
           ),
           const SizedBox(height: 12),
           if (ctl.loading) const PortalLoadingBar(),
@@ -295,6 +385,67 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
             PortalCachedNotice(savedAtMs: ctl.cachedAt!),
           const SizedBox(height: 96),
         ],
+      ),
+    );
+  }
+
+  /// Frosted pill bar; selected = white pill with tealDeep text (readable
+  /// in dark mode too — tealInk flips light there) + soft elevation.
+  Widget _tabBar(AppColors c, String sel) {
+    return Container(
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final t in courseDetailTabs)
+              Padding(
+                padding: const EdgeInsets.only(right: 5),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => ctl.loadTab(t),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: t == sel ? Colors.white : Colors.transparent,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: t == sel
+                          ? [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.18),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              )
+                            ]
+                          : null,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(_tabIcon(t),
+                            size: 14,
+                            color:
+                                t == sel ? c.tealDeep : Colors.white),
+                        const SizedBox(width: 5),
+                        Text(courseTabLabel(t),
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: t == sel
+                                    ? c.tealDeep
+                                    : Colors.white)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -324,7 +475,13 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
         return courseSubmissionBody(
             c, CourseDetailCache.submissions[id] ?? const []);
       case 'grades':
-        return courseGradesBody(c, CourseDetailCache.gradebook[id]);
+        return courseGradesBody(
+          c,
+          CourseDetailCache.gradebook[id],
+          widget.onOpenLeaderboard == null
+              ? null
+              : () => widget.onOpenLeaderboard!(ctl.portalCourse.name),
+        );
       default:
         return courseAttendanceBody(
             c, CourseDetailCache.attendance[id] ?? const []);

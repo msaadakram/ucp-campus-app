@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import '../auth/dashboard_parser.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
@@ -69,13 +73,20 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool push = true, assign = true, grades = true, community = false, email = true;
   bool lock = false;
-  String lang = 'English';
   String _appVersion = '';
+  /// Real on-device storage used by this app (documents + support +
+  /// cache), formatted for the Downloads & storage row. Empty until the
+  /// first measurement completes.
+  String _storageUsed = '';
+
+  /// Support inbox shown in Help & support.
+  static const _supportEmail = 'msaadakram786@gmail.com';
 
   @override
   void initState() {
     super.initState();
     _loadVersion();
+    _loadStorage();
   }
 
   /// Real build version (e.g. 1.0.20) so installed APKs are identifiable.
@@ -86,6 +97,110 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       setState(() => _appVersion = 'Version ${info.version}');
     } catch (_) {}
+  }
+
+  /// Total bytes under [dir], recursive; unreadable entries are skipped.
+  Future<int> _dirSize(Directory dir) async {
+    var total = 0;
+    try {
+      await for (final entry
+          in dir.list(recursive: true, followLinks: false)) {
+        if (entry is File) {
+          try {
+            total += await entry.length();
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+    return total;
+  }
+
+  /// Measures the app's real disk footprint (docs + support + temp)
+  /// and updates the Downloads & storage row. Never throws: failures
+  /// leave the row showing the app-size-only fallback.
+  Future<void> _loadStorage() async {
+    try {
+      var total = 0;
+      final dirs = <Directory>[
+        await getApplicationDocumentsDirectory(),
+        await getApplicationSupportDirectory(),
+        await getTemporaryDirectory(),
+      ];
+      for (final d in dirs) {
+        total += await _dirSize(d);
+      }
+      if (!mounted) return;
+      setState(() => _storageUsed = _formatBytes(total));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _storageUsed = 'Not available');
+    }
+  }
+
+  static String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB used';
+    }
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB used';
+    }
+    if (bytes >= 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB used';
+    }
+    return '$bytes B used';
+  }
+
+  /// Help & support dialog: contact address + copy-to-clipboard.
+  Future<void> _showSupport() async {
+    final c = AppScope.colorsOf(context);
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text('Help & support',
+            style: display(c, size: 18), textAlign: TextAlign.center),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Having a problem or a suggestion? Email us at:',
+                style: body(c, size: 13)),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: c.dustSoft.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(_supportEmail,
+                  textAlign: TextAlign.center,
+                  style: body(c, size: 14, weight: FontWeight.w700)),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Clipboard.setData(const ClipboardData(text: _supportEmail));
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Support email copied'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+            child: const Text('Copy email'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _set(ProfilePrefs p) => widget.onPrefs(p);
@@ -269,7 +384,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     SettingRow(icon: Icons.fingerprint, tone: c.teal, label: 'App lock', sub: 'Fingerprint or PIN', trailing: AppToggle(value: lock, onChanged: (v) => setState(() => lock = v), colors: c)),
                     SettingRow(icon: Icons.key_outlined, tone: c.clay, label: 'Change password'),
-                    SettingRow(icon: Icons.shield_outlined, tone: c.dust, label: 'Profile visibility', sub: 'Classmates only'),
                   ],
                 ),
               ),
@@ -281,10 +395,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     SettingRow(
                       icon: Icons.language_outlined, tone: c.board, label: 'Language',
-                      trailing: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6), decoration: BoxDecoration(color: c.dustSoft, borderRadius: BorderRadius.circular(12)), child: DropdownButton<String>(value: lang, underline: const SizedBox(), isDense: true, items: const [DropdownMenuItem(value: 'English', child: Text('English')), DropdownMenuItem(value: 'اردو', child: Text('اردو')), DropdownMenuItem(value: 'العربية', child: Text('العربية')), DropdownMenuItem(value: 'Español', child: Text('Español'))], onChanged: (v) => setState(() => lang = v ?? 'English'))),
+                      trailing: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                        child: Text('English', style: TextStyle(fontWeight: FontWeight.w600)),
+                      ),
                     ),
-                    SettingRow(icon: Icons.storage_outlined, tone: c.dust, label: 'Downloads & storage', sub: '182 MB used'),
-                    SettingRow(icon: Icons.help_outline, tone: c.teal, label: 'Help & support'),
+                    SettingRow(icon: Icons.storage_outlined, tone: c.dust, label: 'Downloads & storage', sub: _storageUsed.isEmpty ? 'Calculating…' : _storageUsed),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _showSupport,
+                      child: SettingRow(icon: Icons.help_outline, tone: c.teal, label: 'Help & support', sub: _supportEmail),
+                    ),
                     SettingRow(icon: Icons.info_outline, tone: c.tealInk, label: 'About', sub: _appVersion.isEmpty ? 'Campus app' : _appVersion),
                   ],
                 ),

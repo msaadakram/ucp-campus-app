@@ -14,6 +14,7 @@ import 'auth/offline.dart';
 import 'auth/page_cache.dart';
 import 'auth/portal_cache.dart';
 import 'auth/course_cache.dart';
+import 'auth/course_detail.dart' show courseIdFromUrl;
 import 'auth/prefs_store.dart';
 import 'auth/session_monitor.dart';
 import 'auth/session_store.dart';
@@ -22,6 +23,7 @@ import 'community/backend_config.dart';
 import 'community/community_service.dart';
 import 'community/fake_community_service.dart';
 import 'community/node_community_service.dart';
+import 'leaderboard/leaderboard_service.dart';
 import 'teachers/teacher_service.dart';
 import 'data/seed.dart';
 import 'screens/attendance.dart';
@@ -29,6 +31,7 @@ import 'screens/auth_home.dart';
 import 'screens/community.dart';
 import 'screens/course_detail.dart';
 import 'screens/fee_board.dart';
+import 'screens/leaderboard.dart';
 import 'screens/teachers.dart';
 import 'screens/gpa_timetable.dart';
 import 'gpa_vault/vault_home_screen.dart';
@@ -96,6 +99,47 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// Live portal course backing the open course hub (null = bundled
   /// sample: fall back to the old static detail screen).
   PortalCourse? portalCourse;
+  /// First hub tab to open ('news' unless the bottom-bar Material
+  /// directory sent us straight to 'material').
+  String _hubInitialTab = 'news';
+
+  /// Subject the leaderboard should preselect (from a course card or
+  /// the hub's "Leaderboard" button).
+  String? _boardCourse;
+
+  /// Unique course names from the app's own parsed portal timetable —
+  /// the leaderboard's course picker fallback.
+  List<String> get _portalCourseNames {
+    final seen = <String>{};
+    final out = <String>[];
+    for (final s in timetableSlots) {
+      final name = s.subject.trim();
+      if (name.isEmpty || !seen.add(name.toLowerCase())) continue;
+      out.add(name);
+    }
+    return out;
+  }
+
+  /// Timetable rows in the extension's format (course name carries the
+  /// section, exactly like the extension's scraper) so app and extension
+  /// produce the SAME class-roster keys on the server.
+  List<Map<String, String>> get _timetableSyncRows {
+    final rows = <Map<String, String>>[];
+    for (final s in timetableSlots) {
+      final name = s.section.isNotEmpty
+          ? '${s.subject.trim()} (${s.section.trim()})'
+          : s.subject.trim();
+      if (name.isEmpty || s.day.isEmpty || s.start.isEmpty) continue;
+      rows.add({
+        'day': s.day,
+        'time': '${s.start} - ${s.end}',
+        'courseName': name,
+        'teacher': s.teacher,
+        'room': s.room,
+      });
+    }
+    return rows;
+  }
   Course boardOf = courses[0];
   ProfilePrefs prefs = ProfilePrefs();
   bool menu = false;
@@ -536,6 +580,70 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       // Keep previous data / sample fallback.
     }
   }
+  /// Publishes the app's own gradebook for a course to the backend, so
+  /// the student's row shows on the board (app-only users, no extension).
+  Future<void> _syncOwnGrades(PortalCourse pc, String courseName) async {
+    if (!isExtConfigured) return;
+    final sid = (dashboard?.studentId ?? '').trim();
+    if (sid.isEmpty) return;
+    final courseId = courseIdFromUrl(pc.infoUrl) ?? '';
+    if (courseId.isEmpty) return;
+    final gb = CourseDetailCache.gradebook[courseId];
+    if (gb == null) return;
+    if (gb.isEmpty) return;
+    // Weighted overall across the published types (same formula the
+    // board shows).
+    var weighted = 0.0;
+    var weights = 0.0;
+    for (final t in gb.types) {
+      final w = t.weight > 0 ? t.weight : 1.0;
+      weighted += t.obtained.clamp(0, 100) * w;
+      weights += w;
+    }
+    if (weights == 0) return;
+    final overall = weighted / weights;
+    final grade = _letterFor(overall);
+    final assessments = [
+      for (final t in gb.types)
+        {
+          'name': t.type,
+          'totalMarks': 100,
+          'obtainedMarks': t.obtained,
+          'percentage': t.obtained,
+          'weightage': t.weight,
+          'classAverage': null,
+        },
+    ];
+    try {
+      await (NodeLeaderboardService()).syncGrades(
+        studentId: sid,
+        studentName: dashboard?.studentName ?? '',
+        courseName: courseName,
+        courseCode: pc.code,
+        overallPercentage: overall,
+        grade: grade,
+        assessments: assessments,
+      );
+    } catch (_) {
+      // Best-effort: the board still loads.
+    }
+  }
+
+  /// Grade letter from an overall percentage (UCP scale).
+  static String _letterFor(double pct) {
+    if (pct >= 86) return 'A';
+    if (pct >= 82) return 'A-';
+    if (pct >= 78) return 'B+';
+    if (pct >= 74) return 'B';
+    if (pct >= 70) return 'B-';
+    if (pct >= 66) return 'C+';
+    if (pct >= 62) return 'C';
+    if (pct >= 58) return 'C-';
+    if (pct >= 54) return 'D+';
+    if (pct >= 50) return 'D';
+    return 'F';
+  }
+
   /// Builds (or rebuilds) the foreground watchdog. Called whenever the app
   /// becomes authenticated; stopped on logout/dispose.
   /// Mid-use policy: NO silent renewal while the user works — a dead
@@ -609,11 +717,12 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       setState(() => menu = false);
       return true;
     }
-    if (course != null) {
+    if (course != null || portalCourse != null) {
       setState(() {
         course = null;
         courseLive = false;
         portalCourse = null;
+        _hubInitialTab = 'news';
       });
       return true;
     }
@@ -679,7 +788,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     unawaited(_monitor!.checkNow());
   }
 
-  void go(String t) => setState(() { tab = t; course = null; courseLive = false; portalCourse = null; menu = false; });
+  void go(String t) => setState(() { tab = t; course = null; courseLive = false; portalCourse = null; _hubInitialTab = 'news'; menu = false; });
 
   /// The watchdog proved the portal session dead and silent renewal failed:
   /// show the "someone logged in elsewhere?" popup instead of silently
@@ -759,18 +868,33 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     final colors = AppColors.of(prefs.palette, dark);
 
     Widget screen;
-    if (course != null) {
-      final pc = portalCourse;
-      if (pc != null && pc.infoUrl.isNotEmpty) {
+    final pc0 = portalCourse;
+    if (course != null || pc0 != null) {
+      if (pc0 != null && pc0.infoUrl.isNotEmpty) {
         // Live per-course hub (dashboard infoUrl → 7 portal tabs).
         screen = CourseDetailScreen(
-          portalCourse: pc,
+          portalCourse: pc0,
           sessionId: sessionId,
+          initialTab: _hubInitialTab,
           onSessionExpired: () => _checkSessionNow(),
+          onOpenLeaderboard: (courseName) {
+            // Publish our own gradebook for this subject, then jump to
+            // the board: our row exists even without the extension.
+            unawaited(_syncOwnGrades(pc0, courseName));
+            setState(() {
+              // Jump to the live board for THIS subject.
+              _boardCourse = courseName;
+              portalCourse = null;
+              course = null;
+              courseLive = false;
+              tab = 'board';
+            });
+          },
           back: () => setState(() {
             course = null;
             courseLive = false;
             portalCourse = null;
+            _hubInitialTab = 'news';
           }),
         );
       } else {
@@ -795,10 +919,22 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
               }
             }
             setState(() { course = c; courseLive = dashboard != null && dashboard!.courses.isNotEmpty; portalCourse = match; });
-          }, toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; tab = 'board'; }); }, dashboard: dashboard, timetableSlots: timetableSlots, onAttend: () => go('attendance'), onTimetable: () => go('timetable'), onTeachers: () => go('teachers'), onMaterial: () => go('material'), onFee: () => go('fee'), onResults: () => go('results'), onCommunity: () => go('community'), onWeb: () => go('web'), onRefreshAll: _refreshAllPortal);
+          }, toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; _boardCourse = c.title; tab = 'board'; }); }, dashboard: dashboard, timetableSlots: timetableSlots, onAttend: () => go('attendance'), onTimetable: () => go('timetable'), onTeachers: () => go('teachers'), onMaterial: () => go('material'), onFee: () => go('fee'), onResults: () => go('results'), onCommunity: () => go('community'), onWeb: () => go('web'), onRefreshAll: _refreshAllPortal);
           break;
         case 'material':
-          screen = const MaterialsScreen();
+          // LIVE: a directory of per-course material pages (tap → hub
+          // opens straight on its Material tab). Falls back to the
+          // bundled sample content while signed out / offline.
+          screen = MaterialsScreen(
+            portalCourses: (dashboard?.courses ?? const [])
+                .where((pc) => pc.infoUrl.isNotEmpty)
+                .toList(),
+            onOpenCourse: (pc) => setState(() {
+              portalCourse = pc;
+              course = null;
+              _hubInitialTab = 'material';
+            }),
+          );
           break;
         case 'community':
           screen = CommunityScreen(
@@ -845,7 +981,25 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           );
           break;
         case 'board':
-          screen = LeaderboardScreen(start: boardOf.code, back: () => go('home'));
+          // Live leaderboard when the ext backend is configured (real
+          // ranks, credits, privacy); the deterministic demo board is the
+          // offline / unconfigured fallback.
+          screen = LiveLeaderboardScreen(
+            service: isExtConfigured ? NodeLeaderboardService() : null,
+            studentId: dashboard?.studentId,
+            initialCourse: _boardCourse,
+            // Portal-timetable fallback: the app already parsed the real
+            // weekly schedule, so the picker works before the extension
+            // has posted anything.
+            fallbackCourses: _portalCourseNames,
+            // App-first: publish our own timetable so the server builds
+            // our class roster (app-only users group with extension
+            // users).
+            timetableRows: _timetableSyncRows,
+            studentName: dashboard?.studentName,
+            back: () => go('home'),
+            fallback: LeaderboardScreen(start: boardOf.code, back: () => go('home')),
+          );
           break;
         case 'web':
           // Platform WebViews don't exist in widget tests: render the

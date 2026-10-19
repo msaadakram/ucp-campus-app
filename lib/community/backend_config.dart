@@ -13,6 +13,16 @@ const nodeApiUrl = String.fromEnvironment(
 bool get isNodeConfigured =>
     nodeApiUrl.startsWith('http') && nodeApiUrl.length > 10;
 
+/// Extension API key for `/api/ext/*` (live leaderboard, timetable).
+/// Override per-build with `--dart-define=EXT_API_KEY=...`. Empty default
+/// means the live leaderboard is unavailable and the app falls back to
+/// the demo board. Same key the Chrome extension ships.
+const extApiKey = String.fromEnvironment('EXT_API_KEY', defaultValue: '');
+
+/// True when live ext endpoints (leaderboard) can be called.
+bool get isExtConfigured =>
+    isNodeConfigured && extApiKey.length >= 16;
+
 /// Supabase project for teacher reviews (public read via publishable key).
 /// Writes still go through the Node API (Odoo-verified), so the secret key
 /// never ships in the app. Override per-build with:

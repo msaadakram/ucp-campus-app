@@ -99,6 +99,35 @@ void main() {
       expect(items.map((e) => e.fileName).join('|'), contains('Deitel'));
     });
 
+    test('material page: subject-wise grouping is derived per row', () {
+      final html = _fixture2('material.html');
+      if (html == null) return;
+      final items = parseCourseMaterial(html);
+      final subjects = items.map((e) => e.subject).toSet();
+      expect(subjects, containsAll(['Course Outline', 'Text Books', 'Week 1']));
+      // Section order follows first appearance: outline, books, then weeks.
+      expect(items.first.subject, 'Course Outline');
+      final week1 = items.where((e) => e.subject == 'Week 1');
+      expect(week1.length, greaterThanOrEqualTo(4));
+      expect(week1.every((e) =>
+          e.fileName.toLowerCase().contains('week') ||
+          e.description.toLowerCase().contains('week')), isTrue);
+    });
+
+    test('materialSubject heuristics', () {
+      expect(materialSubject('OOP-WEEK1.cpp', ''), 'Week 1');
+      expect(materialSubject('WEEK NO 1.pptx', 'Slides'), 'Week 1');
+      expect(materialSubject('x', 'topics of Week 2 covered'), 'Week 2');
+      expect(materialSubject('Week10-notes.pdf', ''), 'Week 10');
+      expect(materialSubject('CP223 - Theory (Outline).docx', 'Course Outline'),
+          'Course Outline');
+      expect(materialSubject('Book 1_ Paul Deitel.pdf', 'Text Book'),
+          'Text Books');
+      expect(materialSubject('Lecture notes.txt', 'random desc'),
+          'Lecture Files');
+      expect(materialSubject('', ''), 'Lecture Files');
+    });
+
     test('news plus submission empty states', () {
       final news = _fixture2('news.html');
       if (news != null) expect(parseCourseNews(news), isEmpty);

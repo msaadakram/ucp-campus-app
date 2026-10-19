@@ -110,6 +110,21 @@ class PortalDownloader {
 
   Stream<PortalDownload> get updates => _updates.stream;
 
+  /// Absolute path of a previously saved file with exactly [fileName]
+  /// (the first download keeps the original name — later duplicates get
+  /// ` (1)`, ` (2)` suffixes), or null when nothing matches. Used to
+  /// re-open already-downloaded course material without re-fetching.
+  Future<String?> findDownloaded(String fileName) async {
+    final clean = sanitizeFileName(fileName);
+    if (clean.isEmpty) return null;
+    try {
+      final dir = await _dirProvider();
+      final f = File('${dir.path}/$clean');
+      if (await f.exists()) return f.path;
+    } catch (_) {}
+    return null;
+  }
+
   void cancel(String id) {
     _canceled.add(id);
     _liveClients.remove(id)?.close();

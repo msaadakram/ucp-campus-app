@@ -49,4 +49,24 @@ void main() {
     expect(find.text('News'), findsWidgets);
     expect(find.text('Outline'), findsOneWidget);
   });
+
+  testWidgets('renders in dark mode without layout errors', (t) async {
+    final dark = AppColors.of(AppPalette.skater, true);
+    await t.pumpWidget(MaterialApp(
+      home: AppScope(
+        colors: dark,
+        palette: AppPalette.skater,
+        child: CourseDetailScreen(
+          portalCourse: _pc,
+          back: () {},
+          debugHtml: const {'news': _newsHtml, 'outline': _outlineHtml},
+        ),
+      ),
+    ));
+    await t.pumpAndSettle();
+    expect(find.text('Midterm venue'), findsOneWidget);
+    await t.tap(find.text('Outline'));
+    await t.pumpAndSettle();
+    expect(find.text('Final Term'), findsOneWidget);
+  });
 }

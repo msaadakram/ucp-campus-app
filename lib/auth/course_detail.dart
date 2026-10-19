@@ -374,16 +374,43 @@ class CourseMaterialItem {
   final String fileName;
   final String description;
   final String downloadUrl;
+  /// Derived grouping ("Week 3", "Course Outline", "Text Books",
+  /// "Lecture Files") so the Material tab can show a subject-wise list.
+  final String subject;
   const CourseMaterialItem({
     required this.fileName,
     required this.description,
     required this.downloadUrl,
+    this.subject = '',
   });
+}
+
+/// Classifies one row into a subject section. Heuristic (the portal has
+/// no subject column): week numbers from the file name or description,
+/// then outline/books, everything else lands in "Lecture Files". Pure.
+String materialSubject(String fileName, String description) {
+  final text = '${fileName.toLowerCase()} ${description.toLowerCase()}';
+  final m = RegExp(
+          r'week\s*no\.?\s*(\d+)|week\s*-?\s*(\d+)|week\s*\(?\s*(\d+)|week(\d+)')
+      .firstMatch(text);
+  if (m != null) {
+    for (final g in [m.group(1), m.group(2), m.group(3), m.group(4)]) {
+      if (g != null && g.isNotEmpty) return 'Week $g';
+    }
+  }
+  if (text.contains('outline')) return 'Course Outline';
+  if (text.contains('text book') || text.contains('textbook') ||
+      RegExp(r'\bbook\b').hasMatch(text) ||
+      fileName.toLowerCase().contains('book')) {
+    return 'Text Books';
+  }
+  return 'Lecture Files';
 }
 
 /// Material table (`Sr No. | Course Material File | Description |
 /// Download`). Hrefs `/student/class/material/download/<id>` kept
-/// relative like every [PortalRoutes] path. Never throws.
+/// relative like every [PortalRoutes] path. Never throws. Each item
+/// carries its derived [CourseMaterialItem.subject] for grouped display.
 List<CourseMaterialItem> parseCourseMaterial(String html) {
   final Document doc;
   try {
@@ -412,10 +439,13 @@ List<CourseMaterialItem> parseCourseMaterial(String html) {
       if (href.startsWith('https://horizon.ucp.edu.pk')) {
         href = href.replaceFirst('https://horizon.ucp.edu.pk', '');
       }
+      final name = cells.length > 1 ? cells[1] : '';
+      final desc = cells.length > 2 ? cells[2] : '';
       out.add(CourseMaterialItem(
-        fileName: cells.length > 1 ? cells[1] : '',
-        description: cells.length > 2 ? cells[2] : '',
+        fileName: name,
+        description: desc,
         downloadUrl: href,
+        subject: materialSubject(name, desc),
       ));
     }
   }
