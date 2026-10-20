@@ -29,11 +29,33 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        // Stable release key (30-year validity). Falls back to the debug
+        // key only when the keystore is absent, so `flutter run --release`
+        // keeps working everywhere while every release APK from this
+        // machine is signed IDENTICALLY — installing one over another
+        // never hits "App not installed".
+        create("release") {
+            val ks = File("/home/ubuntu/ucp-release.keystore")
+            if (ks.exists()) {
+                storeFile = ks
+                storePassword = "ucp-campus-2026"
+                keyAlias = "ucp-release"
+                keyPassword = "ucp-campus-2026"
+                storeType = "PKCS12"
+            } else {
+                storeFile = null
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Release key when present; debug key is the fallback so local
+            // dev without the keystore still builds.
+            val ks = File("/home/ubuntu/ucp-release.keystore")
+            signingConfig = if (ks.exists()) signingConfigs.getByName("release")
+                else signingConfigs.getByName("debug")
         }
     }
 }
