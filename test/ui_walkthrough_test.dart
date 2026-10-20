@@ -107,7 +107,7 @@ void main() {
     // back to home, open leaderboard strip
     await tester.tap(find.byIcon(Icons.arrow_back).first, warnIfMissed: false);
     await tester.pumpAndSettle();
-    final board = find.textContaining('Leaderboard').first;
+    final board = find.textContaining('Class leaderboard').first;
     await tester.ensureVisible(board);
     await tester.pumpAndSettle();
     await tester.tap(board, warnIfMissed: false);

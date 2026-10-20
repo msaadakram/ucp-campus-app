@@ -27,6 +27,10 @@ class LiveLeaderboardScreen extends StatefulWidget {
   final List<Map<String, String>> timetableRows;
   /// Display name of the signed-in student (for grade sync).
   final String? studentName;
+  /// Publishes the student's own grades for the opened course (the app
+  /// fetches the portal gradebook and posts it), so their row exists on
+  /// the board even without the extension.
+  final Future<void> Function(String courseName)? onEnsureGrades;
   final VoidCallback? back;
   /// Shown when live data is unavailable (no key / hard failure).
   final Widget? fallback;
@@ -39,6 +43,7 @@ class LiveLeaderboardScreen extends StatefulWidget {
     this.initialCourse,
     this.fallbackCourses = const [],
     this.timetableRows = const [],
+    this.onEnsureGrades,
     this.back,
     this.fallback,
   });
@@ -185,6 +190,16 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       noCredits = false;
     });
     try {
+      // Make sure OUR marks for this subject are on the server before
+      // reading the board (app-only users have no extension data).
+      final ensure = widget.onEnsureGrades;
+      if (ensure != null) {
+        try {
+          await ensure(name);
+        } catch (_) {
+          // Grade publishing is best-effort.
+        }
+      }
       final res = await _svc!.fetchLeaderboard(
         courseName: name,
         studentId: widget.studentId,

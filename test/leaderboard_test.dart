@@ -349,6 +349,26 @@ void main() {
       expect(find.textContaining('11 classmates'), findsOneWidget);
       expect(find.textContaining('cp233'), findsOneWidget);
     });
+
+    testWidgets('own grades are published before the board loads',
+        (tester) async {
+      final svc = FakeLeaderboardService(
+        courses: ['Data Structures (CP233)'],
+      );
+      final ensured = <String>[];
+      await tester.pumpWidget(_wrap(LiveLeaderboardScreen(
+        service: svc,
+        studentId: 'L1TEST',
+        initialCourse: 'Data Structures',
+        onEnsureGrades: (name) async => ensured.add(name),
+        back: () {},
+      )));
+      await tester.pumpAndSettle();
+      // The app publishes the portal gradebook for the opened subject so
+      // the student's own row is on the board.
+      expect(ensured, ['Data Structures (CP233)']);
+      expect(svc.boardCalls, greaterThanOrEqualTo(1));
+    });
   });
 
   group('CourseDetailScreen grades → leaderboard', () {

@@ -14,7 +14,8 @@ import 'auth/offline.dart';
 import 'auth/page_cache.dart';
 import 'auth/portal_cache.dart';
 import 'auth/course_cache.dart';
-import 'auth/course_detail.dart' show courseIdFromUrl;
+import 'auth/course_detail.dart'
+    show courseIdFromUrl, parseCourseGradebook, CourseGradebook;
 import 'auth/prefs_store.dart';
 import 'auth/session_monitor.dart';
 import 'auth/session_store.dart';
@@ -580,15 +581,57 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       // Keep previous data / sample fallback.
     }
   }
+  /// Fetches the portal gradebook for the opened course and publishes it,
+  /// so the student's own row is on the leaderboard (app-only users).
+  Future<void> _ensureCourseGrades(String courseName) async {
+    if (!isExtConfigured) return;
+    final sid = (dashboard?.studentId ?? '').trim();
+    final dash = dashboard;
+    if (sid.isEmpty || dash == null || dash.courses.isEmpty) return;
+    // Match the board's course label ("Subject (SEC)") to a portal course.
+    final bare = courseName
+        .replaceAll(RegExp(r'\([^)]*\)'), '')
+        .trim()
+        .toLowerCase();
+    PortalCourse? match;
+    for (final pc in dash.courses) {
+      final name = pc.name.trim().toLowerCase();
+      if (name.isEmpty) continue;
+      if (name == bare || name.contains(bare) || bare.contains(name)) {
+        match = pc;
+        break;
+      }
+    }
+    if (match == null) return;
+    final courseId = courseIdFromUrl(match.infoUrl) ?? '';
+    if (courseId.isEmpty) return;
+    var gb = CourseDetailCache.gradebook[courseId];
+    if (gb == null || gb.isEmpty) {
+      try {
+        final html = await PortalApi().fetchPage(
+          '/student/course/gradebook/$courseId',
+          sid,
+        );
+        gb = parseCourseGradebook(html);
+        CourseDetailCache.putGradebook(courseId, gb);
+      } catch (_) {
+        return;
+      }
+    }
+    if (gb == null || gb.isEmpty) return;
+    await _syncOwnGrades(match, courseName, gb);
+  }
+
   /// Publishes the app's own gradebook for a course to the backend, so
   /// the student's row shows on the board (app-only users, no extension).
-  Future<void> _syncOwnGrades(PortalCourse pc, String courseName) async {
+  Future<void> _syncOwnGrades(
+      PortalCourse pc, String courseName, [CourseGradebook? cached]) async {
     if (!isExtConfigured) return;
     final sid = (dashboard?.studentId ?? '').trim();
     if (sid.isEmpty) return;
     final courseId = courseIdFromUrl(pc.infoUrl) ?? '';
     if (courseId.isEmpty) return;
-    final gb = CourseDetailCache.gradebook[courseId];
+    final gb = cached ?? CourseDetailCache.gradebook[courseId];
     if (gb == null) return;
     if (gb.isEmpty) return;
     // Weighted overall across the published types (same formula the
@@ -997,6 +1040,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
             // users).
             timetableRows: _timetableSyncRows,
             studentName: dashboard?.studentName,
+            // Publish our own marks for the opened subject so our row is
+            // on the board even without the extension.
+            onEnsureGrades: _ensureCourseGrades,
             back: () => go('home'),
             fallback: LeaderboardScreen(start: boardOf.code, back: () => go('home')),
           );

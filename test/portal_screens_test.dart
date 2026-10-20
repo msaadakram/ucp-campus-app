@@ -17,6 +17,9 @@ Widget _wrap(Widget child) {
   );
 }
 
+// Timetable fixtures: Monday (OOP lab) and Tuesday (Linear Algebra).
+// The screen opens on the CURRENT weekday, so the tests select 'Mon'
+// first — deterministic on any day the suite runs.
 const _ttHtml = '<div><b>Term :</b><span>Fall 2026</span>'
     '<b>Month :</b><span>October</span></div>'
     '<li class="cd-schedule__group">'
@@ -70,6 +73,10 @@ void main() {
         fetchHtml: (path) async =>
             path.contains('datesheet') ? _dsEmpty : _ttHtml,
       )));
+      await tester.pumpAndSettle();
+      // The screen opens on today: pick Monday so the assertions hold
+      // whatever weekday the suite runs on.
+      await tester.tap(find.text('Mon'));
       await tester.pumpAndSettle();
       expect(find.text('Object Oriented Programming - Lab'), findsOneWidget);
       expect(find.text('B-CL203 ( Lab )'), findsOneWidget);

@@ -872,21 +872,70 @@ class _HomeScreenState extends State<HomeScreen> {
                     behavior: HitTestBehavior.opaque,
                     onTap: () => widget.onBoard(course),
                     child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 12),
-                      padding: const EdgeInsets.fromLTRB(16, 28, 16, 10),
-                      transform: Matrix4.translationValues(0, -20, 0),
-                      decoration: BoxDecoration(color: c.white, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16))),
-                      child: Builder(builder: (ctx) {
-                        final top = board(course.code, 'Overall').first;
-                        return Row(
-                          children: [
-                            Icon(Icons.emoji_events_outlined, size: 15, color: c.clay),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text.rich(TextSpan(children: [const TextSpan(text: 'Leader: ', style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: '${top.me ? 'You' : top.name} · ${top.score} pts')]), style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
-                            Text('Leaderboard ›', style: body(c, size: 12, weight: FontWeight.bold, color: c.teal)),
-                          ],
-                        );
-                      }),
+                      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+                      transform: Matrix4.translationValues(0, -14, 0),
+                      decoration: BoxDecoration(
+                        color: c.white,
+                        borderRadius: const BorderRadius.vertical(
+                          bottom: Radius.circular(20),
+                        ),
+                        border: Border.all(
+                          color: c.dustSoft.withValues(alpha: 0.6),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: c.tealInk.withValues(alpha: 0.08),
+                            blurRadius: 16,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            alignment: Alignment.center,
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              color: c.clay.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(11),
+                            ),
+                            child: Icon(Icons.emoji_events_outlined,
+                                size: 18, color: c.clay),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('Class leaderboard',
+                                    style: body(c,
+                                        size: 13.5,
+                                        weight: FontWeight.w800)),
+                                const SizedBox(height: 1),
+                                Text('See where you rank',
+                                    style: body(c,
+                                        size: 11.5,
+                                        color: c.tealInk
+                                            .withValues(alpha: 0.55))),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            alignment: Alignment.center,
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: c.dustSoft.withValues(alpha: 0.6),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.chevron_right,
+                                size: 16, color: c.tealInk),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
