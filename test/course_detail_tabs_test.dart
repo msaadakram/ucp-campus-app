@@ -44,9 +44,18 @@ const _material2 = '<table><thead><tr><th>Sr No.</th>'
     '<td><a href="/student/class/material/download/def456">dl</a></td>'
     '</tr></tbody></table>';
 
-const _grade2 = '<table><thead><tr><th>Assessment Type</th>'
-    '<th>Obtained Percentage</th></tr></thead><tbody><tr>'
-    '<td>Quiz 15.0 %</td><td>80.00</td></tr></tbody></table>';
+// The portal's real gradebook shape: parent row (type + weight badge +
+// obtained percentage) then child rows with the marks.
+const _grade2 = '<table>'
+    '<tr class="table-parent-row show_child_row">'
+    '<td><a href="#" class="js-toggle-children-row toggle-childrens">'
+    ' Quiz <div class="uk-badge md-bg-orange-800"> 15.0 % </div>'
+    ' </a> </td> <td class=""> 80.00 </td> </tr>'
+    '<tr class="table-child-row md-bg-blue-grey-800"><th>Assessment</th>'
+    '<th>Max Mark</th><th>Obtained Marks</th><th>Class Average</th>'
+    '<th>Percentage</th></tr>'
+    '<tr class="table-child-row"><td>Quiz 1</td><td>20</td><td>16</td>'
+    '<td>12</td><td>80.00</td></tr></table>';
 
 void main() {
   setUp(() => CourseDetailCache.clear());

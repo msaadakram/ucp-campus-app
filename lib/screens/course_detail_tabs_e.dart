@@ -4,19 +4,16 @@ import '../auth/course_detail.dart';
 import '../theme/palette.dart';
 import 'course_detail_widgets.dart';
 
-/// Weighted overall across published grade types (0 when none).
+/// Weighted overall across published grade types (0 when none):
+/// each type contributes its obtained percentage x its weight — the same
+/// formula the server and the extension use, so the app's number always
+/// matches what the class board ranks on.
 double _gradebookOverall(CourseGradebook gb) {
-  final types = gb.types;
-  if (types.isEmpty) return 0;
-  var weighted = 0.0;
-  var weights = 0.0;
-  for (final t in types) {
-    final w = t.weight > 0 ? t.weight : 1.0;
-    weighted += t.obtained.clamp(0, 100) * w;
-    weights += w;
+  var overall = 0.0;
+  for (final t in gb.types) {
+    if (t.weight > 0) overall += t.weightedPercentage;
   }
-  if (weights == 0) return 0;
-  return (weighted / weights).clamp(0, 100);
+  return overall.clamp(0, 100);
 }
 
 /// Grades tab body: overall ring hero + per-type bars + assessment rows.

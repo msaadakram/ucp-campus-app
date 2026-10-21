@@ -11,22 +11,47 @@ String? _fixture2(String name) {
 
 void main() {
   group('synthetic markup part 2', () {
-    test('gradebook summary splits weight from type', () {
-      const html = '<table><thead><tr><th>Assessment Type</th>'
-          '<th>Obtained Percentage</th></tr></thead><tbody><tr>'
-          '<td>Class Activity 10.0 %</td><td>25.00</td></tr></tbody></table>'
-          '<table><thead><tr><th>Assessment</th><th>Max Mark</th>'
-          '<th>Obtained Marks</th><th>Class Average</th><th>Percentage</th>'
-          '</tr></thead><tbody><tr><td>Class Activity 1</td><td>20.0</td>'
-          '<td>5.00</td><td>11.92</td><td>25.00</td></tr></tbody></table>';
+    test('gradebook reads the parent type row and its child marks', () {
+      // The portal's real shape (see z_pages/grade.html): the parent row
+      // names the type and carries the weight badge + the obtained
+      // percentage; the child rows carry the individual marks. Reading
+      // only the parent rows is what used to publish a 0% gradebook.
+      const html = '<table><tr class="table-parent-row show_child_row">'
+          '<td><a href="#" class="js-toggle-children-row toggle-childrens">'
+          ' Class Activity <div class="uk-badge md-bg-orange-800"> 10.0 % </div>'
+          ' </a> </td> <td class=""> 25.00 </td> </tr>'
+          '<tr class="table-child-row md-bg-blue-grey-800 md-color-grey-50">'
+          '<th>Assessment</th><th>Max Mark</th><th>Obtained Marks</th>'
+          '<th>Class Average</th><th>Percentage</th></tr>'
+          '<tr class="table-child-row"><td>Class Activity 1</td><td>20</td>'
+          '<td>5.00</td><td>11.92</td><td>25.00</td></tr></table>';
       final gb = parseCourseGradebook(html);
       expect(gb.types.length, 1);
       expect(gb.types.first.type, 'Class Activity');
       expect(gb.types.first.weight, 10.0);
       expect(gb.types.first.obtained, 25.0);
+      expect(gb.types.first.total, 20.0);
+      // The type's share of the course mark, the way the server ranks it.
+      expect(gb.types.first.weightedPercentage, 2.5);
       expect(gb.rows.length, 1);
+      expect(gb.rows.first.assessment, 'Class Activity 1');
       expect(gb.rows.first.maxMarks, 20.0);
+      expect(gb.rows.first.obtainedMarks, 5.0);
       expect(gb.rows.first.classAverage, 11.92);
+      expect(gb.rows.first.percentage, 25.0);
+    });
+
+    test('a type with no marks published reads as 0, never crashes', () {
+      const html = '<table><tr class="table-parent-row show_child_row">'
+          '<td><a href="#" class="js-toggle-children-row toggle-childrens">'
+          ' Final <div class="uk-badge md-bg-orange-800"> 30.0 % </div>'
+          ' </a> </td> <td class=""> 0 </td> </tr></table>';
+      final gb = parseCourseGradebook(html);
+      expect(gb.types.length, 1);
+      expect(gb.types.first.type, 'Final');
+      expect(gb.types.first.weight, 30.0);
+      expect(gb.types.first.obtained, 0.0);
+      expect(gb.rows, isEmpty);
     });
 
     test('empty states yield empty lists, never throw', () {

@@ -567,13 +567,24 @@ List<CourseSubmission> parseCourseSubmissions(String html) {
 
 class CourseGradeType {
   final String type;
+  /// Weightage of this type in the course ("10" for 10%).
   final double weight;
+  /// OBTAINED PERCENTAGE of this type, exactly as the portal shows it
+  /// (the parent row's second cell: 25.00 for 5/20).
   final double obtained;
+  /// Total marks of the type's assessments (sum of the child rows).
+  final double total;
   const CourseGradeType({
     required this.type,
     required this.weight,
     required this.obtained,
+    this.total = 0,
   });
+
+  /// This type's share of the course mark: percentage x weight — the
+  /// same formula the extension publishes with.
+  double get weightedPercentage =>
+      weight > 0 ? (obtained / 100) * weight : 0;
 }
 
 class CourseGradeRow {
@@ -598,10 +609,20 @@ class CourseGradebook {
   bool get isEmpty => types.isEmpty && rows.isEmpty;
 }
 
-/// Gradebook page: summary table (`Assessment Type | Obtained
-/// Percentage`, type cell embeds weight like `Class Activity 10.0 %`)
-/// plus detail table (`Assessment | Max Mark | Obtained Marks | Class
-/// Average | Percentage`). Never throws.
+/// Gradebook page: the portal renders ONE table per assessment TYPE.
+///
+///   <tr class="table-parent-row show_child_row">      ← the TYPE
+///       <a class="js-toggle-children-row">Class Activity</a>
+///       <span class="uk-badge">10</span>              ← the weight
+///   </tr>
+///   <tr class="table-child-row">                      ← an assessment
+///       <td>Quiz 1</td><td>20</td><td>18</td><td>12</td>   ← name/max/obtained/avg
+///   </tr>
+///
+/// The MARKS live in the child rows; the parent row only names the type
+/// and carries its weight. (Parsing the parent rows alone — the earlier
+/// approach — yielded one type with zero marks, which is why a published
+/// gradebook could arrive as 0%.) Never throws.
 CourseGradebook parseCourseGradebook(String html) {
   final Document doc;
   try {
@@ -611,52 +632,79 @@ CourseGradebook parseCourseGradebook(String html) {
   }
   final types = <CourseGradeType>[];
   final rows = <CourseGradeRow>[];
-  // NOTE: the portal renders BOTH gradebook tables inside ONE `table`
-  // element (summary `th` group, one `td` row, then a second `th`
-  // group + detail rows). So we switch mode on every `th` row and
-  // collect the `td` rows that follow it — never assume one table =
-  // one header.
-  for (final table in doc.querySelectorAll('table')) {
-    var mode = '';
-    for (final tr in table.querySelectorAll('tr')) {
-      final ths =
-          tr.querySelectorAll('th').map((e) => _clean(e.text)).toList();
-      if (ths.isNotEmpty) {
-        final sig = ths.map((e) => e.toLowerCase()).join('|');
-        if (sig.contains('assessment type') &&
-            sig.contains('obtained percentage')) {
-          mode = 'summary';
-        } else if (sig.contains('max mark') &&
-            sig.contains('obtained marks')) {
-          mode = 'detail';
-        } else {
-          mode = '';
-        }
-        continue;
-      }
-      final cells =
-          tr.querySelectorAll('td').map((e) => _clean(e.text)).toList();
-      if (cells.isEmpty || cells.every((e) => e.isEmpty)) continue;
-      if (mode == 'summary') {
-        if (cells.length < 2) continue;
-        final m = RegExp(r'^(.*?)\s+(-?\d+(?:\.\d+)?)\s*%$')
-            .firstMatch(cells[0]);
-        types.add(CourseGradeType(
-          type: m != null ? m.group(1)!.trim() : cells[0],
-          weight: m != null ? (double.tryParse(m.group(2)!) ?? 0) : 0,
-          obtained: _num(cells.length > 1 ? cells[1] : '') ?? 0,
-        ));
-      } else if (mode == 'detail') {
-        double at(int i) => i < cells.length ? (_num(cells[i]) ?? 0) : 0;
-        rows.add(CourseGradeRow(
-          assessment: cells.isNotEmpty ? cells[0] : '',
-          maxMarks: at(1),
-          obtainedMarks: at(2),
-          classAverage: at(3),
-          percentage: at(4),
-        ));
-      }
+
+  /// Parent rows anywhere in the document (the portal wraps them in a
+  /// table but the class names are the reliable hook).
+  final parents = doc
+      .querySelectorAll('tr.show_child_row, tr.table-parent-row')
+      .toList();
+  for (final tr in parents) {
+    // --- the type name: the toggle link's text (before its badge) ---
+    final toggle = tr.querySelector('.js-toggle-children-row');
+    var name = toggle != null ? _clean(toggle.text) : '';
+    // The weight: a `.uk-badge` inside the row ("10.0 %"), else a
+    // percentage in the name itself.
+    final badge = tr.querySelector('.uk-badge');
+    final badgeText = badge != null ? _clean(badge.text) : '';
+    var weight = _num(badgeText) ?? 0;
+    if (weight <= 0) {
+      final m = RegExp(r'(-?\d+(?:\.\d+)?)\s*%').firstMatch(name);
+      if (m != null) weight = double.tryParse(m.group(1)!) ?? 0;
     }
+    // The name must not keep the badge/percentage text.
+    name = name
+        .replaceAll(RegExp(r'\s*-?\d+(?:\.\d+)?\s*%\s*$'), '')
+        .trim();
+    if (name.isEmpty) {
+      final cells = tr.querySelectorAll('td');
+      if (cells.isNotEmpty) name = cells.first.text.split('\n').first.trim();
+    }
+    if (name.isEmpty) continue;
+
+    // --- the obtained percentage: the parent row's own second cell ---
+    final own = tr.querySelectorAll('td').map((e) => _clean(e.text)).toList();
+    final obtainedPct = _num(own.length > 1 ? own[1] : '') ?? 0;
+
+    var total = 0.0;
+    var obtainedMarks = 0.0;
+    // --- the child rows that follow, until the next non-child row ---
+    var next = tr.nextElementSibling;
+    while (next != null) {
+      final cls = next.className;
+      if (!cls.contains('table-child-row')) break;
+      if (!cls.contains('md-bg-blue-grey-800')) {
+        final cells =
+            next.querySelectorAll('td').map((e) => _clean(e.text)).toList();
+        if (cells.length >= 4) {
+          final max = _num(cells[1]) ?? 0;
+          final obt = _num(cells[2]) ?? 0;
+          final avg = _num(cells[3]) ?? 0;
+          total += max;
+          obtainedMarks += obt;
+          rows.add(CourseGradeRow(
+            assessment: cells[0],
+            maxMarks: max,
+            obtainedMarks: obt,
+            classAverage: avg,
+            percentage: max > 0 ? (obt / max) * 100 : 0,
+          ));
+        }
+      }
+      next = next.nextElementSibling;
+    }
+
+    // Trust the portal's own percentage; fall back to the child rows
+    // when the summary cell is missing.
+    double obtained = obtainedPct;
+    if (obtained <= 0 && total > 0 && obtainedMarks > 0) {
+      obtained = (obtainedMarks / total) * 100;
+    }
+    types.add(CourseGradeType(
+      type: name,
+      weight: weight,
+      obtained: obtained,
+      total: total,
+    ));
   }
   return CourseGradebook(types: types, rows: rows);
 }

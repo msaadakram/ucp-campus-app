@@ -1117,17 +1117,20 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     final gb = cached ?? CourseDetailCache.gradebook[courseId];
     if (gb == null) return;
     if (gb.isEmpty) return;
-    // Weighted overall across the published types (same formula the
-    // board shows).
-    var weighted = 0.0;
-    var weights = 0.0;
+    // Overall = the sum of each type's share: obtained/total * weight.
+    // This is the same formula the extension publishes with, so an
+    // app-only student and an extension student in the same section rank
+    // on the same scale. (The previous code multiplied the RAW obtained
+    // marks by the weight, which is not a percentage at all.)
+    var overall = 0.0;
+    var scored = 0;
     for (final t in gb.types) {
-      final w = t.weight > 0 ? t.weight : 1.0;
-      weighted += t.obtained.clamp(0, 100) * w;
-      weights += w;
+      if (t.total > 0 && t.weight > 0) {
+        overall += t.weightedPercentage;
+        scored++;
+      }
     }
-    if (weights == 0) return;
-    final overall = weighted / weights;
+    if (scored == 0) return;
     final grade = _letterFor(overall);
     final assessments = [
       for (final t in gb.types)
