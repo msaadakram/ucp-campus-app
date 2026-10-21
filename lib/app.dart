@@ -107,6 +107,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// Subject the leaderboard should preselect (from a course card or
   /// the hub's "Leaderboard" button).
   String? _boardCourse;
+  /// Course code of the preselected subject (e.g. "AR221") — disambiguates
+  /// lab vs theory when names alone don't.
+  String? _boardCourseCode;
 
   /// Unique course names from the app's own parsed portal timetable —
   /// the leaderboard's course picker fallback.
@@ -588,20 +591,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     final sid = (dashboard?.studentId ?? '').trim();
     final dash = dashboard;
     if (sid.isEmpty || dash == null || dash.courses.isEmpty) return;
-    // Match the board's course label ("Subject (SEC)") to a portal course.
-    final bare = courseName
-        .replaceAll(RegExp(r'\([^)]*\)'), '')
-        .trim()
-        .toLowerCase();
-    PortalCourse? match;
-    for (final pc in dash.courses) {
-      final name = pc.name.trim().toLowerCase();
-      if (name.isEmpty) continue;
-      if (name == bare || name.contains(bare) || bare.contains(name)) {
-        match = pc;
-        break;
-      }
-    }
+    // Match the board's label to a portal course. The PORTAL name is the
+    // one the grades must be published under: it keeps the "- Lab"
+    // suffix, which is the same key the extension used — publishing under
+    // the ext label would file lab marks into the theory board.
+    final match = _matchPortalCourse(courseName);
     if (match == null) return;
     final courseId = courseIdFromUrl(match.infoUrl) ?? '';
     if (courseId.isEmpty) return;
@@ -619,7 +613,45 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       }
     }
     if (gb == null || gb.isEmpty) return;
-    await _syncOwnGrades(match, courseName, gb);
+    await _syncOwnGrades(match, match.name, gb);
+  }
+
+  /// Portal course matching a board label (name tolerant of section/lab,
+  /// plus course-code match against the section code).
+  PortalCourse? _matchPortalCourse(String courseName) {
+    final dash = dashboard;
+    if (dash == null || dash.courses.isEmpty) return null;
+    final key = _courseMatchKey(courseName);
+    final code = _courseCodeOf(courseName).toLowerCase();
+    for (final pc in dash.courses) {
+      if (_courseMatchKey(pc.name) == key) return pc;
+    }
+    for (final pc in dash.courses) {
+      if (code.isNotEmpty && pc.code.toLowerCase() == code) return pc;
+    }
+    for (final pc in dash.courses) {
+      final k = _courseMatchKey(pc.name);
+      if (k.isNotEmpty && (k.contains(key) || key.contains(k))) return pc;
+    }
+    return null;
+  }
+
+  /// Matching-only key (drops section + "- Lab") — lab and theory are
+  /// still separate courses in the data, this is only for matching.
+  static String _courseMatchKey(String name) => name
+      .toLowerCase()
+      .replaceAll(RegExp(r'\s*\([^)]*\)\s*$'), '')
+      .replaceAll(RegExp(r'\s*[-–—]\s*lab\s*$'), '')
+      .trim();
+
+  /// Course code inside a board label's section code, e.g.
+  /// "Computer Org (AR221-R26-BS-CS-S25-C2)" -> "AR221".
+  static String _courseCodeOf(String label) {
+    final m = RegExp(r'\(([^)]*)\)').firstMatch(label);
+    if (m == null) return '';
+    final inner = m.group(1)!.trim();
+    final code = inner.split('-').first.trim();
+    return code;
   }
 
   /// Publishes the app's own gradebook for a course to the backend, so
@@ -927,6 +959,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
             setState(() {
               // Jump to the live board for THIS subject.
               _boardCourse = courseName;
+              _boardCourseCode = pc0.code;
               portalCourse = null;
               course = null;
               courseLive = false;
@@ -962,7 +995,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
               }
             }
             setState(() { course = c; courseLive = dashboard != null && dashboard!.courses.isNotEmpty; portalCourse = match; });
-          }, toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; _boardCourse = c.title; tab = 'board'; }); }, dashboard: dashboard, timetableSlots: timetableSlots, onAttend: () => go('attendance'), onTimetable: () => go('timetable'), onTeachers: () => go('teachers'), onMaterial: () => go('material'), onFee: () => go('fee'), onResults: () => go('results'), onCommunity: () => go('community'), onWeb: () => go('web'), onRefreshAll: _refreshAllPortal);
+          }, toProfile: () => go('profile'), onMenu: () => setState(() => menu = true), onGpa: () => go('gpa'), onBoard: (c) { setState(() { boardOf = c; _boardCourse = c.title; _boardCourseCode = c.code; tab = 'board'; }); }, dashboard: dashboard, timetableSlots: timetableSlots, onAttend: () => go('attendance'), onTimetable: () => go('timetable'), onTeachers: () => go('teachers'), onMaterial: () => go('material'), onFee: () => go('fee'), onResults: () => go('results'), onCommunity: () => go('community'), onWeb: () => go('web'), onRefreshAll: _refreshAllPortal);
           break;
         case 'material':
           // LIVE: a directory of per-course material pages (tap → hub
@@ -1031,6 +1064,10 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
             service: isExtConfigured ? NodeLeaderboardService() : null,
             studentId: dashboard?.studentId,
             initialCourse: _boardCourse,
+            initialCourseCode: _boardCourseCode,
+            // The student's REAL portal courses drive the picker (their
+            // names carry "- Lab" etc., matching the published grades).
+            portalCourses: dashboard?.courses ?? const [],
             // Portal-timetable fallback: the app already parsed the real
             // weekly schedule, so the picker works before the extension
             // has posted anything.

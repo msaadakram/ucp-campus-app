@@ -3,9 +3,21 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../leaderboard/leaderboard_service.dart';
+import '../auth/student_portal.dart' show PortalCourse;
 import '../theme/palette.dart';
 import '../widgets/common.dart';
 import '../widgets/portal_state.dart';
+
+/// Matching-only key for course names: drops the section suffix and the
+/// "- Lab" suffix, because the extension's scraped names keep the section
+/// but often DROP "- Lab" ("Computer Organization and Assembly Language
+/// (AR221-…)" vs the portal's "… - Lab"). Data keying on the server stays
+/// lab-aware; this is only for "is this the same course?" matching.
+String courseMatchKey(String name) => name
+    .toLowerCase()
+    .replaceAll(RegExp(r'\s*\([^)]*\)\s*$'), '')
+    .replaceAll(RegExp(r'\s*[-–—]\s*lab\s*$'), '')
+    .trim();
 
 /// Live class leaderboard: real ranks from the extension backend
 /// (overall-percentage desc), podium top-3, course picker from the
@@ -19,6 +31,13 @@ class LiveLeaderboardScreen extends StatefulWidget {
   final String? studentId;
   /// Course to preselect by exact or partial title match (optional).
   final String? initialCourse;
+  /// Code of the tapped course (e.g. "AR221"): the ext labels carry the
+  /// section code, so this disambiguates lab vs theory reliably.
+  final String? initialCourseCode;
+  /// The student's REAL portal courses (name carries "- Lab" etc.). Used
+  /// as the primary picker source so the board queries the same course
+  /// key the extension published.
+  final List<PortalCourse> portalCourses;
   /// Bare course names from the app's own portal timetable — the picker
   /// source when the extension has posted no timetable yet.
   final List<String> fallbackCourses;
@@ -41,6 +60,8 @@ class LiveLeaderboardScreen extends StatefulWidget {
     this.studentId,
     this.studentName,
     this.initialCourse,
+    this.initialCourseCode,
+    this.portalCourses = const [],
     this.fallbackCourses = const [],
     this.timetableRows = const [],
     this.onEnsureGrades,
@@ -66,6 +87,8 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
   LeaderboardRoster? roster;
   /// True while the app publishes its own timetable to the server.
   bool syncing = false;
+  /// True while the student's own grades are being published.
+  bool _syncingGrades = false;
   /// Timetable is published once per screen session (no repeat traffic).
   bool _timetableSynced = false;
   String? error;
@@ -93,13 +116,31 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       // App-first: publish our own timetable so the server can build the
       // class roster (app-only users then group with extension users).
       await _syncTimetableOnce();
-      var list = await _svc!.fetchCourses(studentId: widget.studentId);
+      final extList =
+          await _svc!.fetchCourses(studentId: widget.studentId);
       if (!mounted) return;
-      // The extension may not have posted a timetable yet — fall back to
-      // the app's own portal timetable so the picker still works.
-      var fromPortal = false;
+      // The portal course names are the primary source (they carry "- Lab"
+      // etc. exactly like the grades the extension published); the ext
+      // labels fill in anything the portal list is missing.
+      final list = <String>[];
+      final seen = <String>{};
+      void add(String raw) {
+        final n = raw.trim();
+        if (n.isEmpty) return;
+        if (seen.add(courseMatchKey(n))) list.add(n);
+      }
+
+      for (final pc in widget.portalCourses) {
+        add(pc.name);
+      }
+      for (final n in extList) {
+        add(n);
+      }
+      var fromPortal = widget.portalCourses.isNotEmpty;
       if (list.isEmpty && widget.fallbackCourses.isNotEmpty) {
-        list = List<String>.of(widget.fallbackCourses);
+        for (final n in widget.fallbackCourses) {
+          add(n);
+        }
         fromPortal = true;
       }
       if (list.isEmpty) {
@@ -110,15 +151,22 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
         });
         return;
       }
-      // Preselect: exact/substring match on the tapped course title.
-      final hint = (widget.initialCourse ?? '').trim().toLowerCase();
+      // Preselect: match the tapped course by name (section/lab tolerant)
+      // or by its course code inside the label's section code.
+      final hint = (widget.initialCourse ?? '').trim();
+      final hintKey = courseMatchKey(hint);
+      final hintCode = (widget.initialCourseCode ?? '').trim().toLowerCase();
       String? pick;
-      if (hint.isNotEmpty) {
+      if (hintKey.isNotEmpty) {
         pick = list.firstWhere(
-          (n) => n.toLowerCase() == hint,
+          (n) => courseMatchKey(n) == hintKey,
           orElse: () => list.firstWhere(
-            (n) => n.toLowerCase().contains(hint),
-            orElse: () => list.first,
+            (n) => hintCode.isNotEmpty && n.toLowerCase().contains(hintCode),
+            orElse: () => list.firstWhere(
+              (n) => courseMatchKey(n).contains(hintKey) ||
+                  hintKey.contains(courseMatchKey(n)),
+              orElse: () => list.first,
+            ),
           ),
         );
       }
@@ -373,9 +421,19 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                   action: 'Retry',
                   onAction: _loadBoard)
             else if (entries.isEmpty)
-              _statusCard(c,
-                  icon: Icons.emoji_events_outlined,
-                  text: 'No entries for this course yet.')
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _statusCard(c,
+                      icon: Icons.emoji_events_outlined,
+                      text: 'No ranks published for this subject yet.'),
+                  if (widget.onEnsureGrades != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: _publishButton(c),
+                    ),
+                ],
+              )
             else ...[
               _podium(c, entries.take(3).toList()),
               const SizedBox(height: 14),
@@ -384,6 +442,53 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
             ],
           ],
         ],
+      ),
+    );
+  }
+
+  /// "Publish my marks" — pushes the student's own portal gradebook for
+  /// this subject to the server, then reloads the board.
+  Widget _publishButton(AppColors c) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _syncingGrades
+          ? null
+          : () async {
+              setState(() => _syncingGrades = true);
+              try {
+                await widget.onEnsureGrades?.call(course ?? '');
+              } catch (_) {
+                // Fall through to the reload below.
+              }
+              if (mounted) setState(() => _syncingGrades = false);
+              await _loadBoard();
+            },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 13),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: [c.tealDeep, c.teal]),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (_syncingGrades)
+              const SizedBox(
+                width: 15,
+                height: 15,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.white),
+              )
+            else
+              const Icon(Icons.cloud_upload_outlined,
+                  size: 17, color: Colors.white),
+            const SizedBox(width: 8),
+            Text('Publish my marks',
+                style: body(c,
+                    size: 14, weight: FontWeight.w800, color: Colors.white)),
+          ],
+        ),
       ),
     );
   }

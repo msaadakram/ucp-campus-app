@@ -350,6 +350,39 @@ void main() {
       expect(find.textContaining('cp233'), findsOneWidget);
     });
 
+    testWidgets('picker keeps portal course names and matches by code',
+        (tester) async {
+      final svc = FakeLeaderboardService(
+        courses: ['Computer Organization and Assembly Language (AR221-F26-BS-CS-F25-C1)'],
+      );
+      await tester.pumpWidget(_wrap(LiveLeaderboardScreen(
+        service: svc,
+        studentId: 'L1TEST',
+        // The portal title carries "- Lab"; the ext label does not — the
+        // course CODE is what disambiguates them.
+        initialCourse: 'Computer Organization and Assembly Language - Lab',
+        initialCourseCode: 'AR221',
+        portalCourses: const [
+          PortalCourse(
+            name: 'Computer Organization and Assembly Language - Lab',
+            teacher: 'T',
+            code: 'AR221',
+            credits: 1,
+            attendance: 0,
+            infoUrl: '/student/course/info/ABC123',
+          ),
+        ],
+        back: () {},
+      )));
+      await tester.pumpAndSettle();
+      // The board is opened on the LAB course (portal name preserved).
+      expect(svc.boardCalls, greaterThanOrEqualTo(1));
+      expect(
+        find.text('Computer Organization and Assembly Language - Lab'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('own grades are published before the board loads',
         (tester) async {
       final svc = FakeLeaderboardService(
