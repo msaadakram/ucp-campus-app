@@ -8,6 +8,13 @@
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28"/>
+    <!-- Google Play advertising ID. Required for apps that declare
+         advertising-ID usage: from Android 13 (API 33) a target app
+         WITHOUT this permission has its advertising identifier zeroed
+         out, which breaks advertising/analytics and the Play Console
+         declaration check. Declared here, directly inside <manifest>,
+         so the release manifest merger keeps it in the shipped AAB/APK. -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
     <application
         android:label="UCP University"
         android:name="${applicationName}"
