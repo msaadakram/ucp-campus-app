@@ -15,14 +15,12 @@ android {
     }
 
     defaultConfig {
-        // NEW identity: pk.ucp.university. The old "com.example.ucp"
-        // package is what blocked installs — devices refused to replace
-        // the differently-signed old app ("App not installed"). A fresh
-        // applicationId installs cleanly beside/instead of it, and
-        // com.example.* is invalid for Play Store anyway. The namespace
-        // stays com.example.ucp (that is only the code package for
-        // MainActivity — it does not need to match the app id).
-        applicationId = "pk.ucp.university"
+        // Play Store identity: com.ucpuniversity. (The old
+        // "com.example.ucp" package is what blocked installs, and
+        // com.example.* is invalid for Play anyway.) The namespace stays
+        // com.example.ucp — it is only the code package for
+        // MainActivity and does not need to match the application id.
+        applicationId = "com.ucpuniversity"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
