@@ -8,16 +8,43 @@ import '../theme/palette.dart';
 import '../widgets/common.dart';
 import '../widgets/portal_state.dart';
 
-/// Matching-only key for course names: drops the section suffix and the
-/// "- Lab" suffix, because the extension's scraped names keep the section
-/// but often DROP "- Lab" ("Computer Organization and Assembly Language
-/// (AR221-…)" vs the portal's "… - Lab"). Data keying on the server stays
-/// lab-aware; this is only for "is this the same course?" matching.
-String courseMatchKey(String name) => name
+/// Identity key for a course: the section suffix is dropped, but the
+/// "- Lab" suffix is KEPT — theory and lab are different subjects with
+/// different boards.
+String courseIdentityKey(String name) => name
     .toLowerCase()
     .replaceAll(RegExp(r'\s*\([^)]*\)\s*$'), '')
-    .replaceAll(RegExp(r'\s*[-–—]\s*lab\s*$'), '')
     .trim();
+
+/// Loose key (section AND "- Lab" dropped) — fallback matching only,
+/// for the extension's labels that lose the lab suffix.
+String courseLooseKey(String name) =>
+    courseIdentityKey(name).replaceAll(RegExp(r'\s*[-–—]\s*lab\s*$'), '').trim();
+
+/// Course code inside a section label: "… (AR221-F26-BS-CS-F25-C1)" ->
+/// "AR221".
+String courseCodeFromLabel(String label) {
+  final m = RegExp(r'\(([^)]*)\)').firstMatch(label);
+  if (m == null) return '';
+  return m.group(1)!.trim().split('-').first.trim();
+}
+
+/// One entry of the course picker: display/query name + course code
+/// (the code keeps theory and lab apart on the server).
+class LeaderboardCourse {
+  final String name;
+  final String code;
+  const LeaderboardCourse(this.name, [this.code = '']);
+
+  @override
+  bool operator ==(Object other) =>
+      other is LeaderboardCourse &&
+      other.name == name &&
+      other.code == code;
+
+  @override
+  int get hashCode => Object.hash(name, code);
+}
 
 /// Live class leaderboard: real ranks from the extension backend
 /// (overall-percentage desc), podium top-3, course picker from the
@@ -74,8 +101,8 @@ class LiveLeaderboardScreen extends StatefulWidget {
 }
 
 class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
-  List<String> courses = [];
-  String? course;
+  List<LeaderboardCourse> courses = [];
+  LeaderboardCourse? course;
   List<LeaderboardEntry> entries = [];
   int? credits;
   bool loading = true;
@@ -119,27 +146,35 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       final extList =
           await _svc!.fetchCourses(studentId: widget.studentId);
       if (!mounted) return;
-      // The portal course names are the primary source (they carry "- Lab"
-      // etc. exactly like the grades the extension published); the ext
-      // labels fill in anything the portal list is missing.
-      final list = <String>[];
+      // The portal course list is authoritative: it keeps theory and lab
+      // apart ("X" and "X - Lab") and carries the course code. Ext labels
+      // fill in anything the portal list is missing (they may drop the
+      // "- Lab" suffix, so they are matched loosely).
+      final list = <LeaderboardCourse>[];
       final seen = <String>{};
-      void add(String raw) {
+      void add(String raw, {String code = ''}) {
         final n = raw.trim();
         if (n.isEmpty) return;
-        if (seen.add(courseMatchKey(n))) list.add(n);
+        final id = courseIdentityKey(n);
+        if (id.isEmpty) return;
+        if (!seen.add(id)) return;
+        list.add(LeaderboardCourse(n, code));
       }
 
       for (final pc in widget.portalCourses) {
-        add(pc.name);
+        add(pc.name, code: pc.code);
       }
       for (final n in extList) {
-        add(n);
+        final loose = courseLooseKey(n);
+        final covered =
+            list.any((e) => courseLooseKey(e.name) == loose);
+        if (covered) continue;
+        add(n, code: courseCodeFromLabel(n));
       }
       var fromPortal = widget.portalCourses.isNotEmpty;
       if (list.isEmpty && widget.fallbackCourses.isNotEmpty) {
         for (final n in widget.fallbackCourses) {
-          add(n);
+          add(n, code: courseCodeFromLabel(n));
         }
         fromPortal = true;
       }
@@ -151,20 +186,23 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
         });
         return;
       }
-      // Preselect: match the tapped course by name (section/lab tolerant)
-      // or by its course code inside the label's section code.
+      // Preselect the tapped subject: exact identity first (lab kept
+      // apart), then the course code, then a loose match.
       final hint = (widget.initialCourse ?? '').trim();
-      final hintKey = courseMatchKey(hint);
+      final hintId = courseIdentityKey(hint);
+      final hintLoose = courseLooseKey(hint);
       final hintCode = (widget.initialCourseCode ?? '').trim().toLowerCase();
-      String? pick;
-      if (hintKey.isNotEmpty) {
+      LeaderboardCourse? pick;
+      if (hintId.isNotEmpty) {
         pick = list.firstWhere(
-          (n) => courseMatchKey(n) == hintKey,
+          (e) => courseIdentityKey(e.name) == hintId,
           orElse: () => list.firstWhere(
-            (n) => hintCode.isNotEmpty && n.toLowerCase().contains(hintCode),
+            (e) =>
+                hintCode.isNotEmpty &&
+                (e.code.toLowerCase() == hintCode ||
+                    e.name.toLowerCase().contains(hintCode)),
             orElse: () => list.firstWhere(
-              (n) => courseMatchKey(n).contains(hintKey) ||
-                  hintKey.contains(courseMatchKey(n)),
+              (e) => courseLooseKey(e.name) == hintLoose,
               orElse: () => list.first,
             ),
           ),
@@ -213,14 +251,15 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
 
   /// Roster verification for the selected course.
   Future<void> _loadRoster() async {
-    final name = course;
-    if (_svc == null || name == null) return;
+    final sel = course;
+    if (_svc == null || sel == null) return;
     try {
       final r = await _svc!.fetchRoster(
-        courseName: name,
+        courseName: sel.name,
         studentId: (widget.studentId ?? '').trim().isEmpty
             ? null
             : widget.studentId,
+        courseCode: sel.code,
       );
       if (!mounted) return;
       setState(() => roster = r);
@@ -230,8 +269,8 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
   }
 
   Future<void> _loadBoard() async {
-    final name = course;
-    if (_svc == null || name == null) return;
+    final sel = course;
+    if (_svc == null || sel == null) return;
     setState(() {
       loadingBoard = true;
       error = null;
@@ -243,14 +282,15 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       final ensure = widget.onEnsureGrades;
       if (ensure != null) {
         try {
-          await ensure(name);
+          await ensure(sel.name);
         } catch (_) {
           // Grade publishing is best-effort.
         }
       }
       final res = await _svc!.fetchLeaderboard(
-        courseName: name,
+        courseName: sel.name,
         studentId: widget.studentId,
+        courseCode: sel.code,
       );
       if (!mounted) return;
       setState(() {
@@ -456,7 +496,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
           : () async {
               setState(() => _syncingGrades = true);
               try {
-                await widget.onEnsureGrades?.call(course ?? '');
+                await widget.onEnsureGrades?.call(course?.name ?? '');
               } catch (_) {
                 // Fall through to the reload below.
               }
@@ -532,14 +572,14 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          for (final n in courses)
+          for (final entry in courses)
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () {
-                  if (course == n || loadingBoard) return;
-                  setState(() => course = n);
+                  if (course == entry || loadingBoard) return;
+                  setState(() => course = entry);
                   _loadBoard();
                 },
                 child: AnimatedContainer(
@@ -547,16 +587,16 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 9),
                   decoration: BoxDecoration(
-                    gradient: course == n
+                    gradient: course == entry
                         ? LinearGradient(colors: [c.tealDeep, c.teal])
                         : null,
-                    color: course == n ? null : c.white,
+                    color: course == entry ? null : c.white,
                     borderRadius: BorderRadius.circular(22),
                     border: Border.all(
-                        color: course == n
+                        color: course == entry
                             ? Colors.transparent
                             : c.dustSoft.withValues(alpha: 0.7)),
-                    boxShadow: course == n
+                    boxShadow: course == entry
                         ? [
                             BoxShadow(
                                 color: c.teal.withValues(alpha: 0.4),
@@ -565,14 +605,14 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                           ]
                         : null,
                   ),
-                  child: Text(_shortName(n),
+                  child: Text(_shortName(entry.name),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                           color:
-                              course == n ? Colors.white : c.tealInk)),
+                              course == entry ? Colors.white : c.tealInk)),
                 ),
               ),
             ),

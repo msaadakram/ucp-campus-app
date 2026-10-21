@@ -40,6 +40,8 @@ class FakeLeaderboardService extends LeaderboardService {
   int gradeSyncs = 0;
   List<Map<String, String>>? lastTimetableRows;
   String? lastGrade;
+  /// Course code sent with the last board/roster request.
+  String? lastCourseCode;
   double lastOverall = 0;
   LeaderboardRoster roster = const LeaderboardRoster(
     rosterSize: 0,
@@ -68,8 +70,11 @@ class FakeLeaderboardService extends LeaderboardService {
   Future<LeaderboardRoster> fetchRoster({
     required String courseName,
     String? studentId,
-  }) async =>
-      roster;
+    String? courseCode,
+  }) async {
+    lastCourseCode = courseCode;
+    return roster;
+  }
 
   @override
   Future<void> syncTimetable({
@@ -97,8 +102,11 @@ class FakeLeaderboardService extends LeaderboardService {
 
   @override
   Future<LeaderboardResult> fetchLeaderboard(
-      {required String courseName, String? studentId}) async {
+      {required String courseName,
+      String? studentId,
+      String? courseCode}) async {
     boardCalls++;
+    lastCourseCode = courseCode;
     if (throwOnBoard != null) {
       throw throwOnBoard!; // ignore: avoid_catching_errors
     }
@@ -348,6 +356,54 @@ void main() {
       // Roster verification line: you + N classmates in this section.
       expect(find.textContaining('11 classmates'), findsOneWidget);
       expect(find.textContaining('cp233'), findsOneWidget);
+    });
+
+    testWidgets('theory and lab are separate subjects in the picker', (
+        tester) async {
+      final svc = FakeLeaderboardService(
+        courses: const [
+          'Computer Organization and Assembly Language (AR221-F26-BS-CS-F25-C1)',
+          'Computer Organization and Assembly Language (AR223-F26-BS-CS-F25-C1)',
+        ],
+      );
+      await tester.pumpWidget(_wrap(LiveLeaderboardScreen(
+        service: svc,
+        studentId: 'L1TEST',
+        initialCourse: 'Computer Organization and Assembly Language',
+        initialCourseCode: 'AR223',
+        portalCourses: const [
+          PortalCourse(
+            name: 'Computer Organization and Assembly Language',
+            teacher: 'T',
+            code: 'AR223',
+            credits: 3,
+            attendance: 0,
+            infoUrl: '/student/course/info/AAA111',
+          ),
+          PortalCourse(
+            name: 'Computer Organization and Assembly Language - Lab',
+            teacher: 'T',
+            code: 'AR221',
+            credits: 1,
+            attendance: 0,
+            infoUrl: '/student/course/info/BBB222',
+          ),
+        ],
+        back: () {},
+      )));
+      await tester.pumpAndSettle();
+      // Both subjects are offered — theory and lab are NOT merged.
+      expect(
+        find.text('Computer Organization and Assembly Language'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Computer Organization and Assembly Language - Lab'),
+        findsOneWidget,
+      );
+      // The tapped theory course is selected and its code is sent, so the
+      // server can keep the lab section on its own roster.
+      expect(svc.lastCourseCode, 'AR223');
     });
 
     testWidgets('picker keeps portal course names and matches by code',

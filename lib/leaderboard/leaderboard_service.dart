@@ -83,6 +83,7 @@ abstract class LeaderboardService {
   Future<LeaderboardRoster> fetchRoster({
     required String courseName,
     String? studentId,
+    String? courseCode,
   });
 
   /// Publishes the student's own timetable so the server can build the
@@ -107,6 +108,7 @@ abstract class LeaderboardService {
   Future<LeaderboardResult> fetchLeaderboard({
     required String courseName,
     String? studentId,
+    String? courseCode,
   });
   void dispose();
 }
@@ -179,10 +181,13 @@ class NodeLeaderboardService extends LeaderboardService {
   Future<LeaderboardRoster> fetchRoster({
     required String courseName,
     String? studentId,
+    String? courseCode,
   }) async {
     final params = <String, String>{'courseName': courseName};
     final sid = (studentId ?? '').trim();
     if (sid.isNotEmpty) params['studentId'] = sid;
+    final code = (courseCode ?? '').trim();
+    if (code.isNotEmpty) params['courseCode'] = code;
     final res = await _client
         .get(
           Uri.parse('$nodeApiUrl/api/ext/roster').replace(
@@ -266,10 +271,13 @@ class NodeLeaderboardService extends LeaderboardService {
   Future<LeaderboardResult> fetchLeaderboard({
     required String courseName,
     String? studentId,
+    String? courseCode,
   }) async {
     final params = <String, String>{'courseName': courseName};
     final sid = (studentId ?? '').trim();
     if (sid.isNotEmpty) params['studentId'] = sid;
+    final code = (courseCode ?? '').trim();
+    if (code.isNotEmpty) params['courseCode'] = code;
     final res = await _client
         .get(
           Uri.parse('$nodeApiUrl/api/ext/leaderboard').replace(

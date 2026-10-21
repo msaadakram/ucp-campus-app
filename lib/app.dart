@@ -616,31 +616,40 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     await _syncOwnGrades(match, match.name, gb);
   }
 
-  /// Portal course matching a board label (name tolerant of section/lab,
-  /// plus course-code match against the section code).
+  /// Portal course matching a board label. Exact name first, then the
+  /// identity key (section dropped, "- Lab" KEPT so theory and lab stay
+  /// apart), then the course code, then a loose match.
   PortalCourse? _matchPortalCourse(String courseName) {
     final dash = dashboard;
     if (dash == null || dash.courses.isEmpty) return null;
-    final key = _courseMatchKey(courseName);
-    final code = _courseCodeOf(courseName).toLowerCase();
+    final wanted = courseName.trim().toLowerCase();
     for (final pc in dash.courses) {
-      if (_courseMatchKey(pc.name) == key) return pc;
+      if (pc.name.trim().toLowerCase() == wanted) return pc;
     }
+    final key = _courseIdentityKey(courseName);
+    for (final pc in dash.courses) {
+      if (_courseIdentityKey(pc.name) == key) return pc;
+    }
+    final code = _courseCodeOf(courseName).toLowerCase();
     for (final pc in dash.courses) {
       if (code.isNotEmpty && pc.code.toLowerCase() == code) return pc;
     }
     for (final pc in dash.courses) {
-      final k = _courseMatchKey(pc.name);
+      final k = _courseLooseKey(pc.name);
       if (k.isNotEmpty && (k.contains(key) || key.contains(k))) return pc;
     }
     return null;
   }
 
-  /// Matching-only key (drops section + "- Lab") — lab and theory are
-  /// still separate courses in the data, this is only for matching.
-  static String _courseMatchKey(String name) => name
+  /// Identity key: the section suffix is dropped, the "- Lab" suffix is
+  /// KEPT — theory and lab are different subjects.
+  static String _courseIdentityKey(String name) => name
       .toLowerCase()
       .replaceAll(RegExp(r'\s*\([^)]*\)\s*$'), '')
+      .trim();
+
+  /// Loose key (section AND "- Lab" dropped) — fallback matching only.
+  static String _courseLooseKey(String name) => _courseIdentityKey(name)
       .replaceAll(RegExp(r'\s*[-–—]\s*lab\s*$'), '')
       .trim();
 
