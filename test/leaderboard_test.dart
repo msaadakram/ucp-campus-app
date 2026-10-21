@@ -6,6 +6,7 @@ import 'package:http/testing.dart';
 import 'package:ucp/auth/student_portal.dart' show PortalCourse;
 import 'package:ucp/community/backend_config.dart';
 import 'package:ucp/leaderboard/leaderboard_service.dart';
+import 'package:ucp/leaderboard/sync.dart';
 import 'package:ucp/screens/course_detail.dart';
 import 'package:ucp/screens/leaderboard.dart';
 import 'package:ucp/theme/palette.dart';
@@ -368,6 +369,83 @@ void main() {
       // Roster verification line: you + N classmates in this section.
       expect(find.textContaining('11 classmates'), findsOneWidget);
       expect(find.textContaining('cp233'), findsOneWidget);
+    });
+
+    testWidgets('the board requires the portal sign-in before syncing', (
+        tester) async {
+      var sessionChecks = 0;
+      var syncs = 0;
+      final svc = FakeLeaderboardService();
+      await tester.pumpWidget(_wrap(LiveLeaderboardScreen(
+        service: svc,
+        studentId: 'L1TEST',
+        // The student is not signed in to the portal.
+        onEnsureSession: () async {
+          sessionChecks++;
+          return false;
+        },
+        onSyncClass: ({onProgress}) async {
+          syncs++;
+          return const LeaderboardSyncReport(
+            timetableRows: 22,
+            subjectsSynced: 8,
+          );
+        },
+        back: () {},
+      )));
+      await tester.pumpAndSettle();
+      // The sign-in gate is shown and NOTHING was published yet.
+      expect(find.text('Sign in to sync your class'), findsOneWidget);
+      expect(sessionChecks, greaterThanOrEqualTo(1));
+      expect(syncs, 0);
+      expect(svc.timetableSyncs, 0);
+      expect(svc.gradeSyncs, 0);
+    });
+
+    testWidgets('a signed-in student syncs the class, then sees the board', (
+        tester) async {
+      final stages = <LeaderboardSyncStage>[];
+      var syncs = 0;
+      final svc = FakeLeaderboardService(
+        rows: const [
+          {'studentId': 'L1TEST', 'studentName': 'Me', 'overallPercentage': 88.0},
+          {'studentId': 'L1OTHER', 'studentName': 'Other', 'overallPercentage': 70.0},
+        ],
+      );
+      await tester.pumpWidget(_wrap(LiveLeaderboardScreen(
+        service: svc,
+        studentId: 'L1TEST',
+        onEnsureSession: () async => true,
+        onSyncClass: ({onProgress}) async {
+          syncs++;
+          onProgress?.call(LeaderboardSyncStage.session, 0, 1);
+          onProgress?.call(LeaderboardSyncStage.timetable, 0, 1);
+          onProgress?.call(LeaderboardSyncStage.grades, 3, 8);
+          stages.addAll(const [
+            LeaderboardSyncStage.session,
+            LeaderboardSyncStage.timetable,
+            LeaderboardSyncStage.grades,
+          ]);
+          return const LeaderboardSyncReport(
+            timetableRows: 22,
+            subjectsSynced: 8,
+          );
+        },
+        back: () {},
+      )));
+      await tester.pumpAndSettle();
+      // The pipeline ran in the right order...
+      expect(syncs, 1);
+      expect(stages, [
+        LeaderboardSyncStage.session,
+        LeaderboardSyncStage.timetable,
+        LeaderboardSyncStage.grades,
+      ]);
+      // ...the sync summary is visible...
+      expect(find.textContaining('Synced from your portal'), findsOneWidget);
+      // ...and the board itself is loaded.
+      expect(svc.boardCalls, greaterThanOrEqualTo(1));
+      expect(find.text('Other'), findsOneWidget);
     });
 
     testWidgets('the board queries the exact section, not just the code', (

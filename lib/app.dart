@@ -25,6 +25,7 @@ import 'community/community_service.dart';
 import 'community/fake_community_service.dart';
 import 'community/node_community_service.dart';
 import 'leaderboard/leaderboard_service.dart';
+import 'leaderboard/sync.dart';
 import 'teachers/teacher_service.dart';
 import 'data/seed.dart';
 import 'screens/attendance.dart';
@@ -251,6 +252,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// True once this session published the student's timetable + marks to
   /// the community backend (the app-first path).
   bool _communitySynced = false;
+  /// Resolves when an interactive Microsoft sign-in started by
+  /// [ensurePortalSession] finishes (true = signed in, false = cancelled).
+  Completer<bool>? _signInWaiter;
 
   /// True while the cold-start auto-login attempt is running: the login
   /// screen shows a short "Signing you in…" animation instead of the form.
@@ -712,57 +716,177 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     await _syncOwnGrades(match, match.name, gb);
   }
 
-  /// Publishes the student's timetable and gradebooks to the community
-  /// backend so their classmates see them — WITHOUT the extension.
+  /// The full "class sync" pipeline.
   ///
-  /// App-only users used to stay invisible: the timetable was only
-  /// published when a leaderboard was opened and the marks only for the
-  /// subject whose board was open. This runs in the background right
-  /// after the dashboard loads, so a user who never touches the
-  /// extension is still on the boards of their class.
-  Future<void> _runCommunitySync() async {
-    if (!isExtConfigured) return;
+  /// Runs in the order the student experiences it:
+  ///   1. the portal session (Microsoft sign-in) must be alive — the
+  ///      session cookie is what reads the portal;
+  ///   2. the TIMETABLE is fetched with that cookie and published, so
+  ///      the server knows which sections this student is in (this is
+  ///      what builds the class roster);
+  ///   3. every subject's GRADE PAGE is fetched, parsed and published,
+  ///      so the student's marks reach the server;
+  ///   4. the caller then loads the class boards.
+  ///
+  /// App-only users used to stay invisible: the timetable was published
+  /// only when a leaderboard was opened, and the marks only for the one
+  /// subject whose board was open.
+  Future<LeaderboardSyncReport> syncClassToServer({
+    void Function(LeaderboardSyncStage stage, int done, int total)? onProgress,
+  }) async {
+    if (!isExtConfigured) {
+      return const LeaderboardSyncReport();
+    }
     final sid = (dashboard?.studentId ?? '').trim();
-    if (sid.isEmpty) return;
-    if (_communitySynced) return;
-    _communitySynced = true;
+    if (sid.isEmpty) return const LeaderboardSyncReport();
+
+    onProgress?.call(LeaderboardSyncStage.session, 0, 1);
+    // A dead session means nothing can be read — the caller shows the
+    // sign-in prompt.
+    if (!await _portalSessionAlive(sid)) {
+      return const LeaderboardSyncReport();
+    }
+    onProgress?.call(LeaderboardSyncStage.session, 1, 1);
+
+    // ---- 2) timetable (read with the session cookie) ----
+    onProgress?.call(LeaderboardSyncStage.timetable, 0, 1);
+    var rows = _timetableSyncRows;
     try {
-      final svc = NodeLeaderboardService();
-      // 1) Timetable — this is what builds the class roster.
-      final rows = _timetableSyncRows;
-      if (rows.isNotEmpty) {
-        await svc.syncTimetable(
-          studentId: sid,
-          rows: rows,
-        );
-      }
-      // 2) Marks for every course — one request per subject, spaced out
-      //    so the portal is not hammered.
-      final courses = dashboard?.courses ?? const <PortalCourse>[];
-      for (final pc in courses) {
-        if (!mounted) return;
-        final courseId = courseIdFromUrl(pc.infoUrl) ?? '';
-        if (courseId.isEmpty) continue;
-        try {
-          var gb = CourseDetailCache.gradebook[courseId];
-          if (gb == null || gb.isEmpty) {
-            final html = await PortalApi().fetchPage(
-              '/student/course/gradebook/$courseId',
-              sid,
-            );
-            gb = parseCourseGradebook(html);
-            CourseDetailCache.putGradebook(courseId, gb);
-          }
-          if (gb == null || gb.isEmpty) continue;
-          await _syncOwnGrades(pc, pc.name, gb);
-        } catch (_) {
-          // One failing subject must not stop the rest.
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 400));
+      final html = await PortalApi().fetchPage(PortalRoutes.timetable, sid);
+      final slots = parseTimetable(html).slots;
+      if (slots.isNotEmpty) {
+        if (mounted) setState(() => timetableSlots = _resolveSlots(slots));
+        rows = _timetableSyncRows;
+        await PageCache.savePage('timetable', html);
       }
     } catch (_) {
-      // Best effort: the app keeps working without the backend.
+      // Keep the slots we already have (cached snapshot).
     }
+    if (rows.isNotEmpty) {
+      try {
+        await NodeLeaderboardService()
+            .syncTimetable(studentId: sid, rows: rows);
+      } catch (_) {
+        // Best effort — the board still works without the roster.
+      }
+    }
+    onProgress?.call(LeaderboardSyncStage.timetable, 1, 1);
+
+    // ---- 3) every subject's grade page ----
+    final courses = dashboard?.courses ?? const <PortalCourse>[];
+    var synced = 0;
+    var failed = 0;
+    final failures = <String>[];
+    for (var i = 0; i < courses.length; i++) {
+      if (!mounted) break;
+      final pc = courses[i];
+      onProgress?.call(LeaderboardSyncStage.grades, i, courses.length);
+      final courseId = courseIdFromUrl(pc.infoUrl) ?? '';
+      if (courseId.isEmpty) continue;
+      try {
+        var gb = CourseDetailCache.gradebook[courseId];
+        if (gb == null || gb.isEmpty) {
+          final html = await PortalApi().fetchPage(
+            '/student/course/gradebook/$courseId',
+            sid,
+          );
+          gb = parseCourseGradebook(html);
+          CourseDetailCache.putGradebook(courseId, gb);
+        }
+        if (gb == null || gb.isEmpty) continue;
+        await _syncOwnGrades(pc, pc.name, gb);
+        synced++;
+      } catch (_) {
+        // One subject without a gradebook must not stop the rest.
+        failed++;
+        failures.add(pc.name);
+      }
+    }
+    onProgress?.call(
+      LeaderboardSyncStage.grades,
+      courses.length,
+      courses.length,
+    );
+
+    return LeaderboardSyncReport(
+      timetableRows: rows.length,
+      subjectsSynced: synced,
+      subjectsFailed: failed,
+      failures: failures,
+    );
+  }
+
+  /// Makes sure the student is signed in to the portal before anything
+  /// is read.
+  ///
+  /// The leaderboard needs the Horizon session cookie (obtained through
+  /// the Microsoft account sign-in) to read the timetable and the grade
+  /// pages. When the session is missing or dead, the Microsoft sign-in
+  /// is started and awaited; the sign-in UI takes over the screen and
+  /// the leaderboard continues as soon as it completes.
+  Future<bool> ensurePortalSession() async {
+    if (!mounted) return false;
+    final sid = sessionId;
+    if (authed && sid != null && sid.isNotEmpty) {
+      if (await _portalSessionAlive(sid)) return true;
+      if (!mounted) return false;
+      // The portal session died (expired elsewhere) — drop it and let
+      // the Microsoft sign-in mint a fresh one.
+      setState(() {
+        sessionId = null;
+        authed = false;
+      });
+    }
+    // Start the Microsoft sign-in (the shell shows the sign-in UI).
+    final email = sessionEmail ?? await _backend.readEmail() ?? '';
+    if (email.isEmpty) {
+      // No known account: the login screen asks for it.
+      if (mounted) {
+        setState(() {
+          authed = false;
+          authError = null;
+        });
+      }
+      return false;
+    }
+    final waiter = Completer<bool>();
+    _signInWaiter = waiter;
+    if (!mounted) return false;
+    setState(() {
+      oauthEmail = email;
+      authError = null;
+      _signingIn = true;
+      _signInFailed = false;
+      _signInFailMessage = null;
+    });
+    return waiter.future;
+  }
+
+  /// Completes a pending [ensurePortalSession] wait.
+  void _completeSignInWait(bool ok) {
+    final waiter = _signInWaiter;
+    _signInWaiter = null;
+    if (waiter != null && !waiter.isCompleted) waiter.complete(ok);
+  }
+
+  /// True when the portal still accepts the session cookie.
+  Future<bool> _portalSessionAlive(String sid) async {
+    try {
+      final html = await PortalApi().fetchDashboard(sid);
+      return html.isNotEmpty && !html.contains('oe_login_form');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Publishes the student's timetable and gradebooks to the community
+  /// backend so their classmates see them — WITHOUT the extension.
+  /// Runs in the background right after the dashboard loads.
+  Future<void> _runCommunitySync() async {
+    if (!isExtConfigured) return;
+    if (_communitySynced) return;
+    _communitySynced = true;
+    await syncClassToServer();
   }
 
   /// Portal course matching a board label. Exact name first, then the
@@ -1243,6 +1367,10 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
             // Publish our own marks for the opened subject so our row is
             // on the board even without the extension.
             onEnsureGrades: _ensureCourseGrades,
+            // The class pipeline: portal sign-in -> timetable -> grade
+            // pages -> publish, then the class boards.
+            onEnsureSession: ensurePortalSession,
+            onSyncClass: syncClassToServer,
             back: () => go('home'),
             fallback: LeaderboardScreen(start: boardOf.code, back: () => go('home')),
           );
@@ -1336,17 +1464,26 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                         _expiredMessage = null;
                                         _expiredCode = null;
                                       });
+                                      _completeSignInWait(true);
                                       _startMonitor();
                                       _loadDashboard();
                                     },
-                                    onCancelled: () => setState(() {
-                                      oauthEmail = null;
-                                      authError = null;
-                                    }),
-                                    onError: (msg) => setState(() {
-                                      oauthEmail = null;
-                                      authError = msg;
-                                    }),
+                                    onCancelled: () {
+                                      _completeSignInWait(false);
+                                      setState(() {
+                                        oauthEmail = null;
+                                        authError = null;
+                                        _signingIn = false;
+                                      });
+                                    },
+                                    onError: (msg) {
+                                      _completeSignInWait(false);
+                                      setState(() {
+                                        oauthEmail = null;
+                                        authError = msg;
+                                        _signingIn = false;
+                                      });
+                                    },
                                   )
                                 : LoginScreen(
                                     restoring: _restoring,

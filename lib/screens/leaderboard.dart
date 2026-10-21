@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../leaderboard/leaderboard_service.dart';
+import '../leaderboard/sync.dart';
 import '../auth/student_portal.dart' show PortalCourse;
 import '../theme/palette.dart';
 import '../widgets/common.dart';
@@ -81,6 +82,17 @@ class LiveLeaderboardScreen extends StatefulWidget {
   /// fetches the portal gradebook and posts it), so their row exists on
   /// the board even without the extension.
   final Future<void> Function(String courseName)? onEnsureGrades;
+
+  /// Makes sure the student is signed in to the portal (Microsoft
+  /// account -> session cookie). Returns true when the session is ready
+  /// to read the timetable and the grade pages.
+  final Future<bool> Function()? onEnsureSession;
+
+  /// The full class sync: session -> timetable -> grade pages ->
+  /// publish. Reports progress so the screen can show what it is doing.
+  final Future<LeaderboardSyncReport> Function({
+    void Function(LeaderboardSyncStage stage, int done, int total)? onProgress,
+  })? onSyncClass;
   final VoidCallback? back;
   /// Shown when live data is unavailable (no key / hard failure).
   final Widget? fallback;
@@ -97,6 +109,8 @@ class LiveLeaderboardScreen extends StatefulWidget {
     this.fallbackCourses = const [],
     this.timetableRows = const [],
     this.onEnsureGrades,
+    this.onEnsureSession,
+    this.onSyncClass,
     this.back,
     this.fallback,
   });
@@ -123,6 +137,20 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
   bool syncing = false;
   /// True while the student's own grades are being published.
   bool _syncingGrades = false;
+  /// The class-sync pipeline state: which stage it is on.
+  LeaderboardSyncStage? _syncStage;
+  /// Subjects finished in the current stage.
+  int _syncDone = 0;
+  /// Subjects total in the current stage.
+  int _syncTotal = 0;
+  /// True when the portal sign-in is required before anything can be
+  /// read (the student is not signed in / the session died).
+  bool _needsSignIn = false;
+  /// Result of the last class sync.
+  LeaderboardSyncReport? _syncReport;
+  /// True once the class pipeline ran in this screen session — switching
+  /// subjects reuses it (the grades are already on the server).
+  bool _classSyncDone = false;
   /// Timetable is published once per screen session (no repeat traffic).
   bool _timetableSynced = false;
   String? error;
@@ -257,6 +285,60 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
     if (mounted) setState(() => syncing = false);
   }
 
+  /// Runs the class-sync pipeline before the board is fetched:
+  /// sign-in check -> timetable -> grade pages -> publish.
+  ///
+  /// This is the "app-first" path: the app reads the portal with the
+  /// student's own session (no extension needed) and publishes what it
+  /// finds, so the student appears on their class board with their real
+  /// marks, and their classmates see them.
+  Future<void> _runClassSync({bool force = false}) async {
+    final sync = widget.onSyncClass;
+    final ensureSession = widget.onEnsureSession;
+    if (sync == null && ensureSession == null) return;
+    if (_classSyncDone && !force) return;
+    setState(() {
+      _syncStage = LeaderboardSyncStage.session;
+      _syncDone = 0;
+      _syncTotal = 0;
+      _needsSignIn = false;
+    });
+    try {
+      // 1) sign-in gate
+      if (ensureSession != null) {
+        final ready = await ensureSession();
+        if (!mounted) return;
+        if (!ready) {
+          setState(() {
+            _syncStage = null;
+            _needsSignIn = true;
+          });
+          return;
+        }
+      }
+      // 2) timetable + 3) grade pages (published to the server)
+      if (sync != null) {
+        final report = await sync(onProgress: (stage, done, total) {
+          if (!mounted) return;
+          setState(() {
+            _syncStage = stage;
+            _syncDone = done;
+            _syncTotal = total;
+          });
+        });
+        if (!mounted) return;
+        setState(() {
+          _syncReport = report;
+          _syncStage = null;
+          _classSyncDone = true;
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _syncStage = null);
+    }
+  }
+
   /// Roster verification for the selected course.
   Future<void> _loadRoster() async {
     final sel = course;
@@ -285,8 +367,15 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       noCredits = false;
     });
     try {
-      // Make sure OUR marks for this subject are on the server before
-      // reading the board (app-only users have no extension data).
+      // The full class sync first: sign-in -> timetable -> grade pages ->
+      // publish. Then OUR marks for this subject are guaranteed on the
+      // server before the board is read.
+      await _runClassSync();
+      if (!mounted) return;
+      if (_needsSignIn) {
+        setState(() => loadingBoard = false);
+        return;
+      }
       final ensure = widget.onEnsureGrades;
       if (ensure != null) {
         try {
@@ -461,6 +550,29 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                   ],
                 ),
               ),
+            if (_syncStage != null) _syncBanner(c),
+            if (_needsSignIn) _signInCard(c),
+            if (_needsSignIn == false && _syncReport != null && _syncReport!.ok)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    Icon(Icons.cloud_done_outlined,
+                        size: 13, color: c.teal.withValues(alpha: 0.9)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Synced from your portal: '
+                        '${_syncReport!.timetableRows} timetable slots \u00b7 '
+                        '${_syncReport!.subjectsSynced} subjects published'
+                        '${_syncReport!.subjectsFailed > 0 ? ' \u00b7 ${_syncReport!.subjectsFailed} without a gradebook' : ''}',
+                        style: body(c,
+                            size: 11.5, color: c.tealInk.withValues(alpha: 0.7)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             if (roster != null) _rosterLine(c, roster!),
             if (loadingBoard)
               const Padding(
@@ -500,6 +612,114 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
     );
   }
 
+  /// Progress banner of the class-sync pipeline: sign-in check ->
+  /// timetable -> grade pages -> publish.
+  Widget _syncBanner(AppColors c) {
+    final stage = _syncStage ?? LeaderboardSyncStage.session;
+    final label = leaderboardSyncStageLabel(stage);
+    final detail = stage == LeaderboardSyncStage.grades && _syncTotal > 0
+        ? ' \u00b7 $_syncDone/$_syncTotal subjects'
+        : '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(
+              width: 13,
+              height: 13,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: Colors.white),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text('$label$detail',
+                  style: body(c,
+                      size: 11.5,
+                      weight: FontWeight.w600,
+                      color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The sign-in gate: the portal (Microsoft account -> session cookie)
+  /// is required to read the timetable and the grade pages.
+  Widget _signInCard(AppColors c) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: c.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.lock_person_outlined, size: 20, color: c.tealInk),
+                const SizedBox(width: 8),
+                Text('Sign in to sync your class',
+                    style: display(c, size: 17, color: c.tealInk)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Your timetable and grade pages are read from the UCP '
+              'portal with your Microsoft account. Sign in once and the '
+              'app publishes your class so the leaderboard can rank you '
+              'with your section.',
+              style: body(c, size: 12.5, color: c.tealInk.withValues(alpha: 0.75)),
+            ),
+            const SizedBox(height: 12),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () async {
+                final ensure = widget.onEnsureSession;
+                if (ensure == null) return;
+                final ok = await ensure();
+                if (!mounted) return;
+                if (!ok) return;
+                setState(() => _needsSignIn = false);
+                await _loadBoard();
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [c.tealDeep, c.teal]),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.login,
+                        size: 17, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Text('Sign in with Microsoft',
+                        style: body(c,
+                            size: 14,
+                            weight: FontWeight.w800,
+                            color: Colors.white)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// "Publish my marks" — pushes the student's own portal gradebook for
   /// this subject to the server, then reloads the board.
   Widget _publishButton(AppColors c) {
@@ -510,6 +730,9 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
           : () async {
               setState(() => _syncingGrades = true);
               try {
+                // Full re-sync: re-read the timetable + every grade page
+                // with the session and publish them again.
+                await _runClassSync(force: true);
                 await widget.onEnsureGrades?.call(course?.name ?? '');
               } catch (_) {
                 // Fall through to the reload below.
