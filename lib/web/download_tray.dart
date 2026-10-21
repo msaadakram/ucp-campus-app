@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../theme/palette.dart';
+import '../widgets/common.dart';
+
 import 'portal_downloader.dart';
 
 /// Human-readable byte size, e.g. `1.2 MB`.
@@ -25,9 +28,7 @@ IconData iconForFileName(String name) {
   if (n.endsWith('.doc') || n.endsWith('.docx')) {
     return Icons.description_outlined;
   }
-  if (n.endsWith('.xls') ||
-      n.endsWith('.xlsx') ||
-      n.endsWith('.csv')) {
+  if (n.endsWith('.xls') || n.endsWith('.xlsx') || n.endsWith('.csv')) {
     return Icons.table_chart_outlined;
   }
   if (n.endsWith('.ppt') || n.endsWith('.pptx')) {
@@ -72,17 +73,21 @@ class DownloadBar extends StatelessWidget {
     final d = item;
     final pct = d.progress;
     final subtitle = switch (d.status) {
-      DownloadStatus.downloading => pct >= 0
-          ? '${(pct * 100).toStringAsFixed(0)}% · ${formatBytes(d.receivedBytes)} of ${formatBytes(d.totalBytes)}'
-          : '${formatBytes(d.receivedBytes)} downloaded…',
+      DownloadStatus.downloading =>
+        pct >= 0
+            ? '${(pct * 100).toStringAsFixed(0)}% · ${formatBytes(d.receivedBytes)} of ${formatBytes(d.totalBytes)}'
+            : '${formatBytes(d.receivedBytes)} downloaded…',
       DownloadStatus.queued => 'Waiting to download…',
       DownloadStatus.complete =>
         'Download complete · ${formatBytes(d.receivedBytes)}',
       DownloadStatus.failed => d.error ?? 'Download failed.',
       DownloadStatus.canceled => 'Download canceled.',
     };
+    final c = AppScope.colorsOf(context);
     return Material(
-      color: const Color(0xFF323232),
+      // The card surface, so the tray follows light/dark like every other
+      // surface in the app (it used to be a fixed dark grey).
+      color: c.white,
       borderRadius: BorderRadius.circular(12),
       elevation: 6,
       child: InkWell(
@@ -106,8 +111,8 @@ class DownloadBar extends StatelessWidget {
                           d.fileName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: c.tealInk,
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
@@ -118,7 +123,7 @@ class DownloadBar extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.75),
+                            color: c.tealInk.withValues(alpha: 0.7),
                             fontSize: 12,
                           ),
                         ),
@@ -128,23 +133,32 @@ class DownloadBar extends StatelessWidget {
                   if (d.isActive)
                     IconButton(
                       tooltip: 'Cancel download',
-                      icon: const Icon(Icons.close,
-                          size: 20, color: Colors.white70),
+                      icon: Icon(
+                        Icons.close,
+                        size: 20,
+                        color: c.tealInk.withValues(alpha: 0.7),
+                      ),
                       onPressed: onCancel,
                     )
                   else if (d.status == DownloadStatus.complete)
                     TextButton(
                       onPressed: onOpen,
-                      child: const Text('OPEN',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold)),
+                      child: Text(
+                        'OPEN',
+                        style: TextStyle(
+                          color: c.tealInk,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     )
                   else
                     IconButton(
                       tooltip: 'Dismiss',
-                      icon: const Icon(Icons.close,
-                          size: 20, color: Colors.white70),
+                      icon: Icon(
+                        Icons.close,
+                        size: 20,
+                        color: c.tealInk.withValues(alpha: 0.7),
+                      ),
                       onPressed: onDismiss,
                     ),
                 ],
@@ -156,9 +170,8 @@ class DownloadBar extends StatelessWidget {
                     borderRadius: BorderRadius.circular(2),
                     child: LinearProgressIndicator(
                       value: pct >= 0 ? pct : null,
-                      backgroundColor: Colors.white24,
-                      valueColor: const AlwaysStoppedAnimation<Color>(
-                          Color(0xFF8AB4F8)),
+                      backgroundColor: c.dustSoft,
+                      valueColor: AlwaysStoppedAnimation<Color>(c.teal),
                       minHeight: 3,
                     ),
                   ),
@@ -177,6 +190,7 @@ class _Leading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppScope.colorsOf(context);
     final d = item;
     if (d.status == DownloadStatus.downloading ||
         d.status == DownloadStatus.queued) {
@@ -190,27 +204,25 @@ class _Leading extends StatelessWidget {
             CircularProgressIndicator(
               value: pct >= 0 ? pct : null,
               strokeWidth: 3,
-              color: const Color(0xFF8AB4F8),
-              backgroundColor: Colors.white24,
+              color: c.teal,
+              backgroundColor: c.dustSoft,
             ),
-            const Icon(Icons.arrow_downward,
-                size: 16, color: Colors.white),
+            Icon(Icons.arrow_downward, size: 16, color: c.tealInk),
           ],
         ),
       );
     }
     if (d.status == DownloadStatus.complete) {
-      return const CircleAvatar(
+      return CircleAvatar(
         radius: 18,
-        backgroundColor: Color(0xFF81C995),
-        child: Icon(Icons.check, size: 20, color: Color(0xFF202124)),
+        backgroundColor: c.clay,
+        child: Icon(Icons.check, size: 20, color: c.white),
       );
     }
-    return const CircleAvatar(
+    return CircleAvatar(
       radius: 18,
-      backgroundColor: Color(0xFFF28B82),
-      child:
-          Icon(Icons.error_outline, size: 20, color: Color(0xFF202124)),
+      backgroundColor: c.clay.withValues(alpha: 0.25),
+      child: Icon(Icons.error_outline, size: 20, color: c.clay),
     );
   }
 }
@@ -230,6 +242,7 @@ class DownloadIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppScope.colorsOf(context);
     final badge = activeCount > 0 ? '$activeCount' : null;
     return Stack(
       clipBehavior: Clip.none,
@@ -242,7 +255,7 @@ class DownloadIconButton extends StatelessWidget {
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             minimumSize: const Size(32, 32),
           ),
-          color: Colors.white,
+          color: c.tealInk,
           icon: const Icon(Icons.download_outlined),
           onPressed: onTap,
         ),
@@ -251,18 +264,17 @@ class DownloadIconButton extends StatelessWidget {
             right: 2,
             top: 2,
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 5, vertical: 1),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
               decoration: BoxDecoration(
-                color: const Color(0xFF8AB4F8),
+                color: c.teal,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
                 badge,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF202124),
+                  color: c.tealInk,
                 ),
               ),
             ),
@@ -356,9 +368,10 @@ class _DownloadsSheetState extends State<DownloadsSheet> {
             const SizedBox(height: 12),
             Row(
               children: [
-                const Text('Downloads',
-                    style:
-                        TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(
+                  'Downloads',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
                 const Spacer(),
                 IconButton(
                   tooltip: 'Close',
@@ -367,9 +380,10 @@ class _DownloadsSheetState extends State<DownloadsSheet> {
                 ),
               ],
             ),
-            Text('Saved to ${widget.saveLocationLabel}',
-                style: TextStyle(
-                    fontSize: 12, color: Colors.grey.shade600)),
+            Text(
+              'Saved to ${widget.saveLocationLabel}',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
             const SizedBox(height: 8),
             if (ordered.isEmpty)
               const Padding(
@@ -383,19 +397,16 @@ class _DownloadsSheetState extends State<DownloadsSheet> {
                   itemCount: ordered.length,
                   separatorBuilder: (context, index) =>
                       const Divider(height: 1),
-                  itemBuilder: (_, i) =>
-                      _RowTile(
+                  itemBuilder: (_, i) => _RowTile(
                     item: ordered[i],
                     onOpen: () => widget.onOpen(ordered[i]),
                     onCancel: () => widget.onCancel(ordered[i]),
                     onRetry: () => widget.onRetry(ordered[i]),
-                    onSaveToPublic: () =>
-                        widget.onSaveToPublic(ordered[i]),
+                    onSaveToPublic: () => widget.onSaveToPublic(ordered[i]),
                     onDelete: () async {
                       await widget.onDelete(ordered[i]);
                       if (mounted) {
-                        setState(
-                            () => _items.remove(ordered[i].id));
+                        setState(() => _items.remove(ordered[i].id));
                       }
                     },
                   ),
@@ -432,36 +443,39 @@ class _RowTile extends StatelessWidget {
     // Exact save location so "where is my file?" is never a mystery.
     final location = d.status == DownloadStatus.complete
         ? (d.publicPath != null
-            ? 'Download/UCP · ${formatBytes(d.receivedBytes)}'
-            : 'App files · ${formatBytes(d.receivedBytes)}')
+              ? 'Download/UCP · ${formatBytes(d.receivedBytes)}'
+              : 'App files · ${formatBytes(d.receivedBytes)}')
         : null;
     final detail = switch (d.status) {
-      DownloadStatus.downloading => pct >= 0
-          ? '${(pct * 100).toStringAsFixed(0)}% · ${formatBytes(d.receivedBytes)} of ${formatBytes(d.totalBytes)}'
-          : '${formatBytes(d.receivedBytes)} downloaded…',
+      DownloadStatus.downloading =>
+        pct >= 0
+            ? '${(pct * 100).toStringAsFixed(0)}% · ${formatBytes(d.receivedBytes)} of ${formatBytes(d.totalBytes)}'
+            : '${formatBytes(d.receivedBytes)} downloaded…',
       DownloadStatus.queued => 'Waiting…',
-      DownloadStatus.complete =>
-        'Completed · $location',
+      DownloadStatus.complete => 'Completed · $location',
       DownloadStatus.failed => d.error ?? 'Failed.',
       DownloadStatus.canceled => 'Canceled.',
     };
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: Icon(iconForFileName(d.fileName),
-          size: 32, color: Colors.teal.shade700),
-      title: Text(d.fileName,
-          maxLines: 1, overflow: TextOverflow.ellipsis),
+      leading: Icon(
+        iconForFileName(d.fileName),
+        size: 32,
+        color: Colors.teal.shade700,
+      ),
+      title: Text(d.fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(detail,
-              maxLines: 2, overflow: TextOverflow.ellipsis),
+          Text(detail, maxLines: 2, overflow: TextOverflow.ellipsis),
           if (d.status == DownloadStatus.downloading)
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: LinearProgressIndicator(
-                  value: pct >= 0 ? pct : null, minHeight: 3),
+                value: pct >= 0 ? pct : null,
+                minHeight: 3,
+              ),
             ),
         ],
       ),
@@ -470,32 +484,37 @@ class _RowTile extends StatelessWidget {
         children: [
           if (d.isActive)
             IconButton(
-                tooltip: 'Cancel',
-                icon: const Icon(Icons.close),
-                onPressed: onCancel)
+              tooltip: 'Cancel',
+              icon: const Icon(Icons.close),
+              onPressed: onCancel,
+            )
           else ...[
             if (d.status == DownloadStatus.complete) ...[
               IconButton(
-                  tooltip: 'Open',
-                  icon: const Icon(Icons.open_in_new_outlined),
-                  onPressed: onOpen),
+                tooltip: 'Open',
+                icon: const Icon(Icons.open_in_new_outlined),
+                onPressed: onOpen,
+              ),
               // Still in app files only: one tap moves it to Downloads.
               if (d.publicPath == null && d.filePath != null)
                 IconButton(
-                    tooltip: 'Save to Downloads',
-                    icon: const Icon(Icons.drive_folder_upload_outlined),
-                    onPressed: onSaveToPublic),
+                  tooltip: 'Save to Downloads',
+                  icon: const Icon(Icons.drive_folder_upload_outlined),
+                  onPressed: onSaveToPublic,
+                ),
             ],
             if (d.status == DownloadStatus.failed ||
                 d.status == DownloadStatus.canceled)
               IconButton(
-                  tooltip: 'Retry',
-                  icon: const Icon(Icons.refresh),
-                  onPressed: onRetry),
+                tooltip: 'Retry',
+                icon: const Icon(Icons.refresh),
+                onPressed: onRetry,
+              ),
             IconButton(
-                tooltip: 'Remove',
-                icon: const Icon(Icons.delete_outline),
-                onPressed: onDelete),
+              tooltip: 'Remove',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: onDelete,
+            ),
           ],
         ],
       ),

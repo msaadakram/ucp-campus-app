@@ -1592,11 +1592,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       child: MaterialApp(
         title: 'UCP University',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          scaffoldBackgroundColor: colors.cream2,
-          colorScheme: ColorScheme.fromSeed(seedColor: colors.teal),
-          useMaterial3: true,
-        ),
+        // The whole Material theme comes from the palette, so native
+        // widgets follow the same light/dark mode as the custom UI.
+        theme: themeFor(colors),
+        darkTheme: themeFor(colors),
+        themeMode: colors.dark ? ThemeMode.dark : ThemeMode.light,
         home: Builder(builder: (ctx) {
           final mq = MediaQuery.of(ctx);
           final scaled = prefs.big ? mq.copyWith(textScaler: const TextScaler.linear(1.08)) : mq;

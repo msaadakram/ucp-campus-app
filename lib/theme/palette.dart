@@ -193,3 +193,131 @@ TextStyle display(AppColors c, {double size = 20, FontWeight weight = FontWeight
 TextStyle body(AppColors c, {double size = 14, FontWeight weight = FontWeight.w400, Color? color}) {
   return GoogleFonts.figtree(fontSize: size, fontWeight: weight, color: color ?? c.tealInk);
 }
+
+/// A full Material theme built FROM the palette, so every native widget
+/// (app bars, dialogs, sheets, switches, inputs, snackbars, spinners)
+/// follows the same light/dark mode as the custom UI. Without this the
+/// MaterialApp stayed light in dark mode and white dialogs appeared over
+/// dark screens.
+ThemeData themeFor(AppColors c) {
+  final base = c.dark ? ThemeData.dark() : ThemeData.light();
+  return ThemeData(
+    useMaterial3: true,
+    brightness: c.dark ? Brightness.dark : Brightness.light,
+    scaffoldBackgroundColor: c.cream2,
+    canvasColor: c.cream2,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: c.teal,
+      brightness: c.dark ? Brightness.dark : Brightness.light,
+      primary: c.teal,
+      onPrimary: Colors.white,
+      secondary: c.tealDeep,
+      onSecondary: Colors.white,
+      surface: c.cream2,
+      onSurface: c.tealInk,
+      error: const Color(0xFFD9534F),
+    ),
+    appBarTheme: AppBarThemeData(
+      backgroundColor: c.cream2,
+      foregroundColor: c.tealInk,
+      elevation: 0,
+      centerTitle: false,
+      iconTheme: IconThemeData(color: c.tealInk),
+      titleTextStyle: display(c, size: 20, color: c.tealInk),
+    ),
+    cardTheme: CardThemeData(
+      color: c.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+    ),
+    dividerTheme: DividerThemeData(
+      color: c.dustSoft,
+      thickness: 1,
+      space: 1,
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: c.white,
+      surfaceTintColor: Colors.transparent,
+      titleTextStyle: display(c, size: 18, color: c.tealInk),
+      contentTextStyle: body(c, size: 13, color: c.tealInk),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+      ),
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: c.white,
+      surfaceTintColor: Colors.transparent,
+      modalBackgroundColor: c.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: c.tealInk,
+      contentTextStyle: body(c, size: 13, color: c.cream2),
+      actionTextColor: c.teal,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? Colors.white
+            : c.dustSoft,
+      ),
+      trackColor: WidgetStateProperty.resolveWith(
+        (states) =>
+            states.contains(WidgetState.selected) ? c.teal : c.dustSoft,
+      ),
+      trackOutlineColor:
+          WidgetStateProperty.all(Colors.transparent),
+    ),
+    checkboxTheme: CheckboxThemeData(
+      fillColor: WidgetStateProperty.all(c.teal),
+      checkColor: WidgetStateProperty.all(Colors.white),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(5),
+      ),
+    ),
+    progressIndicatorTheme: ProgressIndicatorThemeData(
+      color: c.teal,
+      linearTrackColor: c.dustSoft,
+      circularTrackColor: c.dustSoft,
+    ),
+    inputDecorationTheme: InputDecorationThemeData(
+      filled: true,
+      fillColor: c.cream,
+      hintStyle: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.45)),
+      labelStyle: body(c, size: 14, color: c.tealInk),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: c.dustSoft),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: c.teal, width: 1.6),
+      ),
+    ),
+    textSelectionTheme: TextSelectionThemeData(
+      cursorColor: c.teal,
+      selectionColor: c.teal.withValues(alpha: 0.25),
+      selectionHandleColor: c.teal,
+    ),
+    tooltipTheme: TooltipThemeData(
+      decoration: BoxDecoration(
+        color: c.tealInk,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      textStyle: body(c, size: 12, color: c.cream2),
+    ),
+    splashFactory: InkSparkle.splashFactory,
+  );
+}
