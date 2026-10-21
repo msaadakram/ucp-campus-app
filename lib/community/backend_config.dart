@@ -1,12 +1,16 @@
-/// Node API base URL (no trailing slash). Defaults to the production
-/// Vercel deployment; override per-build with
-/// `--dart-define=NODE_API_URL=...` (e.g. emulator-local testing).
+/// Node API base URL (no trailing slash).
+///
+/// The app and the Chrome extension share ONE backend: the Heroku
+/// deployment `ucp-campus-community` (https://ucp.animezone.me), which
+/// serves the community routes AND the extension routes under /api/ext/*.
+/// There is no second deployment — override per-build with
+/// `--dart-define=NODE_API_URL=...` only for local testing.
 /// This URL is public (not a secret) — all secrets stay server-side.
 /// The community system talks ONLY to this backend; the app holds no
 /// database credentials at all.
 const nodeApiUrl = String.fromEnvironment(
   'NODE_API_URL',
-  defaultValue: 'https://ucp-community-api.vercel.app',
+  defaultValue: 'https://ucp.animezone.me',
 );
 
 /// True when the app should use the Node backend.
