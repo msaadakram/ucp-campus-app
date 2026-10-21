@@ -83,6 +83,24 @@ class SyncStepUpdate {
   }
 }
 
+/// State of the portal session (the Microsoft sign-in -> Horizon cookie).
+///
+/// These are three DIFFERENT situations and they must not be collapsed
+/// into one boolean: telling a student to sign in again because the
+/// network hiccuped is wrong, and it used to happen.
+enum PortalSessionState {
+  /// The session works.
+  alive,
+
+  /// The portal explicitly reported that the session is gone (login
+  /// page / redirect) — the student must sign in again.
+  expired,
+
+  /// The portal could not be reached (offline, timeout, 5xx). The
+  /// session may be perfectly fine — we simply could not check it.
+  unreachable,
+}
+
 /// Result of one full class sync.
 class LeaderboardSyncReport {
   /// Rows published to the server (the student's weekly slots).
@@ -101,12 +119,17 @@ class LeaderboardSyncReport {
   /// True when the student had to sign in before the sync could run.
   final bool signedInDuringSync;
 
+  /// What the session check found (null when the sync never got that
+  /// far, e.g. the backend is not configured).
+  final PortalSessionState? sessionState;
+
   const LeaderboardSyncReport({
     this.timetableRows = 0,
     this.subjectsSynced = 0,
     this.subjectsFailed = 0,
     this.failures = const [],
     this.signedInDuringSync = false,
+    this.sessionState,
   });
 
   bool get ok => timetableRows > 0 || subjectsSynced > 0;

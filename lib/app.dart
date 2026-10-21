@@ -252,6 +252,12 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// True once this session published the student's timetable + marks to
   /// the community backend (the app-first path).
   bool _communitySynced = false;
+  /// True when a LIVE portal read succeeded with the current session —
+  /// the proof that the sign-in works (no extra probe needed).
+  bool _sessionVerified = false;
+  /// Bumped whenever the student signs in again. The leaderboard watches
+  /// it and resumes its sync automatically.
+  int sessionGeneration = 0;
   /// Resolves when an interactive Microsoft sign-in started by
   /// [ensurePortalSession] finishes (true = signed in, false = cancelled).
   Completer<bool>? _signInWaiter;
@@ -508,6 +514,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       setState(() {
         sessionId = valid.sessionId;
         sessionEmail = valid.email;
+        // The saved session was proven/renewed — the sign-in works.
+        _sessionVerified = true;
         _signingIn = false;
         _signInFailed = false;
         _signInFailMessage = null;
@@ -599,6 +607,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       setState(() {
         dashboard = parsed;
         timetableSlots = _resolveSlots(slots);
+        // A live read with this session — the sign-in works.
+        _sessionVerified = true;
       });
       unawaited(_backend.saveDashboard(jsonEncode(parsed.toJson())));
       unawaited(PageCache.savePage('timetable', results[1] as String));
@@ -748,18 +758,21 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       detail: 'Verifying your Microsoft session',
       state: SyncStepState.active,
     ));
-    // A dead session means nothing can be read — the caller shows the
-    // sign-in prompt.
-    if (!await _portalSessionAlive(sid)) {
-      onProgress?.call(const SyncStepUpdate(
+    final sessionState = await _probePortalSession(sid);
+    if (sessionState != PortalSessionState.alive) {
+      final expired = sessionState == PortalSessionState.expired;
+      onProgress?.call(SyncStepUpdate(
         key: 'session',
         kind: SyncStepKind.session,
         label: 'Checking your portal sign-in',
-        detail: 'Sign-in required',
+        detail: expired
+            ? 'Session expired \u00b7 sign in again'
+            : 'Could not reach the portal \u00b7 check your connection',
         state: SyncStepState.failed,
       ));
-      return const LeaderboardSyncReport();
+      return LeaderboardSyncReport(sessionState: sessionState);
     }
+    if (mounted) setState(() => _sessionVerified = true);
     onProgress?.call(const SyncStepUpdate(
       key: 'session',
       kind: SyncStepKind.session,
@@ -887,13 +900,24 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     if (!mounted) return false;
     final sid = sessionId;
     if (authed && sid != null && sid.isNotEmpty) {
-      if (await _portalSessionAlive(sid)) return true;
+      // A live dashboard read already proves the session works — no
+      // extra request, no extra failure mode.
+      if (_sessionVerified) return true;
+      final state = await _probePortalSession(sid);
+      if (state != PortalSessionState.expired) {
+        // Alive, or we simply could not reach the portal: carry on with
+        // what we have. A network problem is reported per step, never
+        // as "sign in again".
+        if (mounted) setState(() => _sessionVerified = state == PortalSessionState.alive);
+        return true;
+      }
       if (!mounted) return false;
       // The portal session died (expired elsewhere) — drop it and let
       // the Microsoft sign-in mint a fresh one.
       setState(() {
         sessionId = null;
         authed = false;
+        _sessionVerified = false;
       });
     }
     // Start the Microsoft sign-in (the shell shows the sign-in UI).
@@ -928,13 +952,33 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     if (waiter != null && !waiter.isCompleted) waiter.complete(ok);
   }
 
-  /// True when the portal still accepts the session cookie.
-  Future<bool> _portalSessionAlive(String sid) async {
+  /// Probes the portal session and says WHY it is (not) usable.
+  ///
+  /// Three outcomes, deliberately not collapsed into a boolean:
+  ///   * alive       — the session works;
+  ///   * expired     — the portal said "log in again" (redirect / login
+  ///                   form) — only this needs the student to sign in;
+  ///   * unreachable — offline, timeout or a portal error. The session
+  ///                   may be fine; we simply could not check it, so we
+  ///                   must NOT throw the student out to a sign-in.
+  Future<PortalSessionState> _probePortalSession(String sid) async {
     try {
       final html = await PortalApi().fetchDashboard(sid);
-      return html.isNotEmpty && !html.contains('oe_login_form');
+      if (html.isEmpty) return PortalSessionState.unreachable;
+      if (html.contains('oe_login_form') ||
+          html.contains('action="/web/login"')) {
+        return PortalSessionState.expired;
+      }
+      return PortalSessionState.alive;
+    } on OdooApiException catch (e) {
+      if (e.message.contains('session expired')) {
+        return PortalSessionState.expired;
+      }
+      return PortalSessionState.unreachable;
     } catch (_) {
-      return false;
+      // Timeouts / socket errors: the portal is unreachable, NOT a dead
+      // session.
+      return PortalSessionState.unreachable;
     }
   }
 
@@ -1219,6 +1263,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       _expiredForSid = sid;
       _expiredMessage = message;
       _expiredCode = code;
+      _sessionVerified = false;
     });
   }
 
@@ -1264,6 +1309,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       sessionId = null;
       sessionEmail = null;
       oauthEmail = null;
+      _sessionVerified = false;
       authError = message;
       _expiredMessage = null;
       _expiredCode = null;
@@ -1430,6 +1476,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
             // pages -> publish, then the class boards.
             onEnsureSession: ensurePortalSession,
             onSyncClass: syncClassToServer,
+            // Bumped on every sign-in — the board resumes automatically.
+            sessionGeneration: sessionGeneration,
             back: () => go('home'),
             fallback: LeaderboardScreen(start: boardOf.code, back: () => go('home')),
           );
@@ -1526,6 +1574,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                       _completeSignInWait(true);
                                       _startMonitor();
                                       _loadDashboard();
+                                      // The leaderboard watches this and
+                                      // resumes its sync on its own.
+                                      setState(() => sessionGeneration++);
                                     },
                                     onCancelled: () {
                                       _completeSignInWait(false);

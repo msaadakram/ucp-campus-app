@@ -93,6 +93,10 @@ class LiveLeaderboardScreen extends StatefulWidget {
   final Future<LeaderboardSyncReport> Function({
     void Function(SyncStepUpdate update)? onProgress,
   })? onSyncClass;
+
+  /// Bumped by the app every time the student signs in again. The board
+  /// watches it and resumes its sync on its own (no extra tap).
+  final int sessionGeneration;
   final VoidCallback? back;
   /// Shown when live data is unavailable (no key / hard failure).
   final Widget? fallback;
@@ -111,6 +115,7 @@ class LiveLeaderboardScreen extends StatefulWidget {
     this.onEnsureGrades,
     this.onEnsureSession,
     this.onSyncClass,
+    this.sessionGeneration = 0,
     this.back,
     this.fallback,
   });
@@ -141,8 +146,11 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
   /// grade page -> the board request).
   final List<SyncStepUpdate> _steps = [];
   /// True when the portal sign-in is required before anything can be
-  /// read (the student is not signed in / the session died).
+  /// read (the session really expired).
   bool _needsSignIn = false;
+  /// True when the portal could not be reached — a network problem, not
+  /// a sign-in problem. The board still loads; only the live sync waits.
+  bool _networkProblem = false;
   /// Result of the last class sync.
   LeaderboardSyncReport? _syncReport;
   /// True once the class pipeline ran in this screen session — switching
@@ -317,7 +325,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
             key: 'session',
             kind: SyncStepKind.session,
             label: 'Checking your portal sign-in',
-            detail: 'Sign-in required',
+            detail: 'Session expired \u00b7 sign in again',
             state: SyncStepState.failed,
           ));
           setState(() => _needsSignIn = true);
@@ -335,6 +343,11 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
           _syncReport = report;
           _classSyncDone = true;
           _stepsCollapsed = true;
+          // A portal we could not reach is a network problem — the
+          // student does NOT need to sign in again.
+          if (report.sessionState == PortalSessionState.unreachable) {
+            _networkProblem = true;
+          }
         });
       }
     } catch (_) {
@@ -464,6 +477,17 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
         loadingBoard = false;
         error = 'Could not load this leaderboard. Tap retry.';
       });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant LiveLeaderboardScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The student just signed in again — resume the sync by itself.
+    if (widget.sessionGeneration != oldWidget.sessionGeneration &&
+        _needsSignIn) {
+      setState(() => _needsSignIn = false);
+      _runClassSync(force: true);
     }
   }
 
@@ -600,6 +624,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
               ),
             if (_steps.isNotEmpty) _stepList(c),
             if (_needsSignIn) _signInCard(c),
+            if (_networkProblem) _networkCard(c),
             if (roster != null) _rosterLine(c, roster!),
             if (loadingBoard)
               const Padding(
@@ -762,6 +787,58 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// The portal could not be reached: a network problem, NOT a sign-in
+  /// problem. The board still works (it comes from the server); only the
+  /// live sync of the timetable/grades waits for the connection.
+  Widget _networkCard(AppColors c) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: c.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.wifi_off_outlined, size: 18, color: c.tealInk),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Could not reach the UCP portal \u2014 your ranks are up to '
+                'date, but the live sync of your timetable and grades '
+                'needs a connection.',
+                style: body(c,
+                    size: 12, color: c.tealInk.withValues(alpha: 0.75)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                setState(() => _networkProblem = false);
+                _runClassSync(force: true);
+              },
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [c.tealDeep, c.teal]),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text('Retry',
+                    style: body(c,
+                        size: 12.5,
+                        weight: FontWeight.w800,
+                        color: Colors.white)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

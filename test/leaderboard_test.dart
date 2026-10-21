@@ -474,6 +474,35 @@ void main() {
       expect(find.text('Other'), findsOneWidget);
     });
 
+    testWidgets('an unreachable portal is a network problem, not a sign-in', (
+        tester) async {
+      final svc = FakeLeaderboardService(
+        rows: const [
+          {'studentId': 'L1OTHER', 'studentName': 'Other', 'overallPercentage': 70.0},
+        ],
+      );
+      await tester.pumpWidget(_wrap(LiveLeaderboardScreen(
+        service: svc,
+        studentId: 'L1TEST',
+        onEnsureSession: () async => true,
+        onSyncClass: ({onProgress}) async {
+          // The portal could not be reached.
+          return const LeaderboardSyncReport(
+            sessionState: PortalSessionState.unreachable,
+          );
+        },
+        back: () {},
+      )));
+      await tester.pumpAndSettle();
+      // No sign-in demand — the student is told to check the connection.
+      expect(find.text('Sign in to sync your class'), findsNothing);
+      expect(find.textContaining('Could not reach the UCP portal'),
+          findsOneWidget);
+      // The board still loads (it comes from the server).
+      expect(svc.boardCalls, greaterThanOrEqualTo(1));
+      expect(find.text('Other'), findsOneWidget);
+    });
+
     testWidgets('the board queries the exact section, not just the code', (
         tester) async {
       final svc = FakeLeaderboardService();
