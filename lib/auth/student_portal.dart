@@ -433,11 +433,11 @@ TimetableData parseTimetable(String html) {
           .where((t) => t.isNotEmpty)
           .toList();
       String at(int i) => i < parts.length ? parts[i] : '';
-      var subject = at(1);
-      // Portal truncates long names with ".." — restore the known full name.
-      if (subject.startsWith('Computer Organization and Assembly')) {
-        subject = 'Computer Organization and Assembly Language';
-      }
+      // The portal truncates long names ("Computer Organization and
+      // Assembly ..") and the truncation also hides the "- Lab" suffix.
+      // The full name is restored from the portal's course list by course
+      // code (see the app shell), never by a hardcoded guess.
+      final subject = at(1);
       slots.add(TimetableSlot(
         day: day,
         start: a.attributes['data-start'] ?? '',

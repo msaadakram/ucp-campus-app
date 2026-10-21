@@ -128,6 +128,18 @@ class FakeLeaderboardService extends LeaderboardService {
   }
 
   @override
+  Future<LeaderboardPrivacy> fetchPrivacy(String studentId) async =>
+      const LeaderboardPrivacy();
+
+  @override
+  Future<LeaderboardPrivacy> savePrivacy(
+    String studentId, {
+    required bool hideName,
+    required bool hidePhoto,
+  }) async =>
+      LeaderboardPrivacy(hideName: hideName, hidePhoto: hidePhoto);
+
+  @override
   void dispose() {}
 }
 
@@ -356,6 +368,35 @@ void main() {
       // Roster verification line: you + N classmates in this section.
       expect(find.textContaining('11 classmates'), findsOneWidget);
       expect(find.textContaining('cp233'), findsOneWidget);
+    });
+
+    testWidgets('the board queries the exact section, not just the code', (
+        tester) async {
+      final svc = FakeLeaderboardService();
+      await tester.pumpWidget(_wrap(LiveLeaderboardScreen(
+        service: svc,
+        studentId: 'L1TEST',
+        initialCourse: 'Computer Organization and Assembly Language - Lab',
+        initialCourseCode: 'AR221',
+        portalCourses: const [
+          PortalCourse(
+            name: 'Computer Organization and Assembly Language - Lab',
+            teacher: 'T',
+            code: 'AR221',
+            credits: 1,
+            attendance: 0,
+            infoUrl: '/student/course/info/BBB222',
+          ),
+        ],
+        // The course card shows "AR221"; the timetable carries the full
+        // section. The full code is what scopes the board.
+        sectionCodes: const {
+          'AR221': 'AR221-F26-BS-CS-F25-C1',
+        },
+        back: () {},
+      )));
+      await tester.pumpAndSettle();
+      expect(svc.lastCourseCode, 'AR221-F26-BS-CS-F25-C1');
     });
 
     testWidgets('theory and lab are separate subjects in the picker', (

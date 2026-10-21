@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import '../auth/dashboard_parser.dart';
+import '../leaderboard/leaderboard_service.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
 
@@ -71,6 +72,42 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  /// Leaderboard privacy — lives on the SERVER so the app and the
+  /// extension always agree (hiding your name here hides it everywhere).
+  bool _hideName = false;
+  bool _privacyLoaded = false;
+
+  /// Reads the privacy setting (shared with the extension).
+  Future<void> _loadPrivacy() async {
+    final sid = (widget.studentId ?? '').trim();
+    if (sid.isEmpty) return;
+    try {
+      final p = await NodeLeaderboardService().fetchPrivacy(sid);
+      if (!mounted) return;
+      setState(() {
+        _hideName = p.hideName;
+        _privacyLoaded = true;
+      });
+    } catch (_) {
+      // Offline / not configured: keep the local value.
+    }
+  }
+
+  /// Stores the privacy setting on the server.
+  Future<void> _setHideName(bool value) async {
+    final sid = (widget.studentId ?? '').trim();
+    setState(() => _hideName = value);
+    if (sid.isEmpty) return;
+    try {
+      final p = await NodeLeaderboardService()
+          .savePrivacy(sid, hideName: value, hidePhoto: false);
+      if (!mounted) return;
+      setState(() => _hideName = p.hideName);
+    } catch (_) {
+      // Roll back on failure so the switch never lies.
+      if (mounted) setState(() => _hideName = !value);
+    }
+  }
   bool push = true, assign = true, grades = true, community = false, email = true;
   bool lock = false;
   String _appVersion = '';
@@ -85,6 +122,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _loadPrivacy();
     _loadVersion();
     _loadStorage();
   }
@@ -352,6 +390,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     SettingRow(icon: Icons.text_fields_outlined, tone: c.board, label: 'Larger text', sub: 'Easier reading', trailing: AppToggle(value: widget.prefs.big, onChanged: (v) => _set(ProfilePrefs(theme: widget.prefs.theme, palette: widget.prefs.palette, big: v, motion: widget.prefs.motion)), colors: c)),
                     SettingRow(icon: Icons.auto_awesome_outlined, tone: c.dust, label: 'Animations', sub: 'Smooth screen transitions', trailing: AppToggle(value: widget.prefs.motion, onChanged: (v) => _set(ProfilePrefs(theme: widget.prefs.theme, palette: widget.prefs.palette, big: widget.prefs.big, motion: v)), colors: c)),
+                    if ((widget.studentId ?? '').trim().isNotEmpty)
+                      SettingRow(
+                        icon: Icons.visibility_off_outlined,
+                        tone: c.teal,
+                        label: 'Hide my name on leaderboards',
+                        sub: _privacyLoaded
+                            ? ('Shared with the extension · ${_hideName ? 'hidden' : 'visible'}')
+                            : 'Shared with the extension',
+                        trailing: AppToggle(
+                          value: _hideName,
+                          onChanged: _setHideName,
+                          colors: c,
+                        ),
+                      ),
                   ],
                 ),
               ),

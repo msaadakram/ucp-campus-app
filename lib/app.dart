@@ -127,6 +127,92 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// Timetable rows in the extension's format (course name carries the
   /// section, exactly like the extension's scraper) so app and extension
   /// produce the SAME class-roster keys on the server.
+  /// Timetable slots with the FULL course name restored.
+  ///
+  /// The portal's schedule grid truncates long course names ("Computer
+  /// Organization and Assembly ..") and the truncation also hides the
+  /// "- Lab" suffix — the exact thing that separates the lab board from
+  /// the theory board. The course list carries the full name and the
+  /// course code, and the slot carries the section code, so the two are
+  /// joined by code instead of by guessing.
+  List<TimetableSlot> _resolveSlots(List<TimetableSlot> slots) {
+    final courses = dashboard?.courses ?? const <PortalCourse>[];
+    if (courses.isEmpty) return slots;
+    final byCode = <String, String>{
+      for (final pc in courses)
+        if (pc.code.trim().isNotEmpty)
+          pc.code.trim().toUpperCase(): pc.name.trim(),
+    };
+    return [
+      for (final s in slots)
+        () {
+          final short = s.section.split('-').first.trim().toUpperCase();
+          final full = byCode[short];
+          if (full == null || full.isEmpty || full == s.subject.trim()) {
+            return s;
+          }
+          return TimetableSlot(
+            day: s.day,
+            start: s.start,
+            end: s.end,
+            subject: full,
+            teacher: s.teacher,
+            section: s.section,
+            room: s.room,
+          );
+        }(),
+    ];
+  }
+
+  /// Course code -> FULL section code for every portal course.
+  Map<String, String> get _sectionCodesByCourse {
+    final out = <String, String>{};
+    for (final pc in dashboard?.courses ?? const <PortalCourse>[]) {
+      final full = _resolveSectionCode(pc);
+      final key = pc.code.trim().toUpperCase();
+      if (key.isEmpty) continue;
+      if (full != null && full.isNotEmpty) out[key] = full;
+    }
+    return out;
+  }
+
+  /// FULL section code of a portal course ("AR221" ->
+  /// "AR221-F26-BS-CS-F25-C1"). The course card only shows the short
+  /// code; the timetable carries the full one. The full code is the only
+  /// identity every client agrees on, so it is what we publish with.
+  String? _resolveSectionCode(PortalCourse pc) {
+    final short = pc.code.trim().toUpperCase();
+    if (short.isEmpty) return null;
+    final candidates = <String>[];
+    for (final s in timetableSlots) {
+      final sec = s.section.trim();
+      if (sec.isEmpty) continue;
+      if (!sec.toUpperCase().startsWith('$short-')) continue;
+      if (!candidates.contains(sec)) candidates.add(sec);
+    }
+    if (candidates.isEmpty) return null;
+    if (candidates.length == 1) return candidates.first;
+    // Several sections share the course code — pick the one whose
+    // (resolved) subject matches the course name.
+    final want = _courseLooseKey(pc.name);
+    for (final sec in candidates) {
+      final slot = timetableSlots.firstWhere(
+        (s) => s.section.trim() == sec,
+        orElse: () => const TimetableSlot(
+          day: '',
+          start: '',
+          end: '',
+          subject: '',
+          teacher: '',
+          section: '',
+          room: '',
+        ),
+      );
+      if (_courseLooseKey(slot.subject) == want) return sec;
+    }
+    return candidates.first;
+  }
+
   List<Map<String, String>> get _timetableSyncRows {
     final rows = <Map<String, String>>[];
     for (final s in timetableSlots) {
@@ -162,6 +248,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   int _dashRun = 0;
   /// Weekly class slots backing Home's real course cards.
   List<TimetableSlot> timetableSlots = const [];
+  /// True once this session published the student's timetable + marks to
+  /// the community backend (the app-first path).
+  bool _communitySynced = false;
 
   /// True while the cold-start auto-login attempt is running: the login
   /// screen shows a short "Signing you in…" animation instead of the form.
@@ -477,7 +566,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       if (snap == null || !mounted) return;
       final slots = parseTimetable(snap.html).slots;
       if (slots.isNotEmpty && mounted) {
-        setState(() => timetableSlots = slots);
+        setState(() => timetableSlots = _resolveSlots(slots));
       }
     } catch (_) {}
   }
@@ -505,10 +594,13 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           : parseTimetable(results[1] as String).slots;
       setState(() {
         dashboard = parsed;
-        timetableSlots = slots;
+        timetableSlots = _resolveSlots(slots);
       });
       unawaited(_backend.saveDashboard(jsonEncode(parsed.toJson())));
       unawaited(PageCache.savePage('timetable', results[1] as String));
+      // Publish this student's class + marks so classmates (app-only or
+      // extension) see them. Background, non-blocking.
+      unawaited(_runCommunitySync());
     } catch (_) {
       // Keep previous data / sample fallback; next login or resume retries.
     }
@@ -524,6 +616,10 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     if (sid == null || !mounted) return;
     if (OfflineMonitor.instance.isOffline) return;
     final run = ++_dashRun;
+    // An explicit refresh re-publishes the student's timetable + marks, so
+    // classmates see the latest numbers (the automatic pass stays
+    // once-per-session).
+    _communitySynced = false;
     try {
       final api = PortalApi();
       final results = await Future.wait([
@@ -569,11 +665,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       if (!parsed.isEmpty) {
         setState(() {
           dashboard = parsed;
-          timetableSlots = slots;
+          timetableSlots = _resolveSlots(slots);
         });
         unawaited(_backend.saveDashboard(jsonEncode(parsed.toJson())));
       } else if (mounted) {
-        setState(() => timetableSlots = slots);
+        setState(() => timetableSlots = _resolveSlots(slots));
       }
     } on OdooApiException catch (e) {
       if (e.message.contains('expired') || e.message.contains('login')) {
@@ -614,6 +710,59 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     }
     if (gb == null || gb.isEmpty) return;
     await _syncOwnGrades(match, match.name, gb);
+  }
+
+  /// Publishes the student's timetable and gradebooks to the community
+  /// backend so their classmates see them — WITHOUT the extension.
+  ///
+  /// App-only users used to stay invisible: the timetable was only
+  /// published when a leaderboard was opened and the marks only for the
+  /// subject whose board was open. This runs in the background right
+  /// after the dashboard loads, so a user who never touches the
+  /// extension is still on the boards of their class.
+  Future<void> _runCommunitySync() async {
+    if (!isExtConfigured) return;
+    final sid = (dashboard?.studentId ?? '').trim();
+    if (sid.isEmpty) return;
+    if (_communitySynced) return;
+    _communitySynced = true;
+    try {
+      final svc = NodeLeaderboardService();
+      // 1) Timetable — this is what builds the class roster.
+      final rows = _timetableSyncRows;
+      if (rows.isNotEmpty) {
+        await svc.syncTimetable(
+          studentId: sid,
+          rows: rows,
+        );
+      }
+      // 2) Marks for every course — one request per subject, spaced out
+      //    so the portal is not hammered.
+      final courses = dashboard?.courses ?? const <PortalCourse>[];
+      for (final pc in courses) {
+        if (!mounted) return;
+        final courseId = courseIdFromUrl(pc.infoUrl) ?? '';
+        if (courseId.isEmpty) continue;
+        try {
+          var gb = CourseDetailCache.gradebook[courseId];
+          if (gb == null || gb.isEmpty) {
+            final html = await PortalApi().fetchPage(
+              '/student/course/gradebook/$courseId',
+              sid,
+            );
+            gb = parseCourseGradebook(html);
+            CourseDetailCache.putGradebook(courseId, gb);
+          }
+          if (gb == null || gb.isEmpty) continue;
+          await _syncOwnGrades(pc, pc.name, gb);
+        } catch (_) {
+          // One failing subject must not stop the rest.
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+      }
+    } catch (_) {
+      // Best effort: the app keeps working without the backend.
+    }
   }
 
   /// Portal course matching a board label. Exact name first, then the
@@ -703,7 +852,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         studentId: sid,
         studentName: dashboard?.studentName ?? '',
         courseName: courseName,
-        courseCode: pc.code,
+        // The FULL section code — identical in every client, so the app
+        // and the extension write onto the same record.
+        courseCode: _resolveSectionCode(pc) ?? pc.code,
         overallPercentage: overall,
         grade: grade,
         assessments: assessments,
@@ -1077,6 +1228,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
             // The student's REAL portal courses drive the picker (their
             // names carry "- Lab" etc., matching the published grades).
             portalCourses: dashboard?.courses ?? const [],
+            // Full section codes: the board queries the exact section
+            // instead of guessing from the (truncated) course name.
+            sectionCodes: _sectionCodesByCourse,
             // Portal-timetable fallback: the app already parsed the real
             // weekly schedule, so the picker works before the extension
             // has posted anything.

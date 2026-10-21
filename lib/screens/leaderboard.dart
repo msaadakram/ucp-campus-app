@@ -65,6 +65,10 @@ class LiveLeaderboardScreen extends StatefulWidget {
   /// as the primary picker source so the board queries the same course
   /// key the extension published.
   final List<PortalCourse> portalCourses;
+  /// Course code -> FULL section code (e.g. "AR221" ->
+  /// "AR221-F26-BS-CS-F25-C1"). The full code scopes the board to one
+  /// exact section, whoever published the data.
+  final Map<String, String> sectionCodes;
   /// Bare course names from the app's own portal timetable — the picker
   /// source when the extension has posted no timetable yet.
   final List<String> fallbackCourses;
@@ -89,6 +93,7 @@ class LiveLeaderboardScreen extends StatefulWidget {
     this.initialCourse,
     this.initialCourseCode,
     this.portalCourses = const [],
+    this.sectionCodes = const {},
     this.fallbackCourses = const [],
     this.timetableRows = const [],
     this.onEnsureGrades,
@@ -105,6 +110,8 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
   LeaderboardCourse? course;
   List<LeaderboardEntry> entries = [];
   int? credits;
+  /// True when this view was free (the app never spends credits).
+  bool freeView = false;
   bool loading = true;
   bool loadingBoard = false;
   /// True when the course list came from the app's portal timetable
@@ -162,7 +169,8 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       }
 
       for (final pc in widget.portalCourses) {
-        add(pc.name, code: pc.code);
+        final full = widget.sectionCodes[pc.code.trim().toUpperCase()];
+        add(pc.name, code: (full != null && full.isNotEmpty) ? full : pc.code);
       }
       for (final n in extList) {
         final loose = courseLooseKey(n);
@@ -296,6 +304,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       setState(() {
         entries = res.entries;
         credits = res.remainingCredits;
+        freeView = res.free;
         loadingBoard = false;
       });
       await _loadRoster();
@@ -357,7 +366,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                   ),
                 ),
               const Spacer(),
-              if (credits != null)
+              if (credits != null || freeView)
                 Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 10, vertical: 6),
@@ -368,10 +377,15 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.toll_outlined,
-                          size: 14, color: Colors.white),
+                      Icon(
+                        freeView
+                            ? Icons.bolt_outlined
+                            : Icons.toll_outlined,
+                        size: 14,
+                        color: Colors.white,
+                      ),
                       const SizedBox(width: 4),
-                      Text('$credits credits',
+                      Text(freeView ? 'Free' : '$credits credits',
                           style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w700,

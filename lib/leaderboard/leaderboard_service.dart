@@ -41,7 +41,24 @@ class LeaderboardEntry {
 class LeaderboardResult {
   final List<LeaderboardEntry> entries;
   final int? remainingCredits;
-  const LeaderboardResult({required this.entries, this.remainingCredits});
+  /// True when the view was free (app client, or nobody else published
+  /// marks yet). The app never spends the extension's credits.
+  final bool free;
+  const LeaderboardResult({
+    required this.entries,
+    this.remainingCredits,
+    this.free = false,
+  });
+}
+
+/// Privacy state of a student on the leaderboards.
+class LeaderboardPrivacy {
+  final bool hideName;
+  final bool hidePhoto;
+  const LeaderboardPrivacy({
+    this.hideName = false,
+    this.hidePhoto = false,
+  });
 }
 
 /// Thrown when the student has no credits left (server 402 NO_CREDITS).
@@ -110,6 +127,19 @@ abstract class LeaderboardService {
     String? studentId,
     String? courseCode,
   });
+
+  /// Privacy settings — shared with the extension: hiding your name here
+  /// hides it everywhere (the server masks rows for every client).
+  Future<LeaderboardPrivacy> fetchPrivacy(String studentId);
+
+  /// Stores the privacy settings on the server (so the extension and the
+  /// app always agree).
+  Future<LeaderboardPrivacy> savePrivacy(
+    String studentId, {
+    required bool hideName,
+    required bool hidePhoto,
+  });
+
   void dispose();
 }
 
@@ -183,7 +213,12 @@ class NodeLeaderboardService extends LeaderboardService {
     String? studentId,
     String? courseCode,
   }) async {
-    final params = <String, String>{'courseName': courseName};
+    final params = <String, String>{
+      'courseName': courseName,
+      // The app is a first-party, free client: the server never spends
+      // the extension's credits for it.
+      'source': 'app',
+    };
     final sid = (studentId ?? '').trim();
     if (sid.isNotEmpty) params['studentId'] = sid;
     final code = (courseCode ?? '').trim();
@@ -273,7 +308,11 @@ class NodeLeaderboardService extends LeaderboardService {
     String? studentId,
     String? courseCode,
   }) async {
-    final params = <String, String>{'courseName': courseName};
+    final params = <String, String>{
+      'courseName': courseName,
+      // Free for the app (see the server's credit policy).
+      'source': 'app',
+    };
     final sid = (studentId ?? '').trim();
     if (sid.isNotEmpty) params['studentId'] = sid;
     final code = (courseCode ?? '').trim();
@@ -314,6 +353,56 @@ class NodeLeaderboardService extends LeaderboardService {
       entries: entries,
       remainingCredits:
           credits == null ? null : _asInt(credits),
+      free: body['free'] == true,
+    );
+  }
+
+  @override
+  Future<LeaderboardPrivacy> fetchPrivacy(String studentId) async {
+    final res = await _client
+        .get(
+          Uri.parse(
+            '$nodeApiUrl/api/ext/privacy/${Uri.encodeComponent(studentId)}',
+          ),
+          headers: _headers,
+        )
+        .timeout(_timeout);
+    if (res.statusCode != 200) _throwFor(res);
+    final body = jsonDecode(res.body);
+    if (body is! Map) {
+      throw LeaderboardException('Malformed privacy data.');
+    }
+    return LeaderboardPrivacy(
+      hideName: body['hideName'] == true,
+      hidePhoto: body['hidePhoto'] == true,
+    );
+  }
+
+  @override
+  Future<LeaderboardPrivacy> savePrivacy(
+    String studentId, {
+    required bool hideName,
+    required bool hidePhoto,
+  }) async {
+    final res = await _client
+        .post(
+          Uri.parse('$nodeApiUrl/api/ext/privacy'),
+          headers: {..._headers, 'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'studentId': studentId,
+            'hideName': hideName,
+            'hidePhoto': hidePhoto,
+          }),
+        )
+        .timeout(_timeout);
+    if (res.statusCode != 200) _throwFor(res);
+    final body = jsonDecode(res.body);
+    if (body is! Map) {
+      throw LeaderboardException('Malformed privacy data.');
+    }
+    return LeaderboardPrivacy(
+      hideName: body['hideName'] == true,
+      hidePhoto: body['hidePhoto'] == true,
     );
   }
 
