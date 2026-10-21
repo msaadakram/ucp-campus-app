@@ -148,9 +148,16 @@ class NodeLeaderboardService extends LeaderboardService {
   final String _apiKey;
   static const _timeout = Duration(seconds: 20);
 
+  /// Live instances in this process. The app must keep this at ONE: each
+  /// instance owns a socket pool, and building one per rebuild used to
+  /// leak a connection pool every time the screen repainted.
+  static int instances = 0;
+
   NodeLeaderboardService({http.Client? client, String? apiKey})
       : _client = client ?? http.Client(),
-        _apiKey = (apiKey ?? extApiKey).trim();
+        _apiKey = (apiKey ?? extApiKey).trim() {
+    instances++;
+  }
 
   Map<String, String> get _headers => {'x-api-key': _apiKey};
 

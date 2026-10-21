@@ -84,7 +84,17 @@ class CampusApp extends StatefulWidget {
   /// Theme snapshot read from device storage before the first frame, so
   /// startup paints in the saved theme. Null in tests → light defaults.
   final ProfilePrefs? initialPrefs;
-  const CampusApp({super.key, this.skipLogin = false, this.authHooks, this.initialPrefs});
+  /// Test-only: builds the backend service. The app creates ONE for its
+  /// whole lifetime (one socket pool) — the factory lets a test prove
+  /// that no rebuild creates another one.
+  final LeaderboardService Function()? serviceFactory;
+  const CampusApp({
+    super.key,
+    this.skipLogin = false,
+    this.authHooks,
+    this.initialPrefs,
+    this.serviceFactory,
+  });
   @override
   State<CampusApp> createState() => _CampusAppState();
 }
@@ -262,8 +272,12 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// fresh service — and a fresh http.Client with its own socket pool —
   /// which leaked a connection pool on every rebuild and every subject.
   NodeLeaderboardService? _lb;
-  NodeLeaderboardService get _lbService =>
-      _lb ??= NodeLeaderboardService();
+  LeaderboardService? _lbOverride;
+  LeaderboardService get _lbService {
+    final override = _lbOverride;
+    if (override != null) return override;
+    return _lb ??= NodeLeaderboardService();
+  }
   /// Resolves when an interactive Microsoft sign-in started by
   /// [ensurePortalSession] finishes (true = signed in, false = cancelled).
   Completer<bool>? _signInWaiter;
@@ -417,6 +431,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       _loadCachedDashboard();
       _loadCachedSlots();
       _restoreSession();
+    }
+    // Test seam: one service for the whole app lifetime.
+    final factory = widget.serviceFactory;
+    if (factory != null) {
+      _lbOverride = factory();
     }
   }
 
