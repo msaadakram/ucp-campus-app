@@ -598,9 +598,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     Row(
                       children: [
-                        Text("Today's classes",
-                            style: display(c, size: 20)),
-                        const Spacer(),
+                        // Flexible + ellipsis: a long locale string or a
+                        // narrow screen must never overflow the row.
+                        Flexible(
+                          child: Text("Today's classes",
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: display(c, size: 20)),
+                        ),
+                        const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 4),

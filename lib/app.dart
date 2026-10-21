@@ -88,12 +88,17 @@ class CampusApp extends StatefulWidget {
   /// whole lifetime (one socket pool) — the factory lets a test prove
   /// that no rebuild creates another one.
   final LeaderboardService Function()? serviceFactory;
+  /// Test-only: builds the portal API client (reads the portal with the
+  /// session cookie). Lets a test prove WHICH cookie the leaderboard
+  /// pipeline sends.
+  final PortalApi Function()? portalApiFactory;
   const CampusApp({
     super.key,
     this.skipLogin = false,
     this.authHooks,
     this.initialPrefs,
     this.serviceFactory,
+    this.portalApiFactory,
   });
   @override
   State<CampusApp> createState() => _CampusAppState();
@@ -278,6 +283,15 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     if (override != null) return override;
     return _lb ??= NodeLeaderboardService();
   }
+  /// ONE portal http client for the whole app. Every grade page and the
+  /// timetable used to build its own http.Client (one socket pool per
+  /// page), which leaked connections on every class sync.
+  PortalApi? _portal;
+  PortalApi _portalClient() {
+    final override = widget.portalApiFactory?.call();
+    if (override != null) return override;
+    return _portal ??= PortalApi();
+  }
   /// Resolves when an interactive Microsoft sign-in started by
   /// [ensurePortalSession] finishes (true = signed in, false = cancelled).
   Completer<bool>? _signInWaiter;
@@ -448,6 +462,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     // The shared backend client (one socket pool for the whole app).
     _lb?.dispose();
     _lb = null;
+    _portal?.close();
+    _portal = null;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -621,7 +637,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     if (OfflineMonitor.instance.isOffline) return;
     final run = ++_dashRun;
     try {
-      final api = PortalApi();
+      final api = _portalClient();
       final results = await Future.wait([
         api.fetchDashboard(sid),
         api.fetchPage(PortalRoutes.timetable, sid).catchError((_) => ''),
@@ -663,7 +679,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     // once-per-session).
     _communitySynced = false;
     try {
-      final api = PortalApi();
+      final api = _portalClient();
       final results = await Future.wait([
         api.fetchDashboard(sid),
         api.fetchPage(PortalRoutes.timetable, sid).catchError((_) => ''),
@@ -727,8 +743,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   Future<void> _ensureCourseGrades(String courseName) async {
     if (!isExtConfigured) return;
     final sid = (dashboard?.studentId ?? '').trim();
+    final session = (sessionId ?? '').trim();
     final dash = dashboard;
-    if (sid.isEmpty || dash == null || dash.courses.isEmpty) return;
+    if (sid.isEmpty || session.isEmpty || dash == null || dash.courses.isEmpty) {
+      return;
+    }
     // Match the board's label to a portal course. The PORTAL name is the
     // one the grades must be published under: it keeps the "- Lab"
     // suffix, which is the same key the extension used — publishing under
@@ -740,10 +759,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     var gb = CourseDetailCache.gradebook[courseId];
     if (gb == null || gb.isEmpty) {
       try {
-        final html = await PortalApi().fetchPage(
-          '/student/course/gradebook/$courseId',
-          sid,
-        );
+        final html =
+            await _portalClient().fetchPage('/student/course/gradebook/$courseId', session);
         gb = parseCourseGradebook(html);
         CourseDetailCache.putGradebook(courseId, gb);
       } catch (_) {
@@ -776,8 +793,18 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     if (!isExtConfigured) {
       return const LeaderboardSyncReport();
     }
+    // TWO DIFFERENT IDS — using the wrong one made the portal treat every
+    // read as an anonymous visitor and answer with its login page, which
+    // surfaced to the student as a false "session expired".
+    //
+    //   sessionId : the Horizon session COOKIE value (reads the portal)
+    //   studentId : the portal registration number (published to the
+    //               backend so classmates/roster know who this is)
+    final session = (sessionId ?? '').trim();
     final sid = (dashboard?.studentId ?? '').trim();
-    if (sid.isEmpty) return const LeaderboardSyncReport();
+    if (session.isEmpty || sid.isEmpty) {
+      return LeaderboardSyncReport(sessionState: PortalSessionState.expired);
+    }
 
     // ---- 1) sign-in check (the session cookie) ----
     onProgress?.call(const SyncStepUpdate(
@@ -787,7 +814,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       detail: 'Verifying your Microsoft session',
       state: SyncStepState.active,
     ));
-    final sessionState = await _probePortalSession(sid);
+    final sessionState = await _probePortalSession(session);
     if (sessionState != PortalSessionState.alive) {
       final expired = sessionState == PortalSessionState.expired;
       onProgress?.call(SyncStepUpdate(
@@ -820,7 +847,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     ));
     var rows = _timetableSyncRows;
     try {
-      final html = await PortalApi().fetchPage(PortalRoutes.timetable, sid);
+      final html =
+          await _portalClient().fetchPage(PortalRoutes.timetable, session);
       final slots = parseTimetable(html).slots;
       if (slots.isNotEmpty) {
         if (mounted) setState(() => timetableSlots = _resolveSlots(slots));
@@ -877,9 +905,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       try {
         var gb = CourseDetailCache.gradebook[courseId];
         if (gb == null || gb.isEmpty) {
-          final html = await PortalApi().fetchPage(
+          final html = await _portalClient().fetchPage(
             '/student/course/gradebook/$courseId',
-            sid,
+            session,
           );
           gb = parseCourseGradebook(html);
           CourseDetailCache.putGradebook(courseId, gb);
@@ -998,9 +1026,10 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   ///   * unreachable — offline, timeout or a portal error. The session
   ///                   may be fine; we simply could not check it, so we
   ///                   must NOT throw the student out to a sign-in.
-  Future<PortalSessionState> _probePortalSession(String sid) async {
+  Future<PortalSessionState> _probePortalSession(String session) async {
+    if (session.trim().isEmpty) return PortalSessionState.expired;
     try {
-      final html = await PortalApi().fetchDashboard(sid);
+      final html = await _portalClient().fetchDashboard(session);
       if (html.isEmpty) return PortalSessionState.unreachable;
       if (html.contains('oe_login_form') ||
           html.contains('action="/web/login"')) {

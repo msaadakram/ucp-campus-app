@@ -16,7 +16,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:http/testing.dart';
 import 'package:ucp/app.dart';
+import 'package:ucp/auth/portal_api.dart';
+import 'package:ucp/community/backend_config.dart';
+import 'package:ucp/auth/session_manager.dart';
 import 'package:ucp/auth/prefs_store.dart';
 import 'package:ucp/leaderboard/leaderboard_service.dart';
 import 'package:ucp/screens/profile.dart';
@@ -106,6 +110,54 @@ class RecordingService extends LeaderboardService {
   @override
   void dispose() {}
 }
+
+class FakeBackend extends SessionBackend {
+  @override
+  Future<void> save({required String sessionId, required String email}) async {}
+  @override
+  Future<({String sessionId, String email})?> load() async =>
+      (sessionId: 'real-session-cookie', email: 'tester@ucp.edu.pk');
+  @override
+  Future<String?> readEmail() async => 'tester@ucp.edu.pk';
+  @override
+  Future<int?> savedAtMs() async => DateTime.now().millisecondsSinceEpoch;
+  @override
+  Future<void> clear() async {}
+  @override
+  Future<void> saveDashboard(String json) async {}
+  @override
+  Future<String?> loadDashboard() async => null;
+}
+
+/// Minimal portal dashboard HTML that parses into a student.
+const _fakeDashboardHtml = '''
+<html><body>
+<h2 class="heading_b"><span class="sub-heading">L1F25BSCS0577</span>Saad Akram</h2>
+<a href="/student/course/info/ABCD1234abcd"><div class="card">
+  <div class="card-header"><span>Data Structures</span></div>
+  <h6 class="card-title">Ali Haider</h6>
+  <span class="sub-heading">CP233</span>
+  <div class="card-body">Credits: 3 Attendance: 75%</div>
+</div></a>
+</body></html>
+''';
+
+/// Portal timetable HTML: one Monday slot that parses into a course.
+const _fakeTimetableHtml = '''
+<html><body>
+<div class="cd-schedule__group">
+  <div class="cd-schedule__top-info"><span>Monday</span></div>
+  <ul>
+    <li class="cd-schedule__event"><a data-start="08:00" data-end="08:55">
+      <em class="cd-schedule__name">Ali Haider Arif</em>
+      <span class="cd-schedule__name">Data Structures</span>
+      <span class="cd-schedule__name">CP233-R26-BS-SE-F24-SED1</span>
+      <span class="cd-schedule__name">A-101</span>
+    </a></li>
+  </ul>
+</div>
+</body></html>
+''';
 
 void main() {
   group('single backend contracts', () {
@@ -205,6 +257,60 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       // Rebuilds must not build another service (socket-pool leak).
       expect(built, 1);
+    });
+
+    testWidgets('portal reads carry the SESSION cookie, not the student id', (
+        tester) async {
+      // The regression: the class-sync pipeline read the portal with the
+      // student's REGISTRATION NUMBER instead of the Horizon session
+      // cookie — the portal answered with its login page and the student
+      // was told their session expired.
+      final cookies = <String>[];
+      final portal = PortalApi(MockClient((req) async {
+        cookies.add(req.headers['cookie'] ?? '');
+        final path = req.url.path;
+        if (path.endsWith('/class/schedule')) {
+          return http.Response(_fakeTimetableHtml, 200);
+        }
+        return http.Response(_fakeDashboardHtml, 200);
+      }));
+      // The class-sync pipeline only runs when the backend key is
+      // configured (release builds ship it via --dart-define).
+      if (extApiKey.length < 16) {
+        // ignore: avoid_print
+        print('SKIP: run with --dart-define=EXT_API_KEY=... to exercise '
+            'the class-sync pipeline');
+        return;
+      }
+      final svc = RecordingService();
+      final app = CampusApp(
+        authHooks: AuthTestHooks(
+          backend: FakeBackend(),
+          validate: (_) async => true,
+        ),
+        serviceFactory: () => svc,
+        portalApiFactory: () => portal,
+      );
+      await tester.pumpWidget(_wrap(app));
+      await tester.pump();
+      // Let the restored session load the dashboard.
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 600));
+      // Run the class-sync pipeline directly (it is what the leaderboard
+      // runs first).
+      final dynamic state = tester.state(find.byType(CampusApp));
+      await state.syncClassToServer();
+      await tester.pump(const Duration(milliseconds: 300));
+      // A session cookie was sent on every portal read...
+      expect(cookies, isNotEmpty);
+      for (final c in cookies) {
+        expect(c.contains('session_id=real-session-cookie'), isTrue);
+        // ...and it is NEVER the registration number.
+        expect(c.contains('L1F25BSCS0577'), isFalse);
+        expect(c.contains('tester@ucp.edu.pk'), isFalse);
+      }
+      // The publishes carry the STUDENT id.
+      expect(svc.calls.any((c) => c.startsWith('syncTimetable:')), isTrue);
     });
   });
 }
