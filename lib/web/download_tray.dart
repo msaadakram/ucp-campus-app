@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../theme/palette.dart';
 import '../widgets/common.dart';
 
 import 'portal_downloader.dart';

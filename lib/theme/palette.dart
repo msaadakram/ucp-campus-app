@@ -200,7 +200,6 @@ TextStyle body(AppColors c, {double size = 14, FontWeight weight = FontWeight.w4
 /// MaterialApp stayed light in dark mode and white dialogs appeared over
 /// dark screens.
 ThemeData themeFor(AppColors c) {
-  final base = c.dark ? ThemeData.dark() : ThemeData.light();
   return ThemeData(
     useMaterial3: true,
     brightness: c.dark ? Brightness.dark : Brightness.light,

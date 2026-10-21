@@ -1,13 +1,8 @@
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ucp/auth/course_detail.dart';
 
-String? _fixture(String name) {
-  final f = File('/home/ubuntu/ucp/z_pages/$name');
-  return f.existsSync() ? f.readAsStringSync() : null;
-}
 
 void main() {
   group('course tab routes', () {

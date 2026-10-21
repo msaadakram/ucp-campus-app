@@ -371,13 +371,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final attendTile = hasCourses
-        ? [formatPercent(overallAttendance(live!.courses)), 'Attend.']
+        ? [formatPercent(overallAttendance(live.courses)), 'Attend.']
         : attendStatTile();
     final liveTiles = live == null
         ? <List<String>>[]
         : [
             for (final s in live.stats.take(2)) [s.value, s.label],
-            if (attendTile != null) attendTile,
+            ?attendTile,
           ];
     const mockTiles = [
       ['3.62', 'GPA'],

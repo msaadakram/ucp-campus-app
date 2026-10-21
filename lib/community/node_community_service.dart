@@ -261,7 +261,7 @@ class NodeCommunityService extends CommunityService {
   }) async {
     final body = await _postJson('/api/posts/$postId/comments', body: {
       'text': text,
-      if (parentId != null) 'parentId': parentId,
+      'parentId': ?parentId,
     });
     final c = (body['comment'] as Map).cast<String, dynamic>();
     final flat = nestEmbedded([c]);
@@ -284,7 +284,7 @@ class NodeCommunityService extends CommunityService {
       'title': title,
       'body': body,
       'flair': flair,
-      if (imageUrl != null) 'imageUrl': imageUrl,
+      'imageUrl': ?imageUrl,
     });
     return mapPostJson((res['post'] as Map).cast<String, dynamic>());
   }

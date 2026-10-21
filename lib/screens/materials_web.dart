@@ -377,7 +377,7 @@ var bytes=new Uint8Array(buf);var bin='';var CH=32768;var i;
 for(i=0;i<bytes.length;i+=CH){bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH));}
 var b64='';try{b64=btoa(bin);}catch(err){return res;}
 var id='f'+Date.now()+Math.floor(Math.random()*1e6);
-var name='';var fnRe=new RegExp('filename\\*?=(?:UTF-8\'\'|")?([^";]+)','i');
+var name='';var fnRe=new RegExp('filename\\*?=(?:UTF-8''|")?([^";]+)','i');
 var m=fnRe.exec(cd);
 if(m){try{name=decodeURIComponent(m[1].replace(/"/g,''));}catch(err2){name=m[1];}}
 sendChunked(id,b64,name,ct.split(';')[0]);

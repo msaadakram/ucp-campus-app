@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -392,10 +391,10 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// Storage + validation seams: test hooks override both in widget tests.
   SessionBackend get _backend => widget.authHooks?.backend ?? SessionStore();
 
-  Future<bool> _validateSession(String sid) {
+  Future<bool> _validateSession(String sessionId) {
     final v = widget.authHooks?.validate;
-    if (v != null) return v(sid);
-    return OdooApi().isSessionValid(sid);
+    if (v != null) return v(sessionId);
+    return OdooApi().isSessionValid(sessionId);
   }
 
   /// Renewal seam: test hooks resolve without mounting a (platform) WebView.
@@ -446,6 +445,13 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       _loadCachedSlots();
       _restoreSession();
     }
+    // Keep the on-disk portal snapshots small: one course at a time, and
+    // anything untouched for two weeks goes.
+    unawaited(PageCache.prune());
+    unawaited(PageCache.prune(
+      maxAge: const Duration(days: 1),
+      courseSnapshotsOnly: true,
+    ));
     // Test seam: one service for the whole app lifetime.
     final factory = widget.serviceFactory;
     if (factory != null) {
@@ -643,11 +649,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         api.fetchPage(PortalRoutes.timetable, sid).catchError((_) => ''),
       ]);
       if (!mounted || run != _dashRun) return;
-      final parsed = parseDashboard(results[0] as String);
+      final parsed = parseDashboard(results[0]);
       if (parsed.isEmpty) return;
-      final slots = (results[1] as String).isEmpty
+      final slots = (results[1]).isEmpty
           ? const <TimetableSlot>[]
-          : parseTimetable(results[1] as String).slots;
+          : parseTimetable(results[1]).slots;
       setState(() {
         dashboard = parsed;
         timetableSlots = _resolveSlots(slots);
@@ -655,7 +661,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         _sessionVerified = true;
       });
       unawaited(_backend.saveDashboard(jsonEncode(parsed.toJson())));
-      unawaited(PageCache.savePage('timetable', results[1] as String));
+      unawaited(PageCache.savePage('timetable', results[1]));
       // Publish this student's class + marks so classmates (app-only or
       // extension) see them. Background, non-blocking.
       unawaited(_runCommunitySync());
@@ -689,12 +695,12 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         api.fetchPage(PortalRoutes.datesheet, sid).catchError((_) => ''),
       ]);
       if (!mounted || run != _dashRun) return;
-      final dashHtml = results[0] as String;
-      final ttHtml = results[1] as String;
-      final attHtml = results[2] as String;
-      final invHtml = results[3] as String;
-      final resHtml = results[4] as String;
-      final dsHtml = results[5] as String;
+      final dashHtml = results[0];
+      final ttHtml = results[1];
+      final attHtml = results[2];
+      final invHtml = results[3];
+      final resHtml = results[4];
+      final dsHtml = results[5];
 
       final parsed = parseDashboard(dashHtml);
       List<TimetableSlot> slots = timetableSlots;
@@ -767,7 +773,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         return;
       }
     }
-    if (gb == null || gb.isEmpty) return;
+    if (gb.isEmpty) return;
     await _syncOwnGrades(match, match.name, gb);
   }
 
@@ -912,7 +918,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           gb = parseCourseGradebook(html);
           CourseDetailCache.putGradebook(courseId, gb);
         }
-        if (gb == null || gb.isEmpty) {
+        if (gb.isEmpty) {
           onProgress?.call(SyncStepUpdate(
             key: key,
             kind: SyncStepKind.grade,
@@ -1816,7 +1822,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                           child: ValueListenableBuilder<bool>(
                             valueListenable:
                                 OfflineMonitor.instance.offline,
-                            builder: (_, off, __) {
+                            builder: (_, off, _) {
                               final showFail = _signInFailed &&
                                   !_signingIn &&
                                   _expiredMessage == null;

@@ -408,7 +408,7 @@ String materialSubject(String fileName, String description) {
 }
 
 /// Material table (`Sr No. | Course Material File | Description |
-/// Download`). Hrefs `/student/class/material/download/<id>` kept
+/// Download`). Hrefs `/student/class/material/download/`<id>`` kept
 /// relative like every [PortalRoutes] path. Never throws. Each item
 /// carries its derived [CourseMaterialItem.subject] for grouped display.
 List<CourseMaterialItem> parseCourseMaterial(String html) {

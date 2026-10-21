@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
@@ -44,6 +45,10 @@ class PageCache {
     }
   }
 
+  /// Saves a page. Portal pages are ~1.5 MB each, so they are gzipped on
+  /// disk (~8x smaller). Course snapshots (`course_<id>_<tab>`) are kept
+  /// for ONE course at a time — the previous course's files are removed —
+  /// otherwise browsing the hub would fill the phone with HTML.
   static Future<void> savePage(String page, String html) async {
     try {
       final dbg = debugPages;
@@ -54,7 +59,62 @@ class PageCache {
       if (!diskEnabled || html.isEmpty) return;
       final d = await _dir();
       if (d == null) return;
-      await File('${d.path}/portal_$page.html').writeAsString(html);
+      final file = File('${d.path}/portal_$page.html.gz');
+      await file.writeAsBytes(gzip.encode(utf8.encode(html)), flush: true);
+      final course = _courseIdOf(page);
+      if (course != null) await _dropOtherCourses(d, course);
+    } catch (_) {}
+  }
+
+  /// "course_42_gradebook" -> "42" (null for the fixed pages).
+  static String? _courseIdOf(String page) {
+    final m = RegExp(r'^course_(.+)_[^_]+$').firstMatch(page);
+    return m?.group(1);
+  }
+
+  /// Removes snapshots belonging to OTHER courses.
+  static Future<void> _dropOtherCourses(Directory d, String keep) async {
+    try {
+      await for (final f in d.list()) {
+        if (f is! File) continue;
+        final name = f.uri.pathSegments.isNotEmpty
+            ? f.uri.pathSegments.last
+            : '';
+        if (!name.startsWith('portal_course_')) continue;
+        final body =
+            name.substring('portal_'.length, name.length - '.html.gz'.length);
+        final id = _courseIdOf(body) ?? _courseIdOf(
+            body.replaceAll('.html', ''));
+        if (id != null && id != keep) {
+          await f.delete();
+        }
+      }
+    } catch (_) {}
+  }
+
+  /// Drops snapshots older than [maxAge] (and every course snapshot on
+  /// demand). Never throws.
+  static Future<void> prune({
+    Duration maxAge = const Duration(days: 14),
+    bool courseSnapshotsOnly = false,
+  }) async {
+    final d = await _dir();
+    if (d == null) return;
+    final cutoff =
+        DateTime.now().millisecondsSinceEpoch - maxAge.inMilliseconds;
+    try {
+      await for (final f in d.list()) {
+        if (f is! File) continue;
+        final name = f.uri.pathSegments.isNotEmpty
+            ? f.uri.pathSegments.last
+            : '';
+        if (!name.startsWith('portal_') || !name.endsWith('.html.gz')) continue;
+        if (courseSnapshotsOnly && !name.startsWith('portal_course_')) continue;
+        try {
+          final stat = await f.lastModified();
+          if (stat.millisecondsSinceEpoch < cutoff) await f.delete();
+        } catch (_) {}
+      }
     } catch (_) {}
   }
 
@@ -70,9 +130,20 @@ class PageCache {
       if (!diskEnabled) return null;
       final d = await _dir();
       if (d == null) return null;
-      final f = File('${d.path}/portal_$page.html');
-      if (!await f.exists()) return null;
-      final html = await f.readAsString();
+      final f = File('${d.path}/portal_$page.html.gz');
+      if (!await f.exists()) {
+        // Legacy plaintext snapshots still load, then are re-gzipped on
+        // the next save.
+        final legacy = File('${d.path}/portal_$page.html');
+        if (!await legacy.exists()) return null;
+        final plain = await legacy.readAsString();
+        if (plain.isEmpty) return null;
+        final stat = await legacy.lastModified();
+        return PageSnapshot(plain, stat.millisecondsSinceEpoch);
+      }
+      final html = utf8.decode(
+        gzip.decode(await f.readAsBytes()),
+      );
       if (html.isEmpty) return null;
       final stat = await f.lastModified();
       return PageSnapshot(
@@ -88,20 +159,16 @@ class PageCache {
       if (!diskEnabled) return;
       final d = await _dir();
       if (d == null) return;
-      for (final page in pages) {
-        try {
-          final f = File('${d.path}/portal_$page.html');
-          if (await f.exists()) await f.delete();
-        } catch (_) {}
-      }
-      // Per-course snapshots (`portal_course_<id>_<tab>.html`) are
-      // dynamic — clear by prefix glob instead of a fixed list.
+      // Gzipped snapshots (and any legacy plaintext ones) are removed by
+      // prefix, since the per-course names are dynamic.
       try {
         await for (final e in d.list()) {
+          if (e is! File) continue;
           final name = e.path.split('/').last;
-          if (name.startsWith('portal_course_') && name.endsWith('.html')) {
+          if (name.startsWith('portal_') &&
+              (name.endsWith('.html.gz') || name.endsWith('.html'))) {
             try {
-              await File(e.path).delete();
+              await e.delete();
             } catch (_) {}
           }
         }

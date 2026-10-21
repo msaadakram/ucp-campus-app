@@ -13,7 +13,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ucp/app.dart';
 
 import 'package:ucp/theme/palette.dart';
-import 'package:ucp/screens/profile.dart' show ProfilePrefs;
 import 'package:ucp/widgets/common.dart';
 
 void main() {

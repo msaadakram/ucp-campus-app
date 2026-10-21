@@ -10,12 +10,10 @@
  *   5. the board paints while the class sync is still running.
  */
 
-import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 import 'package:http/testing.dart';
 import 'package:ucp/app.dart';
 import 'package:ucp/auth/portal_api.dart';
@@ -23,7 +21,6 @@ import 'package:ucp/auth/student_portal.dart' show PortalCourse;
 import 'package:ucp/screens/leaderboard.dart';
 import 'package:ucp/community/backend_config.dart';
 import 'package:ucp/auth/session_manager.dart';
-import 'package:ucp/auth/prefs_store.dart';
 import 'package:ucp/leaderboard/leaderboard_service.dart';
 import 'package:ucp/screens/profile.dart';
 import 'package:ucp/theme/palette.dart';
@@ -57,7 +54,7 @@ class RecordingService extends LeaderboardService {
     String? studentId,
     String? courseCode,
   }) async {
-    rosterQuery = ['$courseName', '$studentId', '$courseCode'];
+    rosterQuery = [courseName, '$studentId', '$courseCode'];
     return const LeaderboardRoster(
       rosterSize: 5,
       classmates: 4,

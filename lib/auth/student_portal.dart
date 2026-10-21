@@ -714,13 +714,13 @@ ResultsData parseResults(String html) {
       void flush() {
         if (current != null) {
           terms.add(ResultTerm(
-            term: current!.term,
-            sgpa: current!.sgpa,
-            cgpa: current!.cgpa,
-            attempted: current!.attempted,
-            earned: current!.earned,
-            cumCh: current!.cumCh,
-            cumGp: current!.cumGp,
+            term: current.term,
+            sgpa: current.sgpa,
+            cgpa: current.cgpa,
+            attempted: current.attempted,
+            earned: current.earned,
+            cumCh: current.cumCh,
+            cumGp: current.cumGp,
             courses: List.of(courses),
           ));
           courses.clear();

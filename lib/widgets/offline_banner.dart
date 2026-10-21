@@ -18,7 +18,7 @@ class OfflineBanner extends StatelessWidget {
     }
     return ValueListenableBuilder<bool>(
       valueListenable: OfflineMonitor.instance.offline,
-      builder: (_, off, __) =>
+      builder: (_, off, _) =>
           off ? _pill(AppScope.colorsOf(context)) : const SizedBox.shrink(),
     );
   }

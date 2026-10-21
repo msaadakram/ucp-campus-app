@@ -15,7 +15,7 @@ import 'student_portal.dart';
 ///   number after `CGPA:` (the span's class is a raw QWeb conditional, so
 ///   the label text — not the class — is matched)
 /// - credits  : sibling `.user_heading_content` divs, `Earned/Total/
-///   Inprogress Cr : <number>` via regex on the block text
+///   Inprogress Cr : `<number>` via regex on the block text
 /// - today    : `.user_heading_content` containing "Today Classes",
 ///   following `<span>` text
 /// - news     : `<h3>` "News and Announcements" + following `<span>` and
@@ -244,7 +244,7 @@ DashboardData _parseExact(Document doc) {
     if (text.contains('Today Classes')) {
       final span = block.querySelector('span');
       today = _clean(span?.text);
-      if (today != null && today.isEmpty) today = null;
+      if (today.isEmpty) today = null;
     }
   }
 

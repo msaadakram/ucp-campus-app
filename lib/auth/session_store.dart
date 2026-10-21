@@ -42,6 +42,7 @@ class SessionStore implements SessionBackend {
   }
 
   Future<String?> readSessionId() => _storage.read(key: _kSessionId);
+  @override
   Future<String?> readEmail() => _storage.read(key: _kEmail);
 
   /// Epoch millis when the session was last saved, or null if unknown.

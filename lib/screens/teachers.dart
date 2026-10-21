@@ -28,8 +28,18 @@ String teacherReviewDate(String iso) {
   try {
     final dt = DateTime.parse(iso).toLocal();
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[dt.month - 1]} ${dt.year}';
   } catch (_) {
@@ -88,10 +98,9 @@ class _TeachersScreenState extends State<TeachersScreen> {
       error = null;
     });
     try {
-      final fresh =
-          await svc.fetchTeachers(dept: dept, query: query).timeout(
-                const Duration(seconds: 22),
-              );
+      final fresh = await svc
+          .fetchTeachers(dept: dept, query: query)
+          .timeout(const Duration(seconds: 22));
       if (!mounted) return;
       setState(() {
         teachers = fresh;
@@ -104,8 +113,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
           : '';
       setState(() {
         loading = false;
-        error =
-            'Could not load teachers. Check connection and retry.$detail';
+        error = 'Could not load teachers. Check connection and retry.$detail';
       });
     }
   }
@@ -159,9 +167,9 @@ class _TeachersScreenState extends State<TeachersScreen> {
       detailError = null;
     });
     try {
-      final (fresh, revs) = await svc.fetchDetail(t.slug).timeout(
-            const Duration(seconds: 22),
-          );
+      final (fresh, revs) = await svc
+          .fetchDetail(t.slug)
+          .timeout(const Duration(seconds: 22));
       if (!mounted) return;
       setState(() {
         open = fresh;
@@ -241,123 +249,124 @@ class _TeachersScreenState extends State<TeachersScreen> {
       backgroundColor: c.white,
       onRefresh: _reload,
       child: CustomScrollView(
-      physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics()),
-      slivers: [
-        SliverToBoxAdapter(
-          child: Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topRight,
-                end: Alignment.bottomLeft,
-                colors: [c.tealDeep, c.teal],
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
+        slivers: [
+          SliverToBoxAdapter(
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topRight,
+                  end: Alignment.bottomLeft,
+                  colors: [c.tealDeep, c.teal],
+                ),
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.elliptical(220, 44),
+                  bottomRight: Radius.elliptical(220, 44),
+                ),
               ),
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.elliptical(220, 44),
-                bottomRight: Radius.elliptical(220, 44),
+              clipBehavior: Clip.antiAlias,
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 30),
+              child: Stack(
+                children: [
+                  Positioned(
+                    right: -46,
+                    top: -54,
+                    child: _decoCircle(150, 0.07),
+                  ),
+                  Positioned(
+                    left: 50,
+                    bottom: -84,
+                    child: _decoCircle(170, 0.05),
+                  ),
+                  Positioned(
+                    right: 72,
+                    bottom: -46,
+                    child: _decoRing(96, 0.10),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _header(c),
+                      const SizedBox(height: 14),
+                      _statsStrip(c),
+                    ],
+                  ),
+                ],
               ),
             ),
-            clipBehavior: Clip.antiAlias,
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 30),
-            child: Stack(
-              children: [
-                Positioned(
-                  right: -46,
-                  top: -54,
-                  child: _decoCircle(150, 0.07),
-                ),
-                Positioned(
-                  left: 50,
-                  bottom: -84,
-                  child: _decoCircle(170, 0.05),
-                ),
-                Positioned(
-                  right: 72,
-                  bottom: -46,
-                  child: _decoRing(96, 0.10),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _header(c),
-                    const SizedBox(height: 14),
-                    _statsStrip(c),
-                  ],
-                ),
-              ],
+          ),
+          // Pinned search: stays under the thumb across 706 rows.
+          SliverAppBar(
+            pinned: true,
+            floating: false,
+            toolbarHeight: 68,
+            automaticallyImplyLeading: false,
+            backgroundColor: c.cream2,
+            surfaceTintColor: Colors.transparent,
+            shadowColor: Colors.transparent,
+            elevation: 0,
+            flexibleSpace: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+              child: _searchBar(c),
             ),
           ),
-        ),
-        // Pinned search: stays under the thumb across 706 rows.
-        SliverAppBar(
-          pinned: true,
-          floating: false,
-          toolbarHeight: 68,
-          automaticallyImplyLeading: false,
-          backgroundColor: c.cream2,
-          surfaceTintColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          elevation: 0,
-          flexibleSpace: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-            child: _searchBar(c),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _deptChips(c),
-                const SizedBox(height: 10),
-                _sortRow(c),
-                const SizedBox(height: 12),
-              ],
-            ),
-          ),
-        ),
-        if (loading)
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20, 0),
-              child: CommunityFeedSkeleton(),
-            ),
-          )
-        else if (error != null && teachers.isEmpty)
           SliverToBoxAdapter(
             child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _deptChips(c),
+                  const SizedBox(height: 10),
+                  _sortRow(c),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
+          ),
+          if (loading)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(20, 0, 20, 0),
+                child: CommunityFeedSkeleton(),
+              ),
+            )
+          else if (error != null && teachers.isEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                child: _errorCard(c),
+              ),
+            )
+          else if (shown.isEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                child: _emptyCard(c),
+              ),
+            )
+          else
+            SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-              child: _errorCard(c),
+              sliver: SliverList.builder(
+                itemCount: shown.length,
+                addAutomaticKeepAlives: false,
+                addRepaintBoundaries: true,
+                itemBuilder: (ctx, i) => _teacherCard(context, c, shown[i]),
+              ),
             ),
-          )
-        else if (shown.isEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-              child: _emptyCard(c),
+          if (!loading && error == null && teachers.length > shown.length)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 2, 20, 0),
+                child: _showMoreCard(c),
+              ),
             ),
-          )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-            sliver: SliverList.builder(
-              itemCount: shown.length,
-              addAutomaticKeepAlives: false,
-              addRepaintBoundaries: true,
-              itemBuilder: (ctx, i) => _teacherCard(context, c, shown[i]),
-            ),
-          ),
-        if (!loading && error == null && teachers.length > shown.length)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 2, 20, 0),
-              child: _showMoreCard(c),
-            ),
-          ),
-        const SliverToBoxAdapter(child: SizedBox(height: 96)),
-      ],
+          const SliverToBoxAdapter(child: SizedBox(height: 96)),
+        ],
       ),
     );
   }
@@ -404,19 +413,28 @@ class _TeachersScreenState extends State<TeachersScreen> {
               color: c.white,
               borderRadius: BorderRadius.circular(24),
               boxShadow: const [
-                BoxShadow(color: Colors.black12, blurRadius: 18, offset: Offset(0, 8)),
+                BoxShadow(
+                  color: Colors.black12,
+                  blurRadius: 18,
+                  offset: Offset(0, 8),
+                ),
               ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Teacher backend not connected',
-                    style: display(c, size: 18)),
+                Text(
+                  'Teacher backend not connected',
+                  style: display(c, size: 18),
+                ),
                 const SizedBox(height: 8),
                 Text(
                   'Run supabase/teachers_schema.sql, import teachers.json + reviews.json, and deploy the Node API (see supabase/README-teachers.md).',
-                  style: body(c,
-                      size: 14, color: c.tealInk.withValues(alpha: 0.65)),
+                  style: body(
+                    c,
+                    size: 14,
+                    color: c.tealInk.withValues(alpha: 0.65),
+                  ),
                 ),
               ],
             ),
@@ -435,44 +453,51 @@ class _TeachersScreenState extends State<TeachersScreen> {
           children: [
             Flexible(
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: const Text('RATE · REVIEW',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 10,
-                        letterSpacing: 1.1)),
+                child: const Text(
+                  'RATE · REVIEW',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 10,
+                    letterSpacing: 1.1,
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 8),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.16),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.25)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.verified_outlined,
-                      size: 14, color: Colors.white),
+                  const Icon(
+                    Icons.verified_outlined,
+                    size: 14,
+                    color: Colors.white,
+                  ),
                   const SizedBox(width: 5),
                   Text(
                     teachers.isEmpty ? 'UCP' : '${teachers.length}',
                     style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 11.5),
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11.5,
+                    ),
                   ),
                 ],
               ),
@@ -480,14 +505,15 @@ class _TeachersScreenState extends State<TeachersScreen> {
           ],
         ),
         const SizedBox(height: 10),
-        Text('Teachers',
-            style: display(c, size: 34, color: Colors.white)),
+        Text('Teachers', style: display(c, size: 34, color: Colors.white)),
         const SizedBox(height: 2),
         Text(
           'Find the mentors worth learning from.',
-          style: body(c,
-              size: 13.5,
-              color: Colors.white.withValues(alpha: 0.82)),
+          style: body(
+            c,
+            size: 13.5,
+            color: Colors.white.withValues(alpha: 0.82),
+          ),
         ),
       ],
     );
@@ -501,35 +527,42 @@ class _TeachersScreenState extends State<TeachersScreen> {
     final avg = rated.isEmpty
         ? 0.0
         : rated.map((t) => t.overallRating).reduce((a, b) => a + b) /
-            rated.length;
-    final totalReviews =
-        teachers.fold<int>(0, (a, t) => a + t.reviewCount);
+              rated.length;
+    final totalReviews = teachers.fold<int>(0, (a, t) => a + t.reviewCount);
     return Row(
       children: [
         Expanded(
-            child: _statCard(
-                c, Icons.people_outline, '${teachers.length}', 'faculty')),
+          child: _statCard(
+            c,
+            Icons.people_outline,
+            '${teachers.length}',
+            'faculty',
+          ),
+        ),
         const SizedBox(width: 8),
         Expanded(
-            child: _statCard(
-                c, Icons.star_outline, avg.toStringAsFixed(1), 'avg score')),
+          child: _statCard(
+            c,
+            Icons.star_outline,
+            avg.toStringAsFixed(1),
+            'avg score',
+          ),
+        ),
         const SizedBox(width: 8),
         Expanded(
-            child: _statCard(
-                c, Icons.forum_outlined, '$totalReviews', 'reviews')),
+          child: _statCard(c, Icons.forum_outlined, '$totalReviews', 'reviews'),
+        ),
       ],
     );
   }
 
-  Widget _statCard(
-      AppColors c, IconData icon, String value, String label) {
+  Widget _statCard(AppColors c, IconData icon, String value, String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(18),
-        border:
-            Border.all(color: Colors.white.withValues(alpha: 0.22)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -537,18 +570,25 @@ class _TeachersScreenState extends State<TeachersScreen> {
         children: [
           Icon(icon, size: 16, color: Colors.white.withValues(alpha: 0.85)),
           const SizedBox(height: 6),
-          Text(value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 17)),
-          Text(label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.7), fontSize: 10)),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              fontSize: 17,
+            ),
+          ),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 10,
+            ),
+          ),
         ],
       ),
     );
@@ -562,7 +602,10 @@ class _TeachersScreenState extends State<TeachersScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: const [
           BoxShadow(
-              color: Colors.black12, blurRadius: 18, offset: Offset(0, 8)),
+            color: Colors.black12,
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
         ],
       ),
       child: Row(
@@ -572,8 +615,9 @@ class _TeachersScreenState extends State<TeachersScreen> {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-                color: c.teal.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(14)),
+              color: c.teal.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(14),
+            ),
             child: Icon(Icons.search, size: 20, color: c.tealInk),
           ),
           const SizedBox(width: 8),
@@ -601,7 +645,9 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                    color: c.dustSoft, shape: BoxShape.circle),
+                  color: c.dustSoft,
+                  shape: BoxShape.circle,
+                ),
                 child: const Icon(Icons.clear, size: 16),
               ),
             ),
@@ -630,7 +676,9 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 15, vertical: 9),
+                    horizontal: 15,
+                    vertical: 9,
+                  ),
                   decoration: BoxDecoration(
                     gradient: dept == code
                         ? LinearGradient(
@@ -673,25 +721,32 @@ class _TeachersScreenState extends State<TeachersScreen> {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-          color: c.white, borderRadius: BorderRadius.circular(30),
-          boxShadow: const [
-            BoxShadow(
-                color: Colors.black12, blurRadius: 12, offset: Offset(0, 5)),
-          ]),
+        color: c.white,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 12,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
       child: Row(
         children: [
           for (final s in ['Top', 'Most reviewed', 'Name'])
             Expanded(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() { sort = s; visibleCount = 60; }),
+                onTap: () => setState(() {
+                  sort = s;
+                  visibleCount = 60;
+                }),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(vertical: 9),
                   decoration: BoxDecoration(
                     gradient: sort == s
-                        ? LinearGradient(
-                            colors: [c.tealDeep, c.teal])
+                        ? LinearGradient(colors: [c.tealDeep, c.teal])
                         : null,
                     borderRadius: BorderRadius.circular(22),
                   ),
@@ -719,11 +774,16 @@ class _TeachersScreenState extends State<TeachersScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-          color: c.white, borderRadius: BorderRadius.circular(24),
-          boxShadow: const [
-            BoxShadow(
-                color: Colors.black12, blurRadius: 18, offset: Offset(0, 8)),
-          ]),
+        color: c.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
       child: Column(
         children: [
           Container(
@@ -731,8 +791,9 @@ class _TeachersScreenState extends State<TeachersScreen> {
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-                color: c.clay.withValues(alpha: 0.14),
-                shape: BoxShape.circle),
+              color: c.clay.withValues(alpha: 0.14),
+              shape: BoxShape.circle,
+            ),
             child: Icon(Icons.wifi_off_outlined, color: c.clay),
           ),
           const SizedBox(height: 12),
@@ -741,14 +802,18 @@ class _TeachersScreenState extends State<TeachersScreen> {
           GestureDetector(
             onTap: _reload,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
               decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [c.tealDeep, c.teal]),
-                  borderRadius: BorderRadius.circular(20)),
-              child: const Text('Retry',
-                  style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold)),
+                gradient: LinearGradient(colors: [c.tealDeep, c.teal]),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text(
+                'Retry',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ),
         ],
@@ -775,7 +840,10 @@ class _TeachersScreenState extends State<TeachersScreen> {
           borderRadius: BorderRadius.circular(22),
           boxShadow: const [
             BoxShadow(
-                color: Colors.black12, blurRadius: 14, offset: Offset(0, 6)),
+              color: Colors.black12,
+              blurRadius: 14,
+              offset: Offset(0, 6),
+            ),
           ],
         ),
         child: Text(
@@ -797,16 +865,23 @@ class _TeachersScreenState extends State<TeachersScreen> {
               alignment: Alignment.center,
               width: 64,
               height: 64,
-              decoration: BoxDecoration(
-                  color: c.white, shape: BoxShape.circle),
-              child: Icon(Icons.person_search_outlined,
-                  size: 30, color: c.tealInk.withValues(alpha: 0.5)),
+              decoration: BoxDecoration(color: c.white, shape: BoxShape.circle),
+              child: Icon(
+                Icons.person_search_outlined,
+                size: 30,
+                color: c.tealInk.withValues(alpha: 0.5),
+              ),
             ),
             const SizedBox(height: 12),
-            Text('No teachers found.\nTry another search or faculty.',
-                textAlign: TextAlign.center,
-                style:
-                    body(c, size: 14, color: c.tealInk.withValues(alpha: 0.55))),
+            Text(
+              'No teachers found.\nTry another search or faculty.',
+              textAlign: TextAlign.center,
+              style: body(
+                c,
+                size: 14,
+                color: c.tealInk.withValues(alpha: 0.55),
+              ),
+            ),
           ],
         ),
       ),
@@ -861,7 +936,9 @@ class _TeachersScreenState extends State<TeachersScreen> {
                   bottom: 6,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.78),
                       borderRadius: BorderRadius.circular(12),
@@ -869,17 +946,17 @@ class _TeachersScreenState extends State<TeachersScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.star,
-                            size: 12, color: Colors.amber),
+                        const Icon(Icons.star, size: 12, color: Colors.amber),
                         const SizedBox(width: 3),
                         Text(
                           t.reviewCount == 0
                               ? 'New'
                               : t.overallRating.toStringAsFixed(1),
                           style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 11),
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 11,
+                          ),
                         ),
                       ],
                     ),
@@ -893,10 +970,12 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(t.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: display(c, size: 16)),
+                  Text(
+                    t.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: display(c, size: 16),
+                  ),
                   const SizedBox(height: 2),
                   Text(
                     t.designation.isEmpty
@@ -905,9 +984,10 @@ class _TeachersScreenState extends State<TeachersScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        color: c.tealInk.withValues(alpha: 0.6)),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: c.tealInk.withValues(alpha: 0.6),
+                    ),
                   ),
                   const SizedBox(height: 6),
                   Row(
@@ -922,10 +1002,10 @@ class _TeachersScreenState extends State<TeachersScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: c.tealInk
-                                  .withValues(alpha: 0.7)),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: c.tealInk.withValues(alpha: 0.7),
+                          ),
                         ),
                       ),
                     ],
@@ -936,9 +1016,10 @@ class _TeachersScreenState extends State<TeachersScreen> {
                       child: Text(
                         'Tap to be the first to rate',
                         style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                            color: c.teal),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: c.teal,
+                        ),
                       ),
                     ),
                 ],
@@ -949,8 +1030,9 @@ class _TeachersScreenState extends State<TeachersScreen> {
               width: 30,
               height: 30,
               decoration: BoxDecoration(
-                  color: c.dustSoft.withValues(alpha: 0.6),
-                  shape: BoxShape.circle),
+                color: c.dustSoft.withValues(alpha: 0.6),
+                shape: BoxShape.circle,
+              ),
               child: const Icon(Icons.chevron_right, size: 17),
             ),
           ],
@@ -966,8 +1048,11 @@ class _TeachersScreenState extends State<TeachersScreen> {
       width: size,
       height: size,
       color: bg.withValues(alpha: 0.2),
-      child: Icon(Icons.person,
-          size: size * 0.45, color: c.tealInk.withValues(alpha: 0.45)),
+      child: Icon(
+        Icons.person,
+        size: size * 0.45,
+        color: c.tealInk.withValues(alpha: 0.45),
+      ),
     );
   }
 
@@ -983,18 +1068,6 @@ class _TeachersScreenState extends State<TeachersScreen> {
             color: Colors.amber,
           ),
       ],
-    );
-  }
-
-  Widget _meter(AppColors c, double value, Color color) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: LinearProgressIndicator(
-        value: value.clamp(0.0, 1.0),
-        minHeight: 5,
-        backgroundColor: c.dustSoft.withValues(alpha: 0.7),
-        valueColor: AlwaysStoppedAnimation(color),
-      ),
     );
   }
 
@@ -1015,175 +1088,199 @@ class _TeachersScreenState extends State<TeachersScreen> {
       backgroundColor: c.white,
       onRefresh: () => _openDetail(t),
       child: CustomScrollView(
-      physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics()),
-      slivers: [
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: _detailHero(c, t),
-          ),
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
         ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: _breakdownCard(c, t),
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: _detailHero(c, t),
+            ),
           ),
-        ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                  color: c.white, borderRadius: BorderRadius.circular(26),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: _breakdownCard(c, t),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: c.white,
+                  borderRadius: BorderRadius.circular(26),
                   boxShadow: const [
                     BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 18,
-                        offset: Offset(0, 8)),
-                  ]),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
+                      color: Colors.black12,
+                      blurRadius: 18,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
                         '${reviews.length} review${reviews.length == 1 ? '' : 's'}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: c.tealInk.withValues(alpha: 0.55))),
-                  ),
-                  PopupMenuButton<String>(
-                    tooltip: 'Sort reviews',
-                    initialValue: reviewSort,
-                    onSelected: (v) =>
-                        setState(() => reviewSort = v),
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(
-                          value: 'Newest', child: Text('Newest first')),
-                      PopupMenuItem(
-                          value: 'Highest', child: Text('Highest rated')),
-                    ],
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: c.dustSoft.withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.sort_outlined, size: 13),
-                          Text(' $reviewSort',
-                              style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700)),
-                        ],
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: c.tealInk.withValues(alpha: 0.55),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () => _openRateSheet(t),
-                    child: Text('Write one',
+                    PopupMenuButton<String>(
+                      tooltip: 'Sort reviews',
+                      initialValue: reviewSort,
+                      onSelected: (v) => setState(() => reviewSort = v),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'Newest',
+                          child: Text('Newest first'),
+                        ),
+                        PopupMenuItem(
+                          value: 'Highest',
+                          child: Text('Highest rated'),
+                        ),
+                      ],
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: c.dustSoft.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.sort_outlined, size: 13),
+                            Text(
+                              ' $reviewSort',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () => _openRateSheet(t),
+                      child: Text(
+                        'Write one',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: c.teal)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        if (detailLoading)
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.all(32),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          )
-        else if (detailError != null)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                    color: c.white,
-                    borderRadius: BorderRadius.circular(22)),
-                child: Column(
-                  children: [
-                    Text(detailError!),
-                    TextButton(
-                      onPressed: () => _openDetail(t),
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          )
-        else if (reviews.isEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                    color: c.white,
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(
-                        color: c.dustSoft.withValues(alpha: 0.6))),
-                child: Column(
-                  children: [
-                    Icon(Icons.rate_review_outlined,
-                        size: 32, color: c.teal),
-                    const SizedBox(height: 8),
-                    const Text('No reviews yet — be the first to rate.'),
-                    const SizedBox(height: 12),
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _openRateSheet(t),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 12),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                              colors: [c.tealDeep, c.teal]),
-                          borderRadius: BorderRadius.circular(16),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: c.teal,
                         ),
-                        child: const Text('Rate first',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800)),
                       ),
                     ),
                   ],
                 ),
               ),
             ),
-          )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            sliver: SliverList.builder(
-              itemCount: sortedReviews.length,
-              addAutomaticKeepAlives: false,
-              addRepaintBoundaries: true,
-              itemBuilder: (ctx, i) =>
-                  _reviewTile(c, sortedReviews[i]),
-            ),
           ),
-        const SliverToBoxAdapter(child: SizedBox(height: 96)),
-      ],
+          if (detailLoading)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            )
+          else if (detailError != null)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: c.white,
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(detailError!),
+                      TextButton(
+                        onPressed: () => _openDetail(t),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else if (reviews.isEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    color: c.white,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: c.dustSoft.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(Icons.rate_review_outlined, size: 32, color: c.teal),
+                      const SizedBox(height: 8),
+                      const Text('No reviews yet — be the first to rate.'),
+                      const SizedBox(height: 12),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _openRateSheet(t),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [c.tealDeep, c.teal],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Text(
+                            'Rate first',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              sliver: SliverList.builder(
+                itemCount: sortedReviews.length,
+                addAutomaticKeepAlives: false,
+                addRepaintBoundaries: true,
+                itemBuilder: (ctx, i) => _reviewTile(c, sortedReviews[i]),
+              ),
+            ),
+          const SliverToBoxAdapter(child: SizedBox(height: 96)),
+        ],
       ),
     );
   }
@@ -1194,14 +1291,17 @@ class _TeachersScreenState extends State<TeachersScreen> {
   Widget _detailHero(AppColors c, Teacher t) {
     return Container(
       decoration: BoxDecoration(
-          color: c.white, borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: c.dustSoft.withValues(alpha: 0.6)),
-          boxShadow: [
-            BoxShadow(
-                color: c.tealInk.withValues(alpha: 0.07),
-                blurRadius: 20,
-                offset: const Offset(0, 10)),
-          ]),
+        color: c.white,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: c.dustSoft.withValues(alpha: 0.6)),
+        boxShadow: [
+          BoxShadow(
+            color: c.tealInk.withValues(alpha: 0.07),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1210,17 +1310,20 @@ class _TeachersScreenState extends State<TeachersScreen> {
             children: [
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(28)),
+                  top: Radius.circular(28),
+                ),
                 child: SizedBox(
                   height: 118,
                   width: double.infinity,
                   child: t.imageUrl.isEmpty
                       ? Container(
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(colors: [
-                              c.tealDeep,
-                              c.teal.withValues(alpha: 0.7)
-                            ]),
+                            gradient: LinearGradient(
+                              colors: [
+                                c.tealDeep,
+                                c.teal.withValues(alpha: 0.7),
+                              ],
+                            ),
                           ),
                         )
                       : Image.network(
@@ -1230,10 +1333,12 @@ class _TeachersScreenState extends State<TeachersScreen> {
                           gaplessPlayback: true,
                           errorBuilder: (_, _, _) => Container(
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(colors: [
-                                c.tealDeep,
-                                c.teal.withValues(alpha: 0.7)
-                              ]),
+                              gradient: LinearGradient(
+                                colors: [
+                                  c.tealDeep,
+                                  c.teal.withValues(alpha: 0.7),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -1243,7 +1348,8 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 height: 118,
                 decoration: BoxDecoration(
                   borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(28)),
+                    top: Radius.circular(28),
+                  ),
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
@@ -1265,7 +1371,9 @@ class _TeachersScreenState extends State<TeachersScreen> {
                   }),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.45),
                       borderRadius: BorderRadius.circular(16),
@@ -1273,13 +1381,15 @@ class _TeachersScreenState extends State<TeachersScreen> {
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.arrow_back,
-                            size: 16, color: Colors.white),
-                        Text(' All',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13)),
+                        Icon(Icons.arrow_back, size: 16, color: Colors.white),
+                        Text(
+                          ' All',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -1317,10 +1427,13 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 bottom: 12,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16)),
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1331,9 +1444,10 @@ class _TeachersScreenState extends State<TeachersScreen> {
                             ? 'New'
                             : t.overallRating.toStringAsFixed(1),
                         style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                            color: c.tealDeep),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                          color: c.tealDeep,
+                        ),
                       ),
                     ],
                   ),
@@ -1346,10 +1460,12 @@ class _TeachersScreenState extends State<TeachersScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(t.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: display(c, size: 21)),
+                Text(
+                  t.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: display(c, size: 21),
+                ),
                 const SizedBox(height: 2),
                 Text(
                   t.designation.isEmpty
@@ -1357,9 +1473,11 @@ class _TeachersScreenState extends State<TeachersScreen> {
                       : '${t.designation} · ${t.departmentName.isEmpty ? _shortDept(t) : t.departmentName}',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: body(c,
-                      size: 12.5,
-                      color: c.tealInk.withValues(alpha: 0.65)),
+                  style: body(
+                    c,
+                    size: 12.5,
+                    color: c.tealInk.withValues(alpha: 0.65),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -1374,9 +1492,10 @@ class _TeachersScreenState extends State<TeachersScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: c.tealInk.withValues(alpha: 0.6)),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: c.tealInk.withValues(alpha: 0.6),
+                        ),
                       ),
                     ),
                   ],
@@ -1394,21 +1513,24 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 alignment: Alignment.center,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                      colors: [c.tealDeep, c.teal]),
+                  gradient: LinearGradient(colors: [c.tealDeep, c.teal]),
                   borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                        color: c.teal.withValues(alpha: 0.4),
-                        blurRadius: 14,
-                        offset: const Offset(0, 6)),
+                      color: c.teal.withValues(alpha: 0.4),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
                   ],
                 ),
-                child: const Text('Rate this teacher',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15)),
+                child: const Text(
+                  'Rate this teacher',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
               ),
             ),
           ),
@@ -1425,25 +1547,32 @@ class _TeachersScreenState extends State<TeachersScreen> {
         width: double.infinity,
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-            gradient: LinearGradient(
-                colors: [c.tealDeep, c.teal],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight),
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                  color: c.teal.withValues(alpha: 0.4),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8)),
-            ]),
+          gradient: LinearGradient(
+            colors: [c.tealDeep, c.teal],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: c.teal.withValues(alpha: 0.4),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
         child: const Row(
           children: [
             Icon(Icons.auto_awesome_outlined, color: Colors.white),
             SizedBox(width: 10),
             Expanded(
-              child: Text('Fresh profile — your rating will set the tone.',
-                  style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w600)),
+              child: Text(
+                'Fresh profile — your rating will set the tone.',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ],
         ),
@@ -1452,44 +1581,70 @@ class _TeachersScreenState extends State<TeachersScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-          color: c.white, borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: c.dustSoft.withValues(alpha: 0.6)),
-          boxShadow: [
-            BoxShadow(
-                color: c.tealInk.withValues(alpha: 0.06),
-                blurRadius: 16,
-                offset: const Offset(0, 8)),
-          ]),
+        color: c.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: c.dustSoft.withValues(alpha: 0.6)),
+        boxShadow: [
+          BoxShadow(
+            color: c.tealInk.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Text('HOW STUDENTS RATE',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: c.tealInk.withValues(alpha: 0.55))),
+              Text(
+                'HOW STUDENTS RATE',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: c.tealInk.withValues(alpha: 0.55),
+                ),
+              ),
               const Spacer(),
               const Icon(Icons.insights_outlined, size: 16),
             ],
           ),
           const SizedBox(height: 12),
-          _breakdownRow(c, Icons.task_alt_outlined, 'Grading fairness',
-              t.avgGrading, c.teal),
+          _breakdownRow(
+            c,
+            Icons.task_alt_outlined,
+            'Grading fairness',
+            t.avgGrading,
+            c.teal,
+          ),
           const SizedBox(height: 10),
-          _breakdownRow(c, Icons.spa_outlined, 'Leniency & support',
-              t.avgLeniency, c.board),
+          _breakdownRow(
+            c,
+            Icons.spa_outlined,
+            'Leniency & support',
+            t.avgLeniency,
+            c.board,
+          ),
           const SizedBox(height: 10),
-          _breakdownRow(c, Icons.menu_book_outlined, 'Subject knowledge',
-              t.avgSubject, c.clay),
+          _breakdownRow(
+            c,
+            Icons.menu_book_outlined,
+            'Subject knowledge',
+            t.avgSubject,
+            c.clay,
+          ),
         ],
       ),
     );
   }
 
   Widget _breakdownRow(
-      AppColors c, IconData icon, String label, double avg, Color color) {
+    AppColors c,
+    IconData icon,
+    String label,
+    double avg,
+    Color color,
+  ) {
     final pct = (avg / 5).clamp(0.0, 1.0);
     return Row(
       children: [
@@ -1511,15 +1666,23 @@ class _TeachersScreenState extends State<TeachersScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: Text(label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w700)),
-                  ),
-                  Text('${avg.toStringAsFixed(1)}/5',
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w800)),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${avg.toStringAsFixed(1)}/5',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 6),
@@ -1545,15 +1708,17 @@ class _TeachersScreenState extends State<TeachersScreen> {
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-          color: c.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: c.dustSoft.withValues(alpha: 0.6)),
-          boxShadow: [
-            BoxShadow(
-                color: c.tealInk.withValues(alpha: 0.05),
-                blurRadius: 12,
-                offset: const Offset(0, 5)),
-          ]),
+        color: c.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: c.dustSoft.withValues(alpha: 0.6)),
+        boxShadow: [
+          BoxShadow(
+            color: c.tealInk.withValues(alpha: 0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1569,33 +1734,46 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(r.studentName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 13)),
+                    Text(
+                      r.studentName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
                     if (date.isNotEmpty)
-                      Text(date,
-                          style: TextStyle(
-                              fontSize: 11,
-                              color:
-                                  c.tealInk.withValues(alpha: 0.5))),
+                      Text(
+                        date,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: c.tealInk.withValues(alpha: 0.5),
+                        ),
+                      ),
                   ],
                 ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 5),
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
-                    color: c.teal.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12)),
+                  color: c.teal.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(Icons.star, size: 13, color: Colors.amber),
-                    Text(' ${r.average.toStringAsFixed(1)}',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 12)),
+                    Text(
+                      ' ${r.average.toStringAsFixed(1)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1605,8 +1783,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
             const SizedBox(height: 10),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: c.dustSoft.withValues(alpha: 0.45),
                 borderRadius: const BorderRadius.only(
@@ -1615,8 +1792,10 @@ class _TeachersScreenState extends State<TeachersScreen> {
                   bottomRight: Radius.circular(14),
                 ),
               ),
-              child:
-                  Text(r.comment, style: const TextStyle(fontSize: 14, height: 1.35)),
+              child: Text(
+                r.comment,
+                style: const TextStyle(fontSize: 14, height: 1.35),
+              ),
             ),
           ],
           const SizedBox(height: 10),
@@ -1624,12 +1803,17 @@ class _TeachersScreenState extends State<TeachersScreen> {
             spacing: 6,
             runSpacing: 6,
             children: [
-              _miniStat(c, Icons.task_alt_outlined,
-                  'Grading ${r.ratingGrading}'),
-              _miniStat(c, Icons.spa_outlined,
-                  'Leniency ${r.ratingLeniency}'),
-              _miniStat(c, Icons.menu_book_outlined,
-                  'Subject ${r.ratingSubject}'),
+              _miniStat(
+                c,
+                Icons.task_alt_outlined,
+                'Grading ${r.ratingGrading}',
+              ),
+              _miniStat(c, Icons.spa_outlined, 'Leniency ${r.ratingLeniency}'),
+              _miniStat(
+                c,
+                Icons.menu_book_outlined,
+                'Subject ${r.ratingSubject}',
+              ),
             ],
           ),
         ],
@@ -1641,17 +1825,19 @@ class _TeachersScreenState extends State<TeachersScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-          color: c.cream2,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: c.dustSoft)),
+        color: c.cream2,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.dustSoft),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 12, color: c.tealInk.withValues(alpha: 0.6)),
           const SizedBox(width: 4),
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 11, fontWeight: FontWeight.w700)),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+          ),
         ],
       ),
     );
@@ -1708,25 +1894,29 @@ class _RateSheetState extends State<_RateSheet> {
         ? '?'
         : widget.teacher.name[0].toUpperCase();
     Widget fallback() => Container(
-          color: c.teal.withValues(alpha: 0.14),
-          alignment: Alignment.center,
-          child: Text(initial,
-              style: TextStyle(
-                  color: c.tealDeep,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 18)),
-        );
+      color: c.teal.withValues(alpha: 0.14),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: TextStyle(
+          color: c.tealDeep,
+          fontWeight: FontWeight.w800,
+          fontSize: 18,
+        ),
+      ),
+    );
     return Padding(
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: Container(
         constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.9),
+          maxHeight: MediaQuery.of(context).size.height * 0.9,
+        ),
         padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
         decoration: BoxDecoration(
           color: c.cream2,
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(30)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
         ),
         child: SingleChildScrollView(
           child: Column(
@@ -1734,11 +1924,13 @@ class _RateSheetState extends State<_RateSheet> {
             children: [
               Center(
                 child: Container(
-                    width: 44,
-                    height: 4,
-                    decoration: BoxDecoration(
-                        color: c.dustSoft,
-                        borderRadius: BorderRadius.circular(4))),
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: c.dustSoft,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
               Row(
@@ -1764,15 +1956,20 @@ class _RateSheetState extends State<_RateSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Rate ${widget.teacher.name}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: display(c, size: 17)),
-                        Text('Anonymous · 1 poor · 5 excellent',
-                            style: body(c,
-                                size: 12,
-                                color:
-                                    c.tealInk.withValues(alpha: 0.6))),
+                        Text(
+                          'Rate ${widget.teacher.name}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: display(c, size: 17),
+                        ),
+                        Text(
+                          'Anonymous · 1 poor · 5 excellent',
+                          style: body(
+                            c,
+                            size: 12,
+                            color: c.tealInk.withValues(alpha: 0.6),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -1780,12 +1977,26 @@ class _RateSheetState extends State<_RateSheet> {
               ),
               const SizedBox(height: 14),
               _starsCard(
-                  c, 'Grading fairness', 'Fair marking & feedback', grading,
-                  (v) => setState(() => grading = v)),
-              _starsCard(c, 'Leniency', 'Flexibility & support', leniency,
-                  (v) => setState(() => leniency = v)),
-              _starsCard(c, 'Subject knowledge', 'Concepts & clarity',
-                  subject, (v) => setState(() => subject = v)),
+                c,
+                'Grading fairness',
+                'Fair marking & feedback',
+                grading,
+                (v) => setState(() => grading = v),
+              ),
+              _starsCard(
+                c,
+                'Leniency',
+                'Flexibility & support',
+                leniency,
+                (v) => setState(() => leniency = v),
+              ),
+              _starsCard(
+                c,
+                'Subject knowledge',
+                'Concepts & clarity',
+                subject,
+                (v) => setState(() => subject = v),
+              ),
               const SizedBox(height: 6),
               TextField(
                 controller: _commentCtrl,
@@ -1793,13 +2004,13 @@ class _RateSheetState extends State<_RateSheet> {
                 maxLength: 500,
                 enabled: !_busy,
                 decoration: InputDecoration(
-                  hintText:
-                      'Write a short anonymous review (optional)…',
+                  hintText: 'Write a short anonymous review (optional)…',
                   filled: true,
                   fillColor: c.white,
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(18),
-                      borderSide: BorderSide.none),
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -1827,14 +2038,14 @@ class _RateSheetState extends State<_RateSheet> {
                     alignment: Alignment.center,
                     padding: const EdgeInsets.symmetric(vertical: 15),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                          colors: [c.tealDeep, c.teal]),
+                      gradient: LinearGradient(colors: [c.tealDeep, c.teal]),
                       borderRadius: BorderRadius.circular(22),
                       boxShadow: [
                         BoxShadow(
-                            color: c.teal.withValues(alpha: 0.4),
-                            blurRadius: 14,
-                            offset: const Offset(0, 6)),
+                          color: c.teal.withValues(alpha: 0.4),
+                          blurRadius: 14,
+                          offset: const Offset(0, 6),
+                        ),
                       ],
                     ),
                     child: _busy
@@ -1842,15 +2053,17 @@ class _RateSheetState extends State<_RateSheet> {
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation(
-                                    Colors.white)),
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation(Colors.white),
+                            ),
                           )
                         : Text(
                             'Submit · ${((grading + leniency + subject) / 3).toStringAsFixed(1)} average',
                             style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold)),
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                   ),
                 ),
               ),
@@ -1861,13 +2074,20 @@ class _RateSheetState extends State<_RateSheet> {
     );
   }
 
-  Widget _starsCard(AppColors c, String label, String hint, int value,
-      ValueChanged<int> onPick) {
+  Widget _starsCard(
+    AppColors c,
+    String label,
+    String hint,
+    int value,
+    ValueChanged<int> onPick,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-          color: c.white, borderRadius: BorderRadius.circular(20)),
+        color: c.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1877,27 +2097,40 @@ class _RateSheetState extends State<_RateSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(label,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 14)),
-                    Text(hint,
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: c.tealInk.withValues(alpha: 0.55))),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    Text(
+                      hint,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: c.tealInk.withValues(alpha: 0.55),
+                      ),
+                    ),
                   ],
                 ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 5),
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
-                    color: c.teal.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12)),
-                child: Text(_rateWord(value),
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: c.tealDeep)),
+                  color: c.teal.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _rateWord(value),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: c.tealDeep,
+                  ),
+                ),
               ),
             ],
           ),
