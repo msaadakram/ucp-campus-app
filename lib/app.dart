@@ -48,10 +48,10 @@ import 'widgets/common.dart';
 
 @visibleForTesting
 class FakeValidatingApi extends OdooApi {
-  final Future<bool> Function(String sid) fn;
+  final Future<bool> Function(String sessionId) fn;
   FakeValidatingApi(this.fn);
   @override
-  Future<bool> isSessionValid(String sid) => fn(sid);
+  Future<bool> isSessionValid(String sessionId) => fn(sessionId);
 }
 
 /// Test-only seams for driving auth flows in widget tests without network
