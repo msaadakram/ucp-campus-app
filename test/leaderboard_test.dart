@@ -404,7 +404,7 @@ void main() {
 
     testWidgets('a signed-in student syncs the class, then sees the board', (
         tester) async {
-      final stages = <LeaderboardSyncStage>[];
+      final stages = <SyncStepKind>[];
       var syncs = 0;
       final svc = FakeLeaderboardService(
         rows: const [
@@ -418,13 +418,31 @@ void main() {
         onEnsureSession: () async => true,
         onSyncClass: ({onProgress}) async {
           syncs++;
-          onProgress?.call(LeaderboardSyncStage.session, 0, 1);
-          onProgress?.call(LeaderboardSyncStage.timetable, 0, 1);
-          onProgress?.call(LeaderboardSyncStage.grades, 3, 8);
+          onProgress?.call(const SyncStepUpdate(
+            key: 'session',
+            kind: SyncStepKind.session,
+            label: 'Checking your portal sign-in',
+            detail: 'Signed in',
+            state: SyncStepState.done,
+          ));
+          onProgress?.call(const SyncStepUpdate(
+            key: 'timetable',
+            kind: SyncStepKind.timetable,
+            label: 'Getting your timetable',
+            detail: '22 slots sent to the server',
+            state: SyncStepState.done,
+          ));
+          onProgress?.call(const SyncStepUpdate(
+            key: 'grade:CP233',
+            kind: SyncStepKind.grade,
+            label: 'Getting the grade page',
+            detail: 'Data Structures \u00b7 parsed and sent to the server',
+            state: SyncStepState.done,
+          ));
           stages.addAll(const [
-            LeaderboardSyncStage.session,
-            LeaderboardSyncStage.timetable,
-            LeaderboardSyncStage.grades,
+            SyncStepKind.session,
+            SyncStepKind.timetable,
+            SyncStepKind.grade,
           ]);
           return const LeaderboardSyncReport(
             timetableRows: 22,
@@ -437,12 +455,20 @@ void main() {
       // The pipeline ran in the right order...
       expect(syncs, 1);
       expect(stages, [
-        LeaderboardSyncStage.session,
-        LeaderboardSyncStage.timetable,
-        LeaderboardSyncStage.grades,
+        SyncStepKind.session,
+        SyncStepKind.timetable,
+        SyncStepKind.grade,
       ]);
-      // ...the sync summary is visible...
-      expect(find.textContaining('Synced from your portal'), findsOneWidget);
+      // ...the finished pipeline collapses to one summary line...
+      expect(find.textContaining('Synced: 22 slots'), findsOneWidget);
+      // ...expand it and every step is visible to the student...
+      await tester.tap(find.textContaining('Synced: 22 slots'));
+      await tester.pumpAndSettle();
+      expect(find.text('Checking your portal sign-in'), findsOneWidget);
+      expect(find.text('Getting your timetable'), findsOneWidget);
+      expect(find.text('Getting the grade page'), findsOneWidget);
+      // ...the board request is a step as well...
+      expect(find.text('Loading the leaderboard'), findsOneWidget);
       // ...and the board itself is loaded.
       expect(svc.boardCalls, greaterThanOrEqualTo(1));
       expect(find.text('Other'), findsOneWidget);

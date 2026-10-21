@@ -1,45 +1,85 @@
 /// The class-sync pipeline shared by the app shell and the leaderboard.
 ///
-/// When a student opens a leaderboard the app must be able to prove three
-/// things, in this order:
+/// When a student opens a leaderboard the app proves three things, in
+/// this order, and the student SEES each step:
 ///
 ///   1. the student is signed in to the portal (Microsoft account ->
 ///      Horizon session cookie) — without a session nothing can be read;
 ///   2. the TIMETABLE (read with that session cookie) — it says which
 ///      sections the student is in, so the server can build the class
 ///      roster;
-///   3. every subject's GRADE PAGE — parsed and published so the
-///      student's marks reach the server and the board can rank them.
+///   3. every subject's GRADE PAGE — the HTML is fetched, parsed and
+///      published with the student's id, so the server knows the marks;
+///   4. the BOARD of the selected subject is requested with the subject
+///      AND the student's id — the server answers with the classmates'
+///      grades and the student's own grade.
 ///
-/// Only then is the board fetched, class by class.
+/// This whole path works WITHOUT the Chrome extension: the app reads the
+/// portal with the student's own session and publishes what it finds.
 library;
 
-/// Step of the sync pipeline (drives the progress UI).
-enum LeaderboardSyncStage {
-  /// Checking the portal sign-in / session cookie.
+/// Kind of a pipeline step.
+enum SyncStepKind {
+  /// Checking the Microsoft sign-in / session cookie.
   session,
 
-  /// Reading the timetable with the session cookie.
+  /// Reading the timetable and sending it to the server.
   timetable,
 
-  /// Reading + publishing each subject's grade page.
-  grades,
+  /// Reading + parsing + publishing one subject's grade page.
+  grade,
 
-  /// Fetching the class boards.
+  /// Requesting the leaderboard of a subject.
   board,
 }
 
-/// Human label for a stage.
-String leaderboardSyncStageLabel(LeaderboardSyncStage stage) {
-  switch (stage) {
-    case LeaderboardSyncStage.session:
-      return 'Checking your portal sign-in';
-    case LeaderboardSyncStage.timetable:
-      return 'Reading your timetable';
-    case LeaderboardSyncStage.grades:
-      return 'Reading your grade pages';
-    case LeaderboardSyncStage.board:
-      return 'Loading class boards';
+/// State of a pipeline step.
+enum SyncStepState {
+  pending,
+  active,
+  done,
+  failed,
+}
+
+/// One update of the pipeline (emitted by the app shell while it runs).
+class SyncStepUpdate {
+  /// Stable id of the step ("session", "timetable", "grade:CP233",
+  /// "board:CP233"). The screen merges updates by this key.
+  final String key;
+  final SyncStepKind kind;
+
+  /// What the step is doing, in the student's words.
+  final String label;
+
+  /// Extra context (the subject name, the row count, …).
+  final String? detail;
+
+  final SyncStepState state;
+  final String? error;
+
+  const SyncStepUpdate({
+    required this.key,
+    required this.kind,
+    required this.label,
+    this.detail,
+    this.state = SyncStepState.pending,
+    this.error,
+  });
+
+  SyncStepUpdate copyWith({
+    String? label,
+    String? detail,
+    SyncStepState? state,
+    String? error,
+  }) {
+    return SyncStepUpdate(
+      key: key,
+      kind: kind,
+      label: label ?? this.label,
+      detail: detail ?? this.detail,
+      state: state ?? this.state,
+      error: error ?? this.error,
+    );
   }
 }
 

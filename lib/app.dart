@@ -732,7 +732,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// only when a leaderboard was opened, and the marks only for the one
   /// subject whose board was open.
   Future<LeaderboardSyncReport> syncClassToServer({
-    void Function(LeaderboardSyncStage stage, int done, int total)? onProgress,
+    void Function(SyncStepUpdate update)? onProgress,
   }) async {
     if (!isExtConfigured) {
       return const LeaderboardSyncReport();
@@ -740,16 +740,42 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     final sid = (dashboard?.studentId ?? '').trim();
     if (sid.isEmpty) return const LeaderboardSyncReport();
 
-    onProgress?.call(LeaderboardSyncStage.session, 0, 1);
+    // ---- 1) sign-in check (the session cookie) ----
+    onProgress?.call(const SyncStepUpdate(
+      key: 'session',
+      kind: SyncStepKind.session,
+      label: 'Checking your portal sign-in',
+      detail: 'Verifying your Microsoft session',
+      state: SyncStepState.active,
+    ));
     // A dead session means nothing can be read — the caller shows the
     // sign-in prompt.
     if (!await _portalSessionAlive(sid)) {
+      onProgress?.call(const SyncStepUpdate(
+        key: 'session',
+        kind: SyncStepKind.session,
+        label: 'Checking your portal sign-in',
+        detail: 'Sign-in required',
+        state: SyncStepState.failed,
+      ));
       return const LeaderboardSyncReport();
     }
-    onProgress?.call(LeaderboardSyncStage.session, 1, 1);
+    onProgress?.call(const SyncStepUpdate(
+      key: 'session',
+      kind: SyncStepKind.session,
+      label: 'Checking your portal sign-in',
+      detail: 'Signed in',
+      state: SyncStepState.done,
+    ));
 
-    // ---- 2) timetable (read with the session cookie) ----
-    onProgress?.call(LeaderboardSyncStage.timetable, 0, 1);
+    // ---- 2) timetable: read with the cookie, then send it ----
+    onProgress?.call(const SyncStepUpdate(
+      key: 'timetable',
+      kind: SyncStepKind.timetable,
+      label: 'Getting your timetable',
+      detail: 'Reading the portal schedule',
+      state: SyncStepState.active,
+    ));
     var rows = _timetableSyncRows;
     try {
       final html = await PortalApi().fetchPage(PortalRoutes.timetable, sid);
@@ -764,13 +790,21 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     }
     if (rows.isNotEmpty) {
       try {
+        // The student id goes with it — the server groups the student
+        // into the sections of this timetable.
         await NodeLeaderboardService()
             .syncTimetable(studentId: sid, rows: rows);
       } catch (_) {
         // Best effort — the board still works without the roster.
       }
     }
-    onProgress?.call(LeaderboardSyncStage.timetable, 1, 1);
+    onProgress?.call(SyncStepUpdate(
+      key: 'timetable',
+      kind: SyncStepKind.timetable,
+      label: 'Getting your timetable',
+      detail: '${rows.length} slots sent to the server',
+      state: SyncStepState.done,
+    ));
 
     // ---- 3) every subject's grade page ----
     final courses = dashboard?.courses ?? const <PortalCourse>[];
@@ -780,7 +814,14 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     for (var i = 0; i < courses.length; i++) {
       if (!mounted) break;
       final pc = courses[i];
-      onProgress?.call(LeaderboardSyncStage.grades, i, courses.length);
+      final key = 'grade:${pc.code.isEmpty ? pc.name : pc.code}';
+      onProgress?.call(SyncStepUpdate(
+        key: key,
+        kind: SyncStepKind.grade,
+        label: 'Getting the grade page',
+        detail: '${pc.name} \u00b7 ${i + 1} of ${courses.length}',
+        state: SyncStepState.active,
+      ));
       final courseId = courseIdFromUrl(pc.infoUrl) ?? '';
       if (courseId.isEmpty) continue;
       try {
@@ -793,20 +834,38 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           gb = parseCourseGradebook(html);
           CourseDetailCache.putGradebook(courseId, gb);
         }
-        if (gb == null || gb.isEmpty) continue;
+        if (gb == null || gb.isEmpty) {
+          onProgress?.call(SyncStepUpdate(
+            key: key,
+            kind: SyncStepKind.grade,
+            label: 'Getting the grade page',
+            detail: '${pc.name} \u00b7 no gradebook published',
+            state: SyncStepState.failed,
+          ));
+          continue;
+        }
         await _syncOwnGrades(pc, pc.name, gb);
         synced++;
+        onProgress?.call(SyncStepUpdate(
+          key: key,
+          kind: SyncStepKind.grade,
+          label: 'Getting the grade page',
+          detail: '${pc.name} \u00b7 parsed and sent to the server',
+          state: SyncStepState.done,
+        ));
       } catch (_) {
         // One subject without a gradebook must not stop the rest.
         failed++;
         failures.add(pc.name);
+        onProgress?.call(SyncStepUpdate(
+          key: key,
+          kind: SyncStepKind.grade,
+          label: 'Getting the grade page',
+          detail: '${pc.name} \u00b7 could not be read',
+          state: SyncStepState.failed,
+        ));
       }
     }
-    onProgress?.call(
-      LeaderboardSyncStage.grades,
-      courses.length,
-      courses.length,
-    );
 
     return LeaderboardSyncReport(
       timetableRows: rows.length,

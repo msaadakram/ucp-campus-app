@@ -91,7 +91,7 @@ class LiveLeaderboardScreen extends StatefulWidget {
   /// The full class sync: session -> timetable -> grade pages ->
   /// publish. Reports progress so the screen can show what it is doing.
   final Future<LeaderboardSyncReport> Function({
-    void Function(LeaderboardSyncStage stage, int done, int total)? onProgress,
+    void Function(SyncStepUpdate update)? onProgress,
   })? onSyncClass;
   final VoidCallback? back;
   /// Shown when live data is unavailable (no key / hard failure).
@@ -137,12 +137,9 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
   bool syncing = false;
   /// True while the student's own grades are being published.
   bool _syncingGrades = false;
-  /// The class-sync pipeline state: which stage it is on.
-  LeaderboardSyncStage? _syncStage;
-  /// Subjects finished in the current stage.
-  int _syncDone = 0;
-  /// Subjects total in the current stage.
-  int _syncTotal = 0;
+  /// The visible pipeline steps (sign-in -> timetable -> each subject's
+  /// grade page -> the board request).
+  final List<SyncStepUpdate> _steps = [];
   /// True when the portal sign-in is required before anything can be
   /// read (the student is not signed in / the session died).
   bool _needsSignIn = false;
@@ -151,6 +148,8 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
   /// True once the class pipeline ran in this screen session — switching
   /// subjects reuses it (the grades are already on the server).
   bool _classSyncDone = false;
+  /// The finished step list collapses to one line; tap to expand.
+  bool _stepsCollapsed = false;
   /// Timetable is published once per screen session (no repeat traffic).
   bool _timetableSynced = false;
   String? error;
@@ -298,45 +297,73 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
     if (sync == null && ensureSession == null) return;
     if (_classSyncDone && !force) return;
     setState(() {
-      _syncStage = LeaderboardSyncStage.session;
-      _syncDone = 0;
-      _syncTotal = 0;
+      _steps.clear();
       _needsSignIn = false;
     });
     try {
-      // 1) sign-in gate
+      // 1) sign-in gate — the student sees the check happen.
+      _pushStep(const SyncStepUpdate(
+        key: 'session',
+        kind: SyncStepKind.session,
+        label: 'Checking your portal sign-in',
+        detail: 'Verifying your Microsoft session',
+        state: SyncStepState.active,
+      ));
       if (ensureSession != null) {
         final ready = await ensureSession();
         if (!mounted) return;
         if (!ready) {
-          setState(() {
-            _syncStage = null;
-            _needsSignIn = true;
-          });
+          _pushStep(const SyncStepUpdate(
+            key: 'session',
+            kind: SyncStepKind.session,
+            label: 'Checking your portal sign-in',
+            detail: 'Sign-in required',
+            state: SyncStepState.failed,
+          ));
+          setState(() => _needsSignIn = true);
           return;
         }
       }
-      // 2) timetable + 3) grade pages (published to the server)
+      // 2) timetable + 3) grade pages (read with the session cookie and
+      //    published to the server, with the student's id).
       if (sync != null) {
-        final report = await sync(onProgress: (stage, done, total) {
-          if (!mounted) return;
-          setState(() {
-            _syncStage = stage;
-            _syncDone = done;
-            _syncTotal = total;
-          });
+        final report = await sync(onProgress: (update) {
+          _pushStep(update);
         });
         if (!mounted) return;
         setState(() {
           _syncReport = report;
-          _syncStage = null;
           _classSyncDone = true;
+          _stepsCollapsed = true;
         });
       }
     } catch (_) {
       if (!mounted) return;
-      setState(() => _syncStage = null);
     }
+  }
+
+  /// Marks the board step as failed (so the spinner never spins on).
+  void _failBoardStep(LeaderboardCourse sel, String why) {
+    _pushStep(SyncStepUpdate(
+      key: 'board:${sel.code.isEmpty ? sel.name : sel.code}',
+      kind: SyncStepKind.board,
+      label: 'Loading the leaderboard',
+      detail: '${sel.name} \u00b7 $why',
+      state: SyncStepState.failed,
+    ));
+  }
+
+  /// Merges a step update into the visible list (by key, keeping order).
+  void _pushStep(SyncStepUpdate update) {
+    if (!mounted) return;
+    setState(() {
+      final i = _steps.indexWhere((s) => s.key == update.key);
+      if (i == -1) {
+        _steps.add(update);
+      } else {
+        _steps[i] = update;
+      }
+    });
   }
 
   /// Roster verification for the selected course.
@@ -384,12 +411,30 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
           // Grade publishing is best-effort.
         }
       }
+      // The board request carries the SUBJECT and the STUDENT ID, so the
+      // server answers with the classmates' grades AND the student's own
+      // grade (same contract the extension uses).
+      final boardKey = 'board:${sel.code.isEmpty ? sel.name : sel.code}';
+      _pushStep(SyncStepUpdate(
+        key: boardKey,
+        kind: SyncStepKind.board,
+        label: 'Loading the leaderboard',
+        detail: '${sel.name} \u00b7 your class',
+        state: SyncStepState.active,
+      ));
       final res = await _svc!.fetchLeaderboard(
         courseName: sel.name,
         studentId: widget.studentId,
         courseCode: sel.code,
       );
       if (!mounted) return;
+      _pushStep(SyncStepUpdate(
+        key: boardKey,
+        kind: SyncStepKind.board,
+        label: 'Loading the leaderboard',
+        detail: '${sel.name} \u00b7 ${res.entries.length} students ranked',
+        state: SyncStepState.done,
+      ));
       setState(() {
         entries = res.entries;
         credits = res.remainingCredits;
@@ -399,6 +444,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       await _loadRoster();
     } on NoCredits {
       if (!mounted) return;
+      _failBoardStep(sel, 'No credits left');
       setState(() {
         loadingBoard = false;
         noCredits = true;
@@ -406,12 +452,14 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       });
     } on LeaderboardException catch (e) {
       if (!mounted) return;
+      _failBoardStep(sel, e.message);
       setState(() {
         loadingBoard = false;
         error = e.message;
       });
     } catch (_) {
       if (!mounted) return;
+      _failBoardStep(sel, 'Could not load this leaderboard');
       setState(() {
         loadingBoard = false;
         error = 'Could not load this leaderboard. Tap retry.';
@@ -550,29 +598,8 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                   ],
                 ),
               ),
-            if (_syncStage != null) _syncBanner(c),
+            if (_steps.isNotEmpty) _stepList(c),
             if (_needsSignIn) _signInCard(c),
-            if (_needsSignIn == false && _syncReport != null && _syncReport!.ok)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(
-                  children: [
-                    Icon(Icons.cloud_done_outlined,
-                        size: 13, color: c.teal.withValues(alpha: 0.9)),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'Synced from your portal: '
-                        '${_syncReport!.timetableRows} timetable slots \u00b7 '
-                        '${_syncReport!.subjectsSynced} subjects published'
-                        '${_syncReport!.subjectsFailed > 0 ? ' \u00b7 ${_syncReport!.subjectsFailed} without a gradebook' : ''}',
-                        style: body(c,
-                            size: 11.5, color: c.tealInk.withValues(alpha: 0.7)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             if (roster != null) _rosterLine(c, roster!),
             if (loadingBoard)
               const Padding(
@@ -612,40 +639,129 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
     );
   }
 
-  /// Progress banner of the class-sync pipeline: sign-in check ->
-  /// timetable -> grade pages -> publish.
-  Widget _syncBanner(AppColors c) {
-    final stage = _syncStage ?? LeaderboardSyncStage.session;
-    final label = leaderboardSyncStageLabel(stage);
-    final detail = stage == LeaderboardSyncStage.grades && _syncTotal > 0
-        ? ' \u00b7 $_syncDone/$_syncTotal subjects'
-        : '';
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.16),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            const SizedBox(
-              width: 13,
-              height: 13,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2, color: Colors.white),
+  /// The visible pipeline: "Checking your portal sign-in" -> "Getting
+  /// your timetable" -> one line per subject's grade page -> "Loading
+  /// the leaderboard". Every line shows what is happening right now.
+  Widget _stepList(AppColors c) {
+    final running = _steps.any((s) => s.state == SyncStepState.active);
+    final report = _syncReport;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: c.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _stepsCollapsed = !_stepsCollapsed),
+            child: Row(
+              children: [
+                Icon(
+                  running
+                      ? Icons.sync_rounded
+                      : Icons.check_circle_outline,
+                  size: 16,
+                  color: running ? c.teal : c.tealInk.withValues(alpha: 0.6),
+                ),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    running
+                        ? 'Syncing your class'
+                        : (report != null && report.ok
+                            ? 'Synced: ${report.timetableRows} slots \u00b7 '
+                                '${report.subjectsSynced} subjects sent'
+                            : 'Class sync'),
+                    style: body(c,
+                        size: 12.5,
+                        weight: FontWeight.w800,
+                        color: c.tealInk),
+                  ),
+                ),
+                Icon(
+                  _stepsCollapsed
+                      ? Icons.keyboard_arrow_down
+                      : Icons.keyboard_arrow_up,
+                  size: 18,
+                  color: c.tealInk.withValues(alpha: 0.5),
+                ),
+              ],
             ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Text('$label$detail',
-                  style: body(c,
-                      size: 11.5,
-                      weight: FontWeight.w600,
-                      color: Colors.white)),
-            ),
+          ),
+          if (!_stepsCollapsed) ...[
+            const SizedBox(height: 8),
+            for (final step in _steps) _stepRow(c, step),
           ],
-        ),
+        ],
+      ),
+    );
+  }
+
+  /// One line of the pipeline with its state.
+  Widget _stepRow(AppColors c, SyncStepUpdate step) {
+    IconData icon;
+    Color tint;
+    switch (step.state) {
+      case SyncStepState.active:
+        icon = Icons.pending_outlined;
+        tint = c.teal;
+        break;
+      case SyncStepState.done:
+        icon = Icons.check_circle;
+        tint = const Color(0xFF2FA36B);
+        break;
+      case SyncStepState.failed:
+        icon = Icons.error_outline;
+        tint = const Color(0xFFD9534F);
+        break;
+      case SyncStepState.pending:
+        icon = Icons.circle_outlined;
+        tint = c.tealInk.withValues(alpha: 0.35);
+        break;
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (step.state == SyncStepState.active)
+            SizedBox(
+              width: 15,
+              height: 15,
+              child: CircularProgressIndicator(strokeWidth: 2, color: tint),
+            )
+          else
+            Icon(icon, size: 15, color: tint),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  step.label,
+                  style: body(c,
+                      size: 12.5,
+                      weight: FontWeight.w700,
+                      color: c.tealInk),
+                ),
+                if ((step.detail ?? '').isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Text(
+                      step.detail!,
+                      style: body(c,
+                          size: 11,
+                          color: c.tealInk.withValues(alpha: 0.6)),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
