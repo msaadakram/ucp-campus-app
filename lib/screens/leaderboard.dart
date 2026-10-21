@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
@@ -163,6 +164,9 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
 
   /// Student ids whose marks are expanded in the list.
   final Set<String> _expanded = {};
+
+  /// How the board is shown: podium cards or a full ranked LIST.
+  bool listView = false;
 
   /// True when the portal sign-in is required before anything can be
   /// read (the session really expired).
@@ -695,10 +699,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
             if (_networkProblem) _networkCard(c),
             if (roster != null) _rosterLine(c, roster!),
             if (loadingBoard)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 40),
-                child: Center(child: CircularProgressIndicator()),
-              )
+              _boardSkeleton(c)
             else if (noCredits)
               _statusCard(
                 c,
@@ -726,9 +727,29 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                 ],
               )
             else ...[
-              _podium(c, entries.take(3).toList()),
-              const SizedBox(height: 14),
-              for (final e in entries.skip(3)) _rankRow(c, e),
+              _viewToggle(c),
+              const SizedBox(height: 12),
+              if (!listView) _podium(c, entries.take(3).toList()),
+              if (!listView) const SizedBox(height: 14),
+              // Rows fade and slide in staggered — the board fills in
+              // instead of snapping into place.
+              for (var i = 0; i < entries.length; i++) ...[
+                if (listView || i >= 3) _enterRow(c, entries[i], i),
+              ],
+              if (listView && entries.length > 3)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Center(
+                    child: Text(
+                      '${entries.length} students ranked in this section',
+                      style: body(
+                        c,
+                        size: 11.5,
+                        color: Colors.white.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ),
+                ),
               const SizedBox(height: 96),
             ],
           ],
@@ -1431,6 +1452,129 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
     );
   }
 
+  /// Podium / LIST switch.
+  Widget _viewToggle(AppColors c) {
+    return Row(
+      children: [
+        _viewChip(
+          c,
+          label: 'Podium',
+          icon: Icons.emoji_events_outlined,
+          selected: !listView,
+          onTap: () => setState(() => listView = false),
+        ),
+        const SizedBox(width: 8),
+        _viewChip(
+          c,
+          label: 'List',
+          icon: Icons.view_agenda_outlined,
+          selected: listView,
+          onTap: () => setState(() => listView = true),
+        ),
+        const Spacer(),
+        if (entries.length > 1)
+          Text(
+            '${entries.length} ranked',
+            style: body(
+              c,
+              size: 11.5,
+              color: Colors.white.withValues(alpha: 0.6),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _viewChip(
+    AppColors c, {
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected
+              ? Colors.white.withValues(alpha: 0.28)
+              : Colors.white.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? Colors.white.withValues(alpha: 0.7)
+                : Colors.white.withValues(alpha: 0.18),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 13,
+              color: selected
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.7),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.8),
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// A row entering the list: fade + slide up, staggered by rank.
+  Widget _enterRow(AppColors c, LeaderboardEntry e, int index) {
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 260),
+      tween: Tween<double>(begin: 0, end: 1),
+      builder: (context, t, child) {
+        final eased = Curves.easeOutCubic.transform(t);
+        return Opacity(
+          opacity: eased,
+          child: Transform.translate(
+            offset: Offset(0, 12 * (1 - eased)),
+            child: child,
+          ),
+        );
+      },
+      child: _rankRow(c, e),
+    );
+  }
+
+  /// Shimmer skeleton while the board loads — modern, no bare spinner.
+  Widget _boardSkeleton(AppColors c) {
+    return Column(
+      children: [
+        for (var i = 0; i < 5; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _Shimmer(
+              child: Container(
+                height: 58,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   /// The marks behind a score: every assessment with obtained/total,
   /// weight and (when reported) the class average.
   Widget _marksPanel(AppColors c, LeaderboardEntry e) {
@@ -1682,4 +1826,70 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       ),
     );
   }
+}
+
+/// A shimmering placeholder (modern loading animation).
+class _Shimmer extends StatefulWidget {
+  final Widget child;
+  const _Shimmer({required this.child});
+
+  @override
+  State<_Shimmer> createState() => _ShimmerState();
+}
+
+class _ShimmerState extends State<_Shimmer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, child) {
+        return ShaderMask(
+          blendMode: BlendMode.srcATop,
+          shaderCallback: (bounds) {
+            final w = bounds.width;
+            final dx = (w * 2) * _c.value - w * 0.5;
+            return LinearGradient(
+              colors: const [
+                Color(0x22FFFFFF),
+                Color(0x66FFFFFF),
+                Color(0x22FFFFFF),
+              ],
+              stops: const [0.35, 0.5, 0.65],
+              transform: GradientTranslation(dx),
+            ).createShader(Rect.fromLTWH(0, 0, w, bounds.height));
+          },
+          child: child,
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+
+/// Slide for the shimmer gradient.
+class GradientTranslation implements GradientTransform {
+  final double x;
+  const GradientTranslation(this.x);
+
+  @override
+  Matrix4? transform(Rect bounds, {TextDirection? textDirection}) =>
+      Matrix4.translationValues(x, 0, 0);
 }

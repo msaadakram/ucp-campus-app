@@ -559,6 +559,57 @@ void main() {
       expect(svc.lastCourseCode, 'AR221-F26-BS-CS-F25-C1');
     });
 
+    testWidgets('podium and LIST views both render every student', (
+        tester) async {
+      final svc = FakeLeaderboardService(
+        rows: const [
+          {'studentId': 'TOP', 'studentName': 'Top Student',
+            'overallPercentage': 96.0, 'grade': 'A'},
+          {'studentId': 'MID', 'studentName': 'Mid Student',
+            'overallPercentage': 88.0, 'grade': 'A-'},
+          {'studentId': 'LOW', 'studentName': 'Low Student',
+            'overallPercentage': 70.0, 'grade': 'B'},
+          {'studentId': 'ME', 'studentName': 'Me',
+            'overallPercentage': 60.0, 'grade': 'C'},
+        ],
+      );
+      await tester.pumpWidget(_wrap(LiveLeaderboardScreen(
+        service: svc,
+        studentId: 'ME',
+        portalCourses: const [
+          PortalCourse(
+            name: 'Data Structures',
+            teacher: 'T',
+            code: 'CP233',
+            credits: 3,
+            attendance: 0,
+            infoUrl: '/student/course/info/AAA111',
+          ),
+        ],
+        back: () {},
+      )));
+      await tester.pumpAndSettle();
+      // Podium view: the top three are cards, the fourth is a row
+      // (your own row reads "You").
+      expect(find.text('Podium'), findsOneWidget);
+      expect(find.text('List'), findsOneWidget);
+      expect(find.text('You'), findsOneWidget);
+      // Switch to the LIST view.
+      await tester.tap(find.text('List'));
+      await tester.pumpAndSettle();
+      // ALL four students are now rows, including the podium's top.
+      expect(find.text('Top Student'), findsOneWidget);
+      expect(find.text('Mid Student'), findsOneWidget);
+      expect(find.text('Low Student'), findsOneWidget);
+      expect(find.text('4 students ranked in this section'), findsOneWidget);
+      // The toggle reports the count in podium mode too.
+      expect(find.text('4 ranked'), findsOneWidget);
+      // Back to the podium.
+      await tester.tap(find.text('Podium'));
+      await tester.pumpAndSettle();
+      expect(find.text('Top Student'), findsOneWidget);
+    });
+
     testWidgets('theory and lab are separate subjects in the picker', (
         tester) async {
       final svc = FakeLeaderboardService(
