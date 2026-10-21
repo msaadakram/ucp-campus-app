@@ -11,15 +11,15 @@ import '../widgets/common.dart';
 /// Identity key for a course: the section suffix is dropped, but the
 /// "- Lab" suffix is KEPT — theory and lab are different subjects with
 /// different boards.
-String courseIdentityKey(String name) => name
-    .toLowerCase()
-    .replaceAll(RegExp(r'\s*\([^)]*\)\s*$'), '')
-    .trim();
+String courseIdentityKey(String name) =>
+    name.toLowerCase().replaceAll(RegExp(r'\s*\([^)]*\)\s*$'), '').trim();
 
 /// Loose key (section AND "- Lab" dropped) — fallback matching only,
 /// for the extension's labels that lose the lab suffix.
 String courseLooseKey(String name) =>
-    courseIdentityKey(name).replaceAll(RegExp(r'\s*[-–—]\s*lab\s*$'), '').trim();
+    courseIdentityKey(name)
+        .replaceAll(RegExp(r'\s*[-–—]\s*lab\s*$'), '')
+        .trim();
 
 /// Course code inside a section label: "… (AR221-F26-BS-CS-F25-C1)" ->
 /// "AR221".
@@ -38,9 +38,7 @@ class LeaderboardCourse {
 
   @override
   bool operator ==(Object other) =>
-      other is LeaderboardCourse &&
-      other.name == name &&
-      other.code == code;
+      other is LeaderboardCourse && other.name == name && other.code == code;
 
   @override
   int get hashCode => Object.hash(name, code);
@@ -53,30 +51,39 @@ class LeaderboardCourse {
 /// service is null (ext API key not configured) or fails hard.
 class LiveLeaderboardScreen extends StatefulWidget {
   final LeaderboardService? service;
+
   /// Portal student id — scopes the board to the student's class group
   /// and highlights their row (costs 1 credit per view, backend rule).
   final String? studentId;
+
   /// Course to preselect by exact or partial title match (optional).
   final String? initialCourse;
+
   /// Code of the tapped course (e.g. "AR221"): the ext labels carry the
   /// section code, so this disambiguates lab vs theory reliably.
   final String? initialCourseCode;
+
   /// The student's REAL portal courses (name carries "- Lab" etc.). Used
   /// as the primary picker source so the board queries the same course
   /// key the extension published.
   final List<PortalCourse> portalCourses;
+
   /// Course code -> FULL section code (e.g. "AR221" ->
   /// "AR221-F26-BS-CS-F25-C1"). The full code scopes the board to one
   /// exact section, whoever published the data.
   final Map<String, String> sectionCodes;
+
   /// Bare course names from the app's own portal timetable — the picker
   /// source when the extension has posted no timetable yet.
   final List<String> fallbackCourses;
+
   /// The student's portal timetable rows, published to the server on the
   /// first open so app-only users join the class roster.
   final List<Map<String, String>> timetableRows;
+
   /// Display name of the signed-in student (for grade sync).
   final String? studentName;
+
   /// Publishes the student's own grades for the opened course (the app
   /// fetches the portal gradebook and posts it), so their row exists on
   /// the board even without the extension.
@@ -92,12 +99,14 @@ class LiveLeaderboardScreen extends StatefulWidget {
   final Future<LeaderboardSyncReport> Function({
     void Function(SyncStepUpdate update)? onProgress,
     String? priorityCode,
-  })? onSyncClass;
+  })?
+  onSyncClass;
 
   /// Bumped by the app every time the student signs in again. The board
   /// watches it and resumes its sync on its own (no extra tap).
   final int sessionGeneration;
   final VoidCallback? back;
+
   /// Shown when live data is unavailable (no key / hard failure).
   final Widget? fallback;
 
@@ -129,35 +138,50 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
   LeaderboardCourse? course;
   List<LeaderboardEntry> entries = [];
   int? credits;
+
   /// True when this view was free (the app never spends credits).
   bool freeView = false;
   bool loading = true;
   bool loadingBoard = false;
+
   /// True when the course list came from the app's portal timetable
   /// (the extension has not posted one yet) — shown as a small hint.
   bool _fromPortal = false;
+
   /// Roster verification for the selected course (who shares the section).
   LeaderboardRoster? roster;
+
   /// True while the app publishes its own timetable to the server.
   bool syncing = false;
+
   /// True while the student's own grades are being published.
   bool _syncingGrades = false;
+
   /// The visible pipeline steps (sign-in -> timetable -> each subject's
   /// grade page -> the board request).
   final List<SyncStepUpdate> _steps = [];
+
+  /// Student ids whose marks are expanded in the list.
+  final Set<String> _expanded = {};
+
   /// True when the portal sign-in is required before anything can be
   /// read (the session really expired).
   bool _needsSignIn = false;
+
   /// True when the portal could not be reached — a network problem, not
   /// a sign-in problem. The board still loads; only the live sync waits.
   bool _networkProblem = false;
+
   /// Result of the last class sync.
   LeaderboardSyncReport? _syncReport;
+
   /// True once the class pipeline ran in this screen session — switching
   /// subjects reuses it (the grades are already on the server).
   bool _classSyncDone = false;
+
   /// The finished step list collapses to one line; tap to expand.
   bool _stepsCollapsed = false;
+
   /// Timetable is published once per screen session (no repeat traffic).
   bool _timetableSynced = false;
   String? error;
@@ -185,8 +209,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       // App-first: publish our own timetable so the server can build the
       // class roster (app-only users then group with extension users).
       await _syncTimetableOnce();
-      final extList =
-          await _svc!.fetchCourses(studentId: widget.studentId);
+      final extList = await _svc!.fetchCourses(studentId: widget.studentId);
       if (!mounted) return;
       // The portal course list is authoritative: it keeps theory and lab
       // apart ("X" and "X - Lab") and carries the course code. Ext labels
@@ -209,8 +232,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       }
       for (final n in extList) {
         final loose = courseLooseKey(n);
-        final covered =
-            list.any((e) => courseLooseKey(e.name) == loose);
+        final covered = list.any((e) => courseLooseKey(e.name) == loose);
         if (covered) continue;
         add(n, code: courseCodeFromLabel(n));
       }
@@ -224,7 +246,8 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       if (list.isEmpty) {
         setState(() {
           loading = false;
-          error = 'No class data yet — the leaderboard fills once students '
+          error =
+              'No class data yet — the leaderboard fills once students '
               'open the extension.';
         });
         return;
@@ -282,10 +305,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
     _timetableSynced = true;
     if (mounted) setState(() => syncing = true);
     try {
-      await _svc!.syncTimetable(
-        studentId: sid,
-        rows: widget.timetableRows,
-      );
+      await _svc!.syncTimetable(studentId: sid, rows: widget.timetableRows);
     } catch (_) {
       // Sync is best-effort; the board still loads.
     }
@@ -311,24 +331,28 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
     });
     try {
       // 1) sign-in gate — the student sees the check happen.
-      _pushStep(const SyncStepUpdate(
-        key: 'session',
-        kind: SyncStepKind.session,
-        label: 'Checking your portal sign-in',
-        detail: 'Verifying your Microsoft session',
-        state: SyncStepState.active,
-      ));
+      _pushStep(
+        const SyncStepUpdate(
+          key: 'session',
+          kind: SyncStepKind.session,
+          label: 'Checking your portal sign-in',
+          detail: 'Verifying your Microsoft session',
+          state: SyncStepState.active,
+        ),
+      );
       if (ensureSession != null) {
         final ready = await ensureSession();
         if (!mounted) return;
         if (!ready) {
-          _pushStep(const SyncStepUpdate(
-            key: 'session',
-            kind: SyncStepKind.session,
-            label: 'Checking your portal sign-in',
-            detail: 'Session expired \u00b7 sign in again',
-            state: SyncStepState.failed,
-          ));
+          _pushStep(
+            const SyncStepUpdate(
+              key: 'session',
+              kind: SyncStepKind.session,
+              label: 'Checking your portal sign-in',
+              detail: 'Session expired \u00b7 sign in again',
+              state: SyncStepState.failed,
+            ),
+          );
           setState(() => _needsSignIn = true);
           return;
         }
@@ -366,13 +390,15 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
 
   /// Marks the board step as failed (so the spinner never spins on).
   void _failBoardStep(LeaderboardCourse sel, String why) {
-    _pushStep(SyncStepUpdate(
-      key: 'board:${sel.code.isEmpty ? sel.name : sel.code}',
-      kind: SyncStepKind.board,
-      label: 'Loading the leaderboard',
-      detail: '${sel.name} \u00b7 $why',
-      state: SyncStepState.failed,
-    ));
+    _pushStep(
+      SyncStepUpdate(
+        key: 'board:${sel.code.isEmpty ? sel.name : sel.code}',
+        kind: SyncStepKind.board,
+        label: 'Loading the leaderboard',
+        detail: '${sel.name} \u00b7 $why',
+        state: SyncStepState.failed,
+      ),
+    );
   }
 
   /// Merges a step update into the visible list (by key, keeping order).
@@ -442,26 +468,30 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       // server answers with the classmates' grades AND the student's own
       // grade (same contract the extension uses).
       final boardKey = 'board:${sel.code.isEmpty ? sel.name : sel.code}';
-      _pushStep(SyncStepUpdate(
-        key: boardKey,
-        kind: SyncStepKind.board,
-        label: 'Loading the leaderboard',
-        detail: '${sel.name} \u00b7 your class',
-        state: SyncStepState.active,
-      ));
+      _pushStep(
+        SyncStepUpdate(
+          key: boardKey,
+          kind: SyncStepKind.board,
+          label: 'Loading the leaderboard',
+          detail: '${sel.name} \u00b7 your class',
+          state: SyncStepState.active,
+        ),
+      );
       final res = await _svc!.fetchLeaderboard(
         courseName: sel.name,
         studentId: widget.studentId,
         courseCode: sel.code,
       );
       if (!mounted) return;
-      _pushStep(SyncStepUpdate(
-        key: boardKey,
-        kind: SyncStepKind.board,
-        label: 'Loading the leaderboard',
-        detail: '${sel.name} \u00b7 ${res.entries.length} students ranked',
-        state: SyncStepState.done,
-      ));
+      _pushStep(
+        SyncStepUpdate(
+          key: boardKey,
+          kind: SyncStepKind.board,
+          label: 'Loading the leaderboard',
+          detail: '${sel.name} \u00b7 ${res.entries.length} students ranked',
+          state: SyncStepState.done,
+        ),
+      );
       setState(() {
         entries = res.entries;
         credits = res.remainingCredits;
@@ -522,7 +552,9 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                   onTap: widget.back,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 7),
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.16),
                       borderRadius: BorderRadius.circular(16),
@@ -531,11 +563,14 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.arrow_back, color: Colors.white, size: 16),
-                        Text('  Back',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13)),
+                        Text(
+                          '  Back',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -544,7 +579,9 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
               if (credits != null || freeView)
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 6),
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.16),
                     borderRadius: BorderRadius.circular(14),
@@ -553,29 +590,34 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        freeView
-                            ? Icons.bolt_outlined
-                            : Icons.toll_outlined,
+                        freeView ? Icons.bolt_outlined : Icons.toll_outlined,
                         size: 14,
                         color: Colors.white,
                       ),
                       const SizedBox(width: 4),
-                      Text(freeView ? 'Free' : '$credits credits',
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12)),
+                      Text(
+                        freeView ? 'Free' : '$credits credits',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
                     ],
                   ),
                 ),
             ],
           ),
           const SizedBox(height: 10),
-          Text('Leaderboard',
-              style: display(c, size: 26, color: Colors.white)),
-          Text('Live class ranks · overall % · updated by students',
-              style: body(c,
-                  size: 13, color: Colors.white.withValues(alpha: 0.8))),
+          Text('Leaderboard', style: display(c, size: 26, color: Colors.white)),
+          Text(
+            'Live class ranks · overall % · updated by students',
+            style: body(
+              c,
+              size: 13,
+              color: Colors.white.withValues(alpha: 0.8),
+            ),
+          ),
           const SizedBox(height: 12),
           if (loading)
             const Padding(
@@ -583,18 +625,22 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (error != null)
-            _statusCard(c,
-                icon: Icons.cloud_off_outlined,
-                text: error!,
-                action: 'Retry',
-                onAction: course == null ? _loadCourses : _loadBoard)
+            _statusCard(
+              c,
+              icon: Icons.cloud_off_outlined,
+              text: error!,
+              action: 'Retry',
+              onAction: course == null ? _loadCourses : _loadBoard,
+            )
           else ...[
             _courseBar(c),
             if (_fromPortal) ...[
               const SizedBox(height: 8),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(12),
@@ -602,15 +648,20 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.info_outline,
-                        size: 13, color: Colors.white70),
+                    const Icon(
+                      Icons.info_outline,
+                      size: 13,
+                      color: Colors.white70,
+                    ),
                     const SizedBox(width: 6),
                     Flexible(
                       child: Text(
                         'Courses from your portal timetable — classmates '
                         'appear once the extension syncs.',
                         style: const TextStyle(
-                            fontSize: 11, color: Colors.white70),
+                          fontSize: 11,
+                          color: Colors.white70,
+                        ),
                       ),
                     ),
                   ],
@@ -627,12 +678,15 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                       width: 12,
                       height: 12,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white70),
+                        strokeWidth: 2,
+                        color: Colors.white70,
+                      ),
                     ),
                     const SizedBox(width: 8),
-                    Text('Syncing your timetable…',
-                        style: body(c,
-                            size: 11.5, color: Colors.white70)),
+                    Text(
+                      'Syncing your timetable…',
+                      style: body(c, size: 11.5, color: Colors.white70),
+                    ),
                   ],
                 ),
               ),
@@ -646,19 +700,24 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (noCredits)
-              _statusCard(c,
-                  icon: Icons.toll_outlined,
-                  text: "You're out of credits — each leaderboard view "
-                      'costs 1 credit. Earn more via referrals.',
-                  action: 'Retry',
-                  onAction: _loadBoard)
+              _statusCard(
+                c,
+                icon: Icons.toll_outlined,
+                text:
+                    "You're out of credits — each leaderboard view "
+                    'costs 1 credit. Earn more via referrals.',
+                action: 'Retry',
+                onAction: _loadBoard,
+              )
             else if (entries.isEmpty)
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _statusCard(c,
-                      icon: Icons.emoji_events_outlined,
-                      text: 'No ranks published for this subject yet.'),
+                  _statusCard(
+                    c,
+                    icon: Icons.emoji_events_outlined,
+                    text: 'No ranks published for this subject yet.',
+                  ),
                   if (widget.onEnsureGrades != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 10),
@@ -700,9 +759,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
             child: Row(
               children: [
                 Icon(
-                  running
-                      ? Icons.sync_rounded
-                      : Icons.check_circle_outline,
+                  running ? Icons.sync_rounded : Icons.check_circle_outline,
                   size: 16,
                   color: running ? c.teal : c.tealInk.withValues(alpha: 0.6),
                 ),
@@ -712,13 +769,15 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                     running
                         ? 'Syncing your class'
                         : (report != null && report.ok
-                            ? 'Synced: ${report.timetableRows} slots \u00b7 '
-                                '${report.subjectsSynced} subjects sent'
-                            : 'Class sync'),
-                    style: body(c,
-                        size: 12.5,
-                        weight: FontWeight.w800,
-                        color: c.tealInk),
+                              ? 'Synced: ${report.timetableRows} slots \u00b7 '
+                                    '${report.subjectsSynced} subjects sent'
+                              : 'Class sync'),
+                    style: body(
+                      c,
+                      size: 12.5,
+                      weight: FontWeight.w800,
+                      color: c.tealInk,
+                    ),
                   ),
                 ),
                 Icon(
@@ -782,19 +841,23 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
               children: [
                 Text(
                   step.label,
-                  style: body(c,
-                      size: 12.5,
-                      weight: FontWeight.w700,
-                      color: c.tealInk),
+                  style: body(
+                    c,
+                    size: 12.5,
+                    weight: FontWeight.w700,
+                    color: c.tealInk,
+                  ),
                 ),
                 if ((step.detail ?? '').isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 1),
                     child: Text(
                       step.detail!,
-                      style: body(c,
-                          size: 11,
-                          color: c.tealInk.withValues(alpha: 0.6)),
+                      style: body(
+                        c,
+                        size: 11,
+                        color: c.tealInk.withValues(alpha: 0.6),
+                      ),
                     ),
                   ),
               ],
@@ -826,8 +889,11 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                 'Could not reach the UCP portal \u2014 your ranks are up to '
                 'date, but the live sync of your timetable and grades '
                 'needs a connection.',
-                style: body(c,
-                    size: 12, color: c.tealInk.withValues(alpha: 0.75)),
+                style: body(
+                  c,
+                  size: 12,
+                  color: c.tealInk.withValues(alpha: 0.75),
+                ),
               ),
             ),
             const SizedBox(width: 8),
@@ -838,17 +904,23 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                 _runClassSync(force: true);
               },
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 9,
+                ),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(colors: [c.tealDeep, c.teal]),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Text('Retry',
-                    style: body(c,
-                        size: 12.5,
-                        weight: FontWeight.w800,
-                        color: Colors.white)),
+                child: Text(
+                  'Retry',
+                  style: body(
+                    c,
+                    size: 12.5,
+                    weight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
           ],
@@ -875,8 +947,10 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
               children: [
                 Icon(Icons.lock_person_outlined, size: 20, color: c.tealInk),
                 const SizedBox(width: 8),
-                Text('Sign in to sync your class',
-                    style: display(c, size: 17, color: c.tealInk)),
+                Text(
+                  'Sign in to sync your class',
+                  style: display(c, size: 17, color: c.tealInk),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -885,7 +959,11 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
               'portal with your Microsoft account. Sign in once and the '
               'app publishes your class so the leaderboard can rank you '
               'with your section.',
-              style: body(c, size: 12.5, color: c.tealInk.withValues(alpha: 0.75)),
+              style: body(
+                c,
+                size: 12.5,
+                color: c.tealInk.withValues(alpha: 0.75),
+              ),
             ),
             const SizedBox(height: 12),
             GestureDetector(
@@ -909,14 +987,17 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.login,
-                        size: 17, color: Colors.white),
+                    const Icon(Icons.login, size: 17, color: Colors.white),
                     const SizedBox(width: 8),
-                    Text('Sign in with Microsoft',
-                        style: body(c,
-                            size: 14,
-                            weight: FontWeight.w800,
-                            color: Colors.white)),
+                    Text(
+                      'Sign in with Microsoft',
+                      style: body(
+                        c,
+                        size: 14,
+                        weight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -962,15 +1043,26 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                 width: 15,
                 height: 15,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white),
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
               )
             else
-              const Icon(Icons.cloud_upload_outlined,
-                  size: 17, color: Colors.white),
+              const Icon(
+                Icons.cloud_upload_outlined,
+                size: 17,
+                color: Colors.white,
+              ),
             const SizedBox(width: 8),
-            Text('Publish my marks',
-                style: body(c,
-                    size: 14, weight: FontWeight.w800, color: Colors.white)),
+            Text(
+              'Publish my marks',
+              style: body(
+                c,
+                size: 14,
+                weight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
           ],
         ),
       ),
@@ -1001,9 +1093,10 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                   ? 'You + ${r.classmates} classmate${r.classmates == 1 ? '' : 's'} in this section$section'
                   : '${r.rosterSize} in this section$section — your timetable is not synced yet',
               style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white.withValues(alpha: 0.9)),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: Colors.white.withValues(alpha: 0.9),
+              ),
             ),
           ),
         ],
@@ -1029,7 +1122,9 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 9),
+                    horizontal: 14,
+                    vertical: 9,
+                  ),
                   decoration: BoxDecoration(
                     gradient: course == entry
                         ? LinearGradient(colors: [c.tealDeep, c.teal])
@@ -1037,26 +1132,30 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                     color: course == entry ? null : c.white,
                     borderRadius: BorderRadius.circular(22),
                     border: Border.all(
-                        color: course == entry
-                            ? Colors.transparent
-                            : c.dustSoft.withValues(alpha: 0.7)),
+                      color: course == entry
+                          ? Colors.transparent
+                          : c.dustSoft.withValues(alpha: 0.7),
+                    ),
                     boxShadow: course == entry
                         ? [
                             BoxShadow(
-                                color: c.teal.withValues(alpha: 0.4),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4))
+                              color: c.teal.withValues(alpha: 0.4),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
                           ]
                         : null,
                   ),
-                  child: Text(_shortName(entry.name),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color:
-                              course == entry ? Colors.white : c.tealInk)),
+                  child: Text(
+                    _shortName(entry.name),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: course == entry ? Colors.white : c.tealInk,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1071,39 +1170,50 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
     return (cut > 0 ? n.substring(0, cut) : n).trim();
   }
 
-  Widget _statusCard(AppColors c,
-      {required IconData icon,
-      required String text,
-      String? action,
-      VoidCallback? onAction}) {
+  Widget _statusCard(
+    AppColors c, {
+    required IconData icon,
+    required String text,
+    String? action,
+    VoidCallback? onAction,
+  }) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       margin: const EdgeInsets.only(top: 8),
       decoration: BoxDecoration(
-          color: c.white, borderRadius: BorderRadius.circular(20)),
+        color: c.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Column(
         children: [
           Icon(icon, size: 32, color: c.teal),
           const SizedBox(height: 10),
-          Text(text,
-              textAlign: TextAlign.center,
-              style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.7))),
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: body(c, size: 14, color: c.tealInk.withValues(alpha: 0.7)),
+          ),
           if (action != null) ...[
             const SizedBox(height: 12),
             GestureDetector(
               onTap: onAction,
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 20, vertical: 10),
+                  horizontal: 20,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
-                    gradient:
-                        LinearGradient(colors: [c.tealDeep, c.teal]),
-                    borderRadius: BorderRadius.circular(16)),
-                child: Text(action,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold)),
+                  gradient: LinearGradient(colors: [c.tealDeep, c.teal]),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  action,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ),
           ],
@@ -1118,61 +1228,80 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       final tone = podium == 1
           ? const Color(0xFFFFC53D)
           : podium == 2
-              ? const Color(0xFF9FB3C8)
-              : const Color(0xFFE2854E);
+          ? const Color(0xFF9FB3C8)
+          : const Color(0xFFE2854E);
       return Expanded(
-        child: Column(
-          children: [
-            if (podium == 1)
-              const Icon(Icons.workspace_premium,
-                  color: Color(0xFFFFC53D), size: 26),
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.all(2.5),
-              decoration:
-                  BoxDecoration(shape: BoxShape.circle, color: tone),
-              child: CircleAvatar(
-                radius: podium == 1 ? 30 : 24,
-                backgroundColor: c.white,
-                foregroundImage: e.imageUrl.isNotEmpty
-                    ? NetworkImage(e.imageUrl)
-                    : null,
-                child: e.imageUrl.isNotEmpty
-                    ? null
-                    : Text(
-                        e.isAnonymous
-                            ? '?'
-                            : e.studentName.isNotEmpty
-                                ? e.studentName[0].toUpperCase()
-                                : '?',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w800, color: tone)),
+        // Tap a podium card to see the marks behind the score.
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _showMarks(c, e),
+          child: Column(
+            children: [
+              if (podium == 1)
+                const Icon(
+                  Icons.workspace_premium,
+                  color: Color(0xFFFFC53D),
+                  size: 26,
+                ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.all(2.5),
+                decoration: BoxDecoration(shape: BoxShape.circle, color: tone),
+                child: CircleAvatar(
+                  radius: podium == 1 ? 30 : 24,
+                  backgroundColor: c.white,
+                  foregroundImage: e.imageUrl.isNotEmpty
+                      ? NetworkImage(e.imageUrl)
+                      : null,
+                  child: e.imageUrl.isNotEmpty
+                      ? null
+                      : Text(
+                          e.isAnonymous
+                              ? '?'
+                              : e.studentName.isNotEmpty
+                              ? e.studentName[0].toUpperCase()
+                              : '?',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: tone,
+                          ),
+                        ),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(e.isAnonymous ? 'Anonymous' : e.studentName,
+              const SizedBox(height: 8),
+              Text(
+                e.isAnonymous ? 'Anonymous' : e.studentName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: body(c, size: 13, weight: FontWeight.w800)),
-            Text(e.grade.isNotEmpty ? e.grade : '${e.percentage.toStringAsFixed(1)}%',
-                style: body(c,
-                    size: 12,
-                    weight: FontWeight.w700,
-                    color: tone)),
-            const SizedBox(height: 6),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-              decoration: BoxDecoration(
+                style: body(c, size: 13, weight: FontWeight.w800),
+              ),
+              Text(
+                e.grade.isNotEmpty
+                    ? '${e.grade} · ${e.percentage.toStringAsFixed(1)}%'
+                    : '${e.percentage.toStringAsFixed(1)}%',
+                style: body(c, size: 12, weight: FontWeight.w700, color: tone),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
                   color: tone.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(10)),
-              child: Text('#${e.rank}',
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '#${e.rank}',
                   style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: tone)),
-            ),
-          ],
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: tone,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -1200,70 +1329,356 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
 
   Widget _rankRow(AppColors c, LeaderboardEntry e) {
     final me = e.isMe;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: me ? c.teal.withValues(alpha: 0.10) : c.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
+    final open = _expanded.contains(e.studentId);
+    final hasMarks = e.assessments.isNotEmpty;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: hasMarks
+          ? () => setState(() {
+              if (open) {
+                _expanded.remove(e.studentId);
+              } else {
+                _expanded.add(e.studentId);
+              }
+            })
+          : null,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: me ? c.teal.withValues(alpha: 0.10) : c.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
             color: me ? c.teal : c.dustSoft.withValues(alpha: 0.6),
-            width: me ? 1.5 : 1),
-      ),
-      child: Row(
-        children: [
-          Container(
-            alignment: Alignment.center,
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: me ? c.teal : c.dustSoft.withValues(alpha: 0.7),
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: Text('${e.rank}',
-                style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: me ? Colors.white : c.tealInk)),
+            width: me ? 1.5 : 1,
           ),
-          const SizedBox(width: 10),
-          CircleAvatar(
-            radius: 16,
-            backgroundColor: c.dustSoft,
-            foregroundImage:
-                e.imageUrl.isNotEmpty ? NetworkImage(e.imageUrl) : null,
-            child: e.imageUrl.isNotEmpty
-                ? null
-                : Text(
-                    e.isAnonymous
-                        ? '?'
-                        : e.studentName.isNotEmpty
-                            ? e.studentName[0].toUpperCase()
-                            : '?',
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        ),
+        child: Column(
+          children: [
+            Row(
               children: [
+                Container(
+                  alignment: Alignment.center,
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: me ? c.teal : c.dustSoft.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Text(
+                    '${e.rank}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: me ? Colors.white : c.tealInk,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: c.dustSoft,
+                  foregroundImage: e.imageUrl.isNotEmpty
+                      ? NetworkImage(e.imageUrl)
+                      : null,
+                  child: e.imageUrl.isNotEmpty
+                      ? null
+                      : Text(
+                          e.isAnonymous
+                              ? '?'
+                              : e.studentName.isNotEmpty
+                              ? e.studentName[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        me
+                            ? 'You'
+                            : (e.isAnonymous ? 'Anonymous' : e.studentName),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: body(c, size: 14, weight: FontWeight.w700),
+                      ),
+                      if (e.grade.isNotEmpty)
+                        // Grade AND percentage — one used to hide the other.
+                        Text(
+                          'Grade ${e.grade} · '
+                          '${e.percentage.toStringAsFixed(1)}%',
+                          style: body(
+                            c,
+                            size: 12,
+                            color: c.tealInk.withValues(alpha: 0.55),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
                 Text(
-                    me
-                        ? 'You'
-                        : (e.isAnonymous ? 'Anonymous' : e.studentName),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: body(c, size: 14, weight: FontWeight.w700)),
-                if (e.grade.isNotEmpty)
-                  Text('Grade ${e.grade}',
-                      style: body(c,
-                          size: 12,
-                          color: c.tealInk.withValues(alpha: 0.55))),
+                  '${e.percentage.toStringAsFixed(1)}%',
+                  style: display(c, size: 16, color: c.teal),
+                ),
               ],
             ),
-          ),
-          Text('${e.percentage.toStringAsFixed(1)}%',
-              style: display(c, size: 16, color: c.teal)),
+            if (open && hasMarks) _marksPanel(c, e),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The marks behind a score: every assessment with obtained/total,
+  /// weight and (when reported) the class average.
+  Widget _marksPanel(AppColors c, LeaderboardEntry e) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, left: 2, right: 2),
+      child: Column(
+        children: [
+          for (final a in e.assessments)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      a.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: body(
+                        c,
+                        size: 12.5,
+                        weight: FontWeight.w700,
+                        color: c.tealInk,
+                      ),
+                    ),
+                  ),
+                  if (a.weightage > 0)
+                    Text(
+                      '${a.weightage.toStringAsFixed(0)}% w',
+                      style: body(
+                        c,
+                        size: 11,
+                        color: c.tealInk.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  const SizedBox(width: 10),
+                  Text(
+                    a.marksLabel,
+                    style: body(
+                      c,
+                      size: 12.5,
+                      weight: FontWeight.w800,
+                      color: c.tealInk,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 48,
+                    child: Text(
+                      '${a.percentage.toStringAsFixed(0)}%',
+                      textAlign: TextAlign.right,
+                      style: body(
+                        c,
+                        size: 12.5,
+                        weight: FontWeight.w800,
+                        color: c.teal,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (e.classAverage > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.groups_outlined,
+                    size: 13,
+                    color: c.tealInk.withValues(alpha: 0.5),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Class average ${e.classAverage.toStringAsFixed(1)}%',
+                    style: body(
+                      c,
+                      size: 11.5,
+                      color: c.tealInk.withValues(alpha: 0.55),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
+      ),
+    );
+  }
+
+  /// Marks sheet for the podium cards (the list expands inline).
+  void _showMarks(AppColors c, LeaderboardEntry e) {
+    if (e.assessments.isEmpty) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _marksSheet(c, e),
+    );
+  }
+
+  Widget _marksSheet(AppColors c, LeaderboardEntry e) {
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: c.white,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: c.dustSoft,
+                  foregroundImage: e.imageUrl.isNotEmpty
+                      ? NetworkImage(e.imageUrl)
+                      : null,
+                  child: e.imageUrl.isNotEmpty
+                      ? null
+                      : Text(
+                          e.isAnonymous
+                              ? '?'
+                              : (e.studentName.isNotEmpty
+                                    ? e.studentName[0].toUpperCase()
+                                    : '?'),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    e.isMe ? 'You' : e.studentName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: display(c, size: 18, color: c.tealInk),
+                  ),
+                ),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).pop(),
+                  child: const Icon(Icons.close, size: 20),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${e.percentage.toStringAsFixed(1)}% overall\u00b7 '
+              '${e.grade.isNotEmpty ? 'grade ${e.grade}' : 'no grade'}\u00b7 '
+              'rank ${e.rank}',
+              style: body(
+                c,
+                size: 12.5,
+                color: c.tealInk.withValues(alpha: 0.6),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Marks',
+              style: body(
+                c,
+                size: 12,
+                weight: FontWeight.w800,
+                color: c.tealInk.withValues(alpha: 0.55),
+              ),
+            ),
+            const SizedBox(height: 6),
+            for (final a in e.assessments)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        a.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: body(
+                          c,
+                          size: 13,
+                          weight: FontWeight.w700,
+                          color: c.tealInk,
+                        ),
+                      ),
+                    ),
+                    if (a.weightage > 0)
+                      Text(
+                        '${a.weightage.toStringAsFixed(0)}% w',
+                        style: body(
+                          c,
+                          size: 11,
+                          color: c.tealInk.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    const SizedBox(width: 10),
+                    Text(
+                      a.marksLabel,
+                      style: body(
+                        c,
+                        size: 13,
+                        weight: FontWeight.w800,
+                        color: c.tealInk,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      width: 46,
+                      child: Text(
+                        '${a.percentage.toStringAsFixed(0)}%',
+                        textAlign: TextAlign.right,
+                        style: body(
+                          c,
+                          size: 13,
+                          weight: FontWeight.w800,
+                          color: c.teal,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (e.classAverage > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.groups_outlined,
+                      size: 14,
+                      color: c.tealInk.withValues(alpha: 0.5),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Class average ${e.classAverage.toStringAsFixed(1)}%',
+                      style: body(
+                        c,
+                        size: 12,
+                        color: c.tealInk.withValues(alpha: 0.55),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 6),
+          ],
+        ),
       ),
     );
   }

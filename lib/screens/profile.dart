@@ -100,6 +100,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  /// Stores the photo setting on the server (the name is untouched).
+  Future<void> _setHidePhoto(bool value) async {
+    final svc = widget.service;
+    setState(() => _hidePhoto = value);
+    if (svc == null) return;
+    try {
+      final p = await svc.savePrivacy(
+        (widget.studentId ?? '').trim(),
+        hideName: _hideName,
+        hidePhoto: value,
+      );
+      if (!mounted) return;
+      setState(() {
+        _hideName = p.hideName;
+        _hidePhoto = p.hidePhoto;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _hidePhoto = !value);
+    }
+  }
+
   /// Stores the privacy setting on the server.
   Future<void> _setHideName(bool value) async {
     final sid = (widget.studentId ?? '').trim();
@@ -407,7 +428,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     SettingRow(icon: Icons.text_fields_outlined, tone: c.board, label: 'Larger text', sub: 'Easier reading', trailing: AppToggle(value: widget.prefs.big, onChanged: (v) => _set(ProfilePrefs(theme: widget.prefs.theme, palette: widget.prefs.palette, big: v, motion: widget.prefs.motion)), colors: c)),
                     SettingRow(icon: Icons.auto_awesome_outlined, tone: c.dust, label: 'Animations', sub: 'Smooth screen transitions', trailing: AppToggle(value: widget.prefs.motion, onChanged: (v) => _set(ProfilePrefs(theme: widget.prefs.theme, palette: widget.prefs.palette, big: widget.prefs.big, motion: v)), colors: c)),
-                    if ((widget.studentId ?? '').trim().isNotEmpty)
+                    if ((widget.studentId ?? '').trim().isNotEmpty) ...[
                       SettingRow(
                         icon: Icons.visibility_off_outlined,
                         tone: c.teal,
@@ -421,6 +442,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           colors: c,
                         ),
                       ),
+                      SettingRow(
+                        icon: Icons.account_circle_outlined,
+                        tone: c.dust,
+                        label: 'Hide my photo on leaderboards',
+                        sub: 'Your picture stays off other students\u2019 boards',
+                        trailing: AppToggle(
+                          value: _hidePhoto,
+                          onChanged: _setHidePhoto,
+                          colors: c,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

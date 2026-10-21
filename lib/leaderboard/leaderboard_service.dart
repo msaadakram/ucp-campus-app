@@ -16,6 +16,31 @@ import '../community/backend_config.dart';
 /// * Credits: passing [studentId] scopes the board to that student's
 ///   class group AND costs 1 credit per view — the remaining balance
 ///   comes back as `remainingCredits`. Out of credits → [NoCredits].
+/// One assessment line of a student's gradebook (what the marks are made
+/// of): "Quiz 1 · 18/20 · 90% · weight 10%".
+class LeaderboardAssessment {
+  final String name;
+  final double totalMarks;
+  final double obtainedMarks;
+  final double percentage;
+  final double weightage;
+  final double classAverage;
+  const LeaderboardAssessment({
+    this.name = '',
+    this.totalMarks = 0,
+    this.obtainedMarks = 0,
+    this.percentage = 0,
+    this.weightage = 0,
+    this.classAverage = 0,
+  });
+
+  /// "18/20" (no trailing ".0" on whole numbers).
+  String get marksLabel => '${_num(obtainedMarks)}/${_num(totalMarks)}';
+
+  static String _num(double v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
+}
+
 class LeaderboardEntry {
   final int rank;
   final String studentName;
@@ -24,6 +49,10 @@ class LeaderboardEntry {
   final double percentage;
   final String grade;
   final bool isMe;
+  /// The marks behind the percentage (the portal's gradebook lines).
+  final List<LeaderboardAssessment> assessments;
+  /// Section average, when the backend reported it.
+  final double classAverage;
 
   const LeaderboardEntry({
     required this.rank,
@@ -33,6 +62,8 @@ class LeaderboardEntry {
     required this.percentage,
     required this.grade,
     this.isMe = false,
+    this.assessments = const [],
+    this.classAverage = 0,
   });
 
   bool get isAnonymous => studentName.isEmpty || studentName == 'Anonymous';
@@ -351,6 +382,18 @@ class NodeLeaderboardService extends LeaderboardService {
       if (r is! Map) continue;
       rank++;
       final id = '${r['studentId'] ?? ''}';
+      final marks = <LeaderboardAssessment>[];
+      for (final a in (r['assessments'] as List?) ?? const []) {
+        if (a is! Map) continue;
+        marks.add(LeaderboardAssessment(
+          name: '${a['name'] ?? 'Assessment'}',
+          totalMarks: _asDouble(a['totalMarks']),
+          obtainedMarks: _asDouble(a['obtainedMarks']),
+          percentage: _asDouble(a['percentage']),
+          weightage: _asDouble(a['weightage']),
+          classAverage: _asDouble(a['classAverage']),
+        ));
+      }
       entries.add(LeaderboardEntry(
         rank: rank,
         studentName: '${r['studentName'] ?? ''}',
@@ -360,6 +403,8 @@ class NodeLeaderboardService extends LeaderboardService {
         grade: '${r['grade'] ?? ''}',
         // Hidden students (privacy on) serve 'hidden' and never match.
         isMe: sid.isNotEmpty && id == sid,
+        assessments: marks,
+        classAverage: _asDouble(r['classAverage']),
       ));
     }
     final credits = body['remainingCredits'];

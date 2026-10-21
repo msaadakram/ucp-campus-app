@@ -19,6 +19,8 @@ import 'package:http/testing.dart';
 import 'package:http/testing.dart';
 import 'package:ucp/app.dart';
 import 'package:ucp/auth/portal_api.dart';
+import 'package:ucp/auth/student_portal.dart' show PortalCourse;
+import 'package:ucp/screens/leaderboard.dart';
 import 'package:ucp/community/backend_config.dart';
 import 'package:ucp/auth/session_manager.dart';
 import 'package:ucp/auth/prefs_store.dart';
@@ -90,7 +92,29 @@ class RecordingService extends LeaderboardService {
     String? courseCode,
   }) async {
     calls.add('fetchLeaderboard:$courseName:$studentId:$courseCode');
-    return const LeaderboardResult(entries: [], free: true);
+    return const LeaderboardResult(
+      entries: [
+        LeaderboardEntry(
+          rank: 1,
+          studentName: 'Marks Holder',
+          studentId: 'L1MARKS',
+          imageUrl: '',
+          percentage: 86.5,
+          grade: 'A',
+          isMe: true,
+          assessments: [
+            LeaderboardAssessment(
+                name: 'Quiz 1', totalMarks: 20, obtainedMarks: 18,
+                percentage: 90, weightage: 10),
+            LeaderboardAssessment(
+                name: 'Assignment 2', totalMarks: 10, obtainedMarks: 9.5,
+                percentage: 95, weightage: 5),
+          ],
+          classAverage: 61.2,
+        ),
+      ],
+      free: true,
+    );
   }
 
   @override
@@ -240,6 +264,64 @@ void main() {
       await tester.tap(toggle);
       await tester.pumpAndSettle();
       // The write kept the photo hidden.
+      expect(svc.savedHidePhoto, 'true');
+    });
+
+    testWidgets('the leaderboard shows the marks behind each score',
+        (tester) async {
+      final svc = RecordingService();
+      await tester.pumpWidget(_wrap(LiveLeaderboardScreen(
+        service: svc,
+        studentId: 'L1MARKS',
+        portalCourses: const [
+          PortalCourse(
+            name: 'Data Structures',
+            teacher: 'Ali Haider',
+            code: 'CP233',
+            credits: 3,
+            attendance: 80,
+            infoUrl: '/student/course/info/TEST1234abcd',
+          ),
+        ],
+        back: () {},
+      )));
+      await tester.pumpAndSettle();
+      // The podium shows the grade AND the percentage together...
+      expect(find.text('A · 86.5%'), findsOneWidget);
+      // ...and tapping a podium card opens the marks sheet.
+      await tester.tap(find.text('Marks Holder'));
+      await tester.pumpAndSettle();
+      expect(find.text('Quiz 1'), findsOneWidget);
+      expect(find.text('18/20'), findsOneWidget);
+      expect(find.textContaining('Class average'), findsOneWidget);
+      expect(find.textContaining('86.5% overall'), findsOneWidget);
+    });
+
+    testWidgets('the photo privacy toggle writes the photo setting', (
+        tester) async {
+      final svc = RecordingService()..hidePhotoOnDisk = false;
+      await tester.pumpWidget(_wrap(ProfileScreen(
+        logout: () {},
+        prefs: ProfilePrefs(),
+        onPrefs: (_) {},
+        studentId: 'L1F25BSCS0577',
+        service: svc,
+      )));
+      await tester.pumpAndSettle();
+      // Both switches are present.
+      expect(find.text('Hide my name on leaderboards'), findsOneWidget);
+      expect(find.text('Hide my photo on leaderboards'), findsOneWidget);
+      // Flip the PHOTO switch (the second privacy row).
+      final rows = find.ancestor(
+        of: find.text('Hide my photo on leaderboards'),
+        matching: find.byType(SettingRow),
+      );
+      final toggle = find.descendant(of: rows, matching: find.byType(AppToggle));
+      expect(toggle, findsOneWidget);
+      await tester.ensureVisible(toggle);
+      await tester.pumpAndSettle();
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
       expect(svc.savedHidePhoto, 'true');
     });
 
