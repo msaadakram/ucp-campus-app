@@ -173,13 +173,20 @@ class NodeLeaderboardService extends LeaderboardService {
 
   @override
   Future<List<String>> fetchCourses({String? studentId}) async {
+    // Ask for THIS student's rows only — the unscoped endpoint returns
+    // the whole school's catalogue.
+    final sid = (studentId ?? '').trim();
     final res = await _client
-        .get(Uri.parse('$nodeApiUrl/api/ext/timetable'), headers: _headers)
+        .get(
+          Uri.parse('$nodeApiUrl/api/ext/timetable').replace(
+            queryParameters: sid.isEmpty ? null : {'studentId': sid},
+          ),
+          headers: _headers,
+        )
         .timeout(_timeout);
     if (res.statusCode != 200) _throwFor(res);
     final rows = jsonDecode(res.body);
     if (rows is! List) return const [];
-    final sid = (studentId ?? '').trim();
     final mine = <Map>[];
     for (final r in rows) {
       if (r is Map) mine.add(r);

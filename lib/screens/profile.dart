@@ -57,6 +57,8 @@ class ProfileScreen extends StatefulWidget {
   final String? email;
   /// Parsed "Earned Cr" from the dashboard; drives the degree progress bar.
   final double? earnedCredits;
+  /// Shared backend service (one http client for the whole app).
+  final LeaderboardService? service;
   const ProfileScreen(
       {super.key,
       required this.logout,
@@ -66,7 +68,8 @@ class ProfileScreen extends StatefulWidget {
       this.studentId,
       this.faculty,
       this.email,
-      this.earnedCredits});
+      this.earnedCredits,
+      this.service});
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
@@ -75,17 +78,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Leaderboard privacy — lives on the SERVER so the app and the
   /// extension always agree (hiding your name here hides it everywhere).
   bool _hideName = false;
+  bool _hidePhoto = false;
   bool _privacyLoaded = false;
 
   /// Reads the privacy setting (shared with the extension).
   Future<void> _loadPrivacy() async {
     final sid = (widget.studentId ?? '').trim();
     if (sid.isEmpty) return;
+    final svc = widget.service;
+    if (svc == null) return;
     try {
-      final p = await NodeLeaderboardService().fetchPrivacy(sid);
+      final p = await svc.fetchPrivacy(sid);
       if (!mounted) return;
       setState(() {
         _hideName = p.hideName;
+        _hidePhoto = p.hidePhoto;
         _privacyLoaded = true;
       });
     } catch (_) {
@@ -98,11 +105,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final sid = (widget.studentId ?? '').trim();
     setState(() => _hideName = value);
     if (sid.isEmpty) return;
+    final svc = widget.service;
+    if (svc == null) return;
     try {
-      final p = await NodeLeaderboardService()
-          .savePrivacy(sid, hideName: value, hidePhoto: false);
+      // Keep the photo setting untouched: the extension may have it on,
+      // and flipping the name must not silently reveal the photo again.
+      final p = await svc.savePrivacy(
+        sid,
+        hideName: value,
+        hidePhoto: _hidePhoto,
+      );
       if (!mounted) return;
-      setState(() => _hideName = p.hideName);
+      setState(() {
+        _hideName = p.hideName;
+        _hidePhoto = p.hidePhoto;
+      });
     } catch (_) {
       // Roll back on failure so the switch never lies.
       if (mounted) setState(() => _hideName = !value);

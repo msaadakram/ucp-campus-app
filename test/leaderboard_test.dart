@@ -1,3 +1,4 @@
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -384,7 +385,7 @@ void main() {
           sessionChecks++;
           return false;
         },
-        onSyncClass: ({onProgress}) async {
+        onSyncClass: ({onProgress, priorityCode}) async {
           syncs++;
           return const LeaderboardSyncReport(
             timetableRows: 22,
@@ -416,7 +417,7 @@ void main() {
         service: svc,
         studentId: 'L1TEST',
         onEnsureSession: () async => true,
-        onSyncClass: ({onProgress}) async {
+        onSyncClass: ({onProgress, priorityCode}) async {
           syncs++;
           onProgress?.call(const SyncStepUpdate(
             key: 'session',
@@ -474,6 +475,32 @@ void main() {
       expect(find.text('Other'), findsOneWidget);
     });
 
+    testWidgets('the board appears while the class sync is still running', (
+        tester) async {
+      final svc = FakeLeaderboardService(
+        rows: const [
+          {'studentId': 'L1OTHER', 'studentName': 'Other', 'overallPercentage': 70.0},
+        ],
+      );
+      final gate = Completer<LeaderboardSyncReport>();
+      await tester.pumpWidget(_wrap(LiveLeaderboardScreen(
+        service: svc,
+        studentId: 'L1TEST',
+        onEnsureSession: () async => true,
+        // The sync never finishes during the test.
+        onSyncClass: ({onProgress, priorityCode}) => gate.future,
+        back: () {},
+      )));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      // The board was fetched even though the sync is still pending.
+      expect(svc.boardCalls, greaterThanOrEqualTo(1));
+      expect(find.text('Other'), findsOneWidget);
+      // The sync is visible while it runs.
+      expect(find.text('Syncing your class'), findsOneWidget);
+      gate.complete(const LeaderboardSyncReport());
+    });
+
     testWidgets('an unreachable portal is a network problem, not a sign-in', (
         tester) async {
       final svc = FakeLeaderboardService(
@@ -485,7 +512,7 @@ void main() {
         service: svc,
         studentId: 'L1TEST',
         onEnsureSession: () async => true,
-        onSyncClass: ({onProgress}) async {
+        onSyncClass: ({onProgress, priorityCode}) async {
           // The portal could not be reached.
           return const LeaderboardSyncReport(
             sessionState: PortalSessionState.unreachable,

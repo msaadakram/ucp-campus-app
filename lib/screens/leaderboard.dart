@@ -7,7 +7,6 @@ import '../leaderboard/sync.dart';
 import '../auth/student_portal.dart' show PortalCourse;
 import '../theme/palette.dart';
 import '../widgets/common.dart';
-import '../widgets/portal_state.dart';
 
 /// Identity key for a course: the section suffix is dropped, but the
 /// "- Lab" suffix is KEPT — theory and lab are different subjects with
@@ -92,6 +91,7 @@ class LiveLeaderboardScreen extends StatefulWidget {
   /// publish. Reports progress so the screen can show what it is doing.
   final Future<LeaderboardSyncReport> Function({
     void Function(SyncStepUpdate update)? onProgress,
+    String? priorityCode,
   })? onSyncClass;
 
   /// Bumped by the app every time the student signs in again. The board
@@ -307,6 +307,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
     setState(() {
       _steps.clear();
       _needsSignIn = false;
+      _networkProblem = false;
     });
     try {
       // 1) sign-in gate — the student sees the check happen.
@@ -335,9 +336,13 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       // 2) timetable + 3) grade pages (read with the session cookie and
       //    published to the server, with the student's id).
       if (sync != null) {
-        final report = await sync(onProgress: (update) {
-          _pushStep(update);
-        });
+        final report = await sync(
+          onProgress: (update) {
+            _pushStep(update);
+          },
+          // The subject on screen first — their own row shows up fast.
+          priorityCode: course?.code,
+        );
         if (!mounted) return;
         setState(() {
           _syncReport = report;
@@ -349,6 +354,10 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
             _networkProblem = true;
           }
         });
+        // The marks just landed — refresh the board so the student's own
+        // row (and any classmate who synced meanwhile) is included.
+        if (!mounted || _needsSignIn) return;
+        await _loadBoard(refreshOnly: true);
       }
     } catch (_) {
       if (!mounted) return;
@@ -398,23 +407,28 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
     }
   }
 
-  Future<void> _loadBoard() async {
+  Future<void> _loadBoard({bool refreshOnly = false}) async {
     final sel = course;
     if (_svc == null || sel == null) return;
     setState(() {
-      loadingBoard = true;
+      if (!refreshOnly) loadingBoard = true;
       error = null;
       noCredits = false;
     });
     try {
-      // The full class sync first: sign-in -> timetable -> grade pages ->
-      // publish. Then OUR marks for this subject are guaranteed on the
-      // server before the board is read.
-      await _runClassSync();
-      if (!mounted) return;
-      if (_needsSignIn) {
-        setState(() => loadingBoard = false);
-        return;
+      // The class sync (sign-in -> timetable -> grade pages -> publish)
+      // runs in the BACKGROUND: the board appears right away and is
+      // refreshed when the marks land. Waiting for every grade page
+      // first meant a blank screen for ~10s on mobile data.
+      if (!refreshOnly) {
+        unawaited(_runClassSync());
+        // A dead session must not show a stale board.
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+        if (!mounted) return;
+        if (_needsSignIn) {
+          setState(() => loadingBoard = false);
+          return;
+        }
       }
       final ensure = widget.onEnsureGrades;
       if (ensure != null) {

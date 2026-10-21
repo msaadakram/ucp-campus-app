@@ -258,6 +258,12 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// Bumped whenever the student signs in again. The leaderboard watches
   /// it and resumes its sync automatically.
   int sessionGeneration = 0;
+  /// ONE backend service for the whole app. Every call used to build a
+  /// fresh service — and a fresh http.Client with its own socket pool —
+  /// which leaked a connection pool on every rebuild and every subject.
+  NodeLeaderboardService? _lb;
+  NodeLeaderboardService get _lbService =>
+      _lb ??= NodeLeaderboardService();
   /// Resolves when an interactive Microsoft sign-in started by
   /// [ensurePortalSession] finishes (true = signed in, false = cancelled).
   Completer<bool>? _signInWaiter;
@@ -420,6 +426,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     _monitor?.stop();
     OfflineMonitor.instance.stop();
     _community?.dispose();
+    // The shared backend client (one socket pool for the whole app).
+    _lb?.dispose();
+    _lb = null;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -743,6 +752,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// subject whose board was open.
   Future<LeaderboardSyncReport> syncClassToServer({
     void Function(SyncStepUpdate update)? onProgress,
+    String? priorityCode,
   }) async {
     if (!isExtConfigured) {
       return const LeaderboardSyncReport();
@@ -805,8 +815,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       try {
         // The student id goes with it — the server groups the student
         // into the sections of this timetable.
-        await NodeLeaderboardService()
-            .syncTimetable(studentId: sid, rows: rows);
+        await _lbService.syncTimetable(studentId: sid, rows: rows);
       } catch (_) {
         // Best effort — the board still works without the roster.
       }
@@ -820,7 +829,16 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     ));
 
     // ---- 3) every subject's grade page ----
-    final courses = dashboard?.courses ?? const <PortalCourse>[];
+    var courses = dashboard?.courses ?? const <PortalCourse>[];
+    // The subject the student is looking at goes FIRST: their own row
+    // lands on the board before the other subjects are read.
+    if (priorityCode != null && priorityCode.isNotEmpty) {
+      final want = priorityCode.trim().toUpperCase();
+      courses = [
+        ...courses.where((c) => c.code.trim().toUpperCase() == want),
+        ...courses.where((c) => c.code.trim().toUpperCase() != want),
+      ];
+    }
     var synced = 0;
     var failed = 0;
     final failures = <String>[];
@@ -1075,7 +1093,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         },
     ];
     try {
-      await (NodeLeaderboardService()).syncGrades(
+      await _lbService.syncGrades(
         studentId: sid,
         studentName: dashboard?.studentName ?? '',
         courseName: courseName,
@@ -1450,7 +1468,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           // ranks, credits, privacy); the deterministic demo board is the
           // offline / unconfigured fallback.
           screen = LiveLeaderboardScreen(
-            service: isExtConfigured ? NodeLeaderboardService() : null,
+            service: isExtConfigured ? _lbService : null,
             studentId: dashboard?.studentId,
             initialCourse: _boardCourse,
             initialCourseCode: _boardCourseCode,
@@ -1497,6 +1515,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
           screen = ProfileScreen(
             logout: _logout,
             prefs: prefs,
+            service: isExtConfigured ? _lbService : null,
             onPrefs: (p) {
               setState(() => prefs = p);
               // Permanent until the user changes it again (survives
