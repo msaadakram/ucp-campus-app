@@ -418,10 +418,19 @@ TimetableData parseTimetable(String html) {
   String term = '';
   String month = '';
   final bodyText = _clean(doc.body?.text);
-  final termMatch = RegExp(r'Term\s*:\s*([A-Za-z]+\s+\d{4})').firstMatch(bodyText);
-  if (termMatch != null) term = termMatch.group(1)!;
-  final monthMatch = RegExp(r'Month\s*:\s*([A-Za-z]+)').firstMatch(bodyText);
-  if (monthMatch != null) month = monthMatch.group(1)!;
+  final termMatch = RegExp(r'Term\s*:\s*(Fall|Spring|Summer)\s+(\d{4})', caseSensitive: false).firstMatch(bodyText);
+  if (termMatch != null) {
+    final season = termMatch.group(1)!;
+    term = '${season[0].toUpperCase()}${season.substring(1).toLowerCase()} ${termMatch.group(2)}';
+  }
+  // Capture the month NAME only, never whatever letters follow it —
+  // the portal glues the month cell to the next column ("OctoberMonday…"),
+  // which [A-Za-z]+ used to eat whole.
+  final monthMatch = RegExp(
+    r'Month\s*:\s*(January|February|March|April|May|June|July|August|September|October|November|December)\b',
+    caseSensitive: false,
+  ).firstMatch(bodyText);
+  if (monthMatch != null) month = _clean(monthMatch.group(1)!);
 
   final slots = <TimetableSlot>[];
   for (final group in doc.querySelectorAll('.cd-schedule__group')) {

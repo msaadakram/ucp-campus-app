@@ -331,7 +331,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(name, style: display(c, size: 28, color: Colors.white)),
-                    Text(subtitle, style: body(c, size: 14, color: c.cream.withValues(alpha: 0.85))),
+                    Text(subtitle, style: body(c, size: 14, color: Colors.white.withValues(alpha: 0.88))),
                   ],
                 ),
               ),

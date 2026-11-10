@@ -54,8 +54,8 @@ Widget _wrap(
 }
 
 const _ttHtml =
-    '<div><b>Term :</b><span>Fall 2026</span>'
-    '<b>Month :</b><span>October</span></div>'
+    '<div><b>Term :</b> <span>Fall 2026</span></div>'
+    '<div><b>Month :</b> <span>October </span></div>'
     '<li class="cd-schedule__group">'
     '<div class="cd-schedule__top-info"><span>Monday</span></div><ul>'
     '<li class="cd-schedule__event"><a data-start="08:00" data-end="08:55">'

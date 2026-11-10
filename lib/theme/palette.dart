@@ -90,6 +90,12 @@ class AppColors {
     this.dark = false,
   });
 
+  /// Foreground-safe accent for text/icons on cards: brightened teal
+  /// on dark surfaces (plain tealDeep is unreadable there), the normal
+  /// tealDeep on light surfaces — renders exactly the old colour in
+  /// light mode, so nothing shifts there.
+  Color get accent => dark ? Color.lerp(teal, Colors.white, 0.45)! : tealDeep;
+
   factory AppColors.of(AppPalette p, bool dark) {
     if (!dark) {
       switch (p) {

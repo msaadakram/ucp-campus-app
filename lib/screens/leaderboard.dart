@@ -738,36 +738,11 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
             _courseBar(c),
             if (_fromPortal) ...[
               const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.info_outline,
-                      size: 13,
-                      color: Colors.white70,
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        'Courses from your portal timetable — classmates '
-                        'appear once the extension syncs.',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.white70,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              _infoCard(
+                c,
+                icon: Icons.info_outline,
+                text: 'Courses from your portal timetable — classmates '
+                    'appear once the extension syncs.',
               ),
             ],
             const SizedBox(height: 10),
@@ -787,7 +762,8 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                     const SizedBox(width: 8),
                     Text(
                       'Syncing your timetable…',
-                      style: body(c, size: 11.5, color: Colors.white70),
+                      style: body(c, size: 11.5,
+                          weight: FontWeight.w700, color: c.accent),
                     ),
                   ],
                 ),
@@ -845,7 +821,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                       style: body(
                         c,
                         size: 11.5,
-                        color: Colors.white.withValues(alpha: 0.6),
+                        color: c.tealInk.withValues(alpha: 0.6),
                       ),
                     ),
                   ),
@@ -1199,15 +1175,16 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.14),
+        color: c.teal.withValues(alpha: c.dark ? 0.14 : 0.07),
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.teal.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
           Icon(
             r.youAreIn ? Icons.verified_user_outlined : Icons.group_outlined,
             size: 14,
-            color: r.youAreIn ? Colors.white : Colors.white70,
+            color: r.youAreIn ? c.accent : c.dust,
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1218,7 +1195,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
               style: TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w600,
-                color: Colors.white.withValues(alpha: 0.9),
+                color: c.tealInk.withValues(alpha: c.dark ? 0.88 : 0.8),
               ),
             ),
           ),
@@ -1441,6 +1418,41 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
     );
   }
 
+  /// Theme-aware tinted info card for below the header band (works in
+  /// light and dark). Replaces the old glass pill, which was white70
+  /// text on a cream backdrop — invisible in light mode.
+  Widget _infoCard(
+    AppColors c, {
+    required IconData icon,
+    required String text,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: c.teal.withValues(alpha: c.dark ? 0.14 : 0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.teal.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: c.teal),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: c.tealInk.withValues(alpha: c.dark ? 0.88 : 0.8),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// The three numbers that matter at a glance: where the student stands,
   /// the best score in the section and the section average.
   Widget _statsStrip(AppColors c) {
@@ -1473,7 +1485,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                       c,
                       size: 9,
                       weight: FontWeight.w800,
-                      color: c.tealInk.withValues(alpha: 0.5),
+                      color: c.tealInk.withValues(alpha: 0.62),
                     ),
                   ),
                 ),
@@ -1509,7 +1521,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       ),
       child: Row(
         children: [
-          stat('RANK', myRank == null ? '—' : '#$myRank', c.tealDeep,
+          stat('RANK', myRank == null ? '—' : '#$myRank', c.accent,
               Icons.trending_up_rounded),
           divider(),
           stat('TOP', '${top.toStringAsFixed(1)}%', c.clay,
@@ -1666,7 +1678,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                                 c,
                                 size: 14.5,
                                 weight: FontWeight.w800,
-                                color: me ? c.tealDeep : c.tealInk,
+                                color: me ? c.accent : c.tealInk,
                               ),
                             ),
                           ),
@@ -1734,7 +1746,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                                         c.dustSoft.withValues(alpha: 0.5),
                                     valueColor:
                                         AlwaysStoppedAnimation<Color>(
-                                      medal ?? (me ? c.tealDeep : c.teal),
+                                      medal ?? (me ? c.accent : c.teal),
                                     ),
                                   );
                                 },
@@ -1744,7 +1756,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                           const SizedBox(width: 10),
                           Text(
                             '${e.percentage.toStringAsFixed(1)}%',
-                            style: display(c, size: 16, color: c.tealDeep),
+                            style: display(c, size: 16, color: c.accent),
                           ),
                         ],
                       ),
@@ -1798,7 +1810,8 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
               style: body(
                 c,
                 size: 11,
-                color: Colors.white.withValues(alpha: 0.6),
+                weight: FontWeight.w700,
+                color: c.tealInk.withValues(alpha: 0.55),
               ),
             ),
           ),
@@ -1820,32 +1833,34 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
         duration: const Duration(milliseconds: 220),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: selected
-              ? Colors.white.withValues(alpha: 0.28)
-              : Colors.white.withValues(alpha: 0.12),
+          gradient: selected ? LinearGradient(colors: [c.tealDeep, c.teal]) : null,
+          color: selected ? null : c.white,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: selected
-                ? Colors.white.withValues(alpha: 0.7)
-                : Colors.white.withValues(alpha: 0.18),
+            color: selected ? Colors.transparent : c.dustSoft.withValues(alpha: 0.7),
           ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: c.teal.withValues(alpha: 0.35),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : const [],
         ),
         child: Row(
           children: [
             Icon(
               icon,
               size: 13,
-              color: selected
-                  ? Colors.white
-                  : Colors.white.withValues(alpha: 0.7),
+              color: selected ? Colors.white : c.teal,
             ),
             const SizedBox(width: 6),
             Text(
               label,
               style: TextStyle(
-                color: selected
-                    ? Colors.white
-                    : Colors.white.withValues(alpha: 0.8),
+                color: selected ? Colors.white : c.tealInk.withValues(alpha: 0.75),
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
               ),

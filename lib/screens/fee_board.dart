@@ -316,11 +316,13 @@ class _FeeChallanScreenState extends State<FeeChallanScreen> {
                                 style: body(c,
                                     size: 14, weight: FontWeight.w700)),
                             Text('Challan ${inv.challanId}',
-                                style: TextStyle(
-                                    fontFamily: 'monospace',
-                                    fontSize: 12,
-                                    color: c.tealInk
-                                        .withValues(alpha: 0.55))),
+                                style: body(c,
+                                    size: 12,
+                                    weight: FontWeight.w600)
+                                    .copyWith(
+                                        letterSpacing: 0.8,
+                                        color:
+                                            c.tealInk.withValues(alpha: 0.55))),
                           ],
                         ),
                       ),

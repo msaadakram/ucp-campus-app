@@ -249,14 +249,14 @@ class _ResultsScreenState extends State<ResultsScreen> {
                             horizontal: 16, vertical: 8),
                         decoration: BoxDecoration(
                             color: termIdx == i
-                                ? c.white
+                                ? Colors.white
                                 : Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(20)),
                         child: Text(terms[i].term,
                             style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 color: termIdx == i
-                                    ? c.tealInk
+                                    ? const Color(0xFF1C2C44)
                                     : Colors.white)),
                       ),
                     ),
@@ -356,7 +356,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                               style: body(c,
                                   size: 12,
                                   color: c.tealInk
-                                      .withValues(alpha: 0.55))),
+                                      .withValues(alpha: 0.68))),
                         ]),
                   ),
                 ],

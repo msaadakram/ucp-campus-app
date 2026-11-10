@@ -344,7 +344,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                         style: body(
                           c,
                           size: 12.5,
-                          color: Colors.white.withValues(alpha: 0.78),
+                          color: c.tealInk.withValues(alpha: c.dark ? 0.75 : 0.55),
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -381,9 +381,12 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
             Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.14),
+                color: c.dark
+                    ? Colors.white.withValues(alpha: 0.10)
+                    : c.tealInk.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                border: Border.all(
+                    color: c.tealInk.withValues(alpha: c.dark ? 0.16 : 0.12)),
               ),
               child: Row(
                 children: [
@@ -418,7 +421,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                                 size: 15,
                                 color: mode == m
                                     ? c.tealDeep
-                                    : Colors.white.withValues(alpha: 0.75),
+                                    : c.tealInk.withValues(alpha: 0.65),
                               ),
                               const SizedBox(width: 6),
                               Text(
@@ -428,7 +431,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                                   fontWeight: FontWeight.w800,
                                   color: mode == m
                                       ? c.tealDeep
-                                      : Colors.white.withValues(alpha: 0.75),
+                                      : c.tealInk.withValues(alpha: 0.65),
                                 ),
                               ),
                             ],
@@ -517,7 +520,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                         Row(
                           children: [
                             Icon(Icons.stacked_line_chart_rounded,
-                                size: 12, color: c.tealDeep),
+                                size: 12, color: c.accent),
                             const SizedBox(width: 5),
                             Text(
                               'CUMULATIVE',
@@ -533,7 +536,7 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                         const SizedBox(height: 6),
                         Text(
                           cgpa.toStringAsFixed(2),
-                          style: display(c, size: 38, color: c.tealDeep),
+                          style: display(c, size: 38, color: c.accent),
                         ),
                         Text(
                           '${cgpa >= prevCgpa ? '+' : ''}${(cgpa - prevCgpa).toStringAsFixed(2)} CGPA',
@@ -2107,7 +2110,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                     Expanded(
                       child: Text(
                         day,
-                        style: display(c, size: 20),
+                        style: display(c, size: 20, color: Colors.white),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -2117,7 +2120,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                       style: body(
                         c,
                         size: 13,
-                        color: c.tealInk.withValues(alpha: 0.55),
+                        weight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.8),
                       ),
                     ),
                   ],
