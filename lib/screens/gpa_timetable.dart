@@ -308,18 +308,42 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              mode == GpaMode.relative ? 'RELATIVE' : 'ABSOLUTE',
+                              style: const TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.2,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
                       Text(
                         'GPA calculator',
-                        style: display(c, size: 26, color: Colors.white),
+                        style: display(c, size: 27, color: Colors.white),
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
                         mode == GpaMode.relative
-                            ? 'Relative grading · curved on class mean'
-                            : 'Absolute grading · fixed thresholds',
+                            ? 'Curved against your class mean & SD'
+                            : 'Fixed marking thresholds · what-if',
                         style: body(
                           c,
-                          size: 13,
+                          size: 12.5,
                           color: Colors.white.withValues(alpha: 0.78),
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -328,17 +352,27 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                GestureDetector(
-                  onTap: () => setState(() => help = !help),
-                  child: Container(
-                    alignment: Alignment.center,
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(16),
+                Tooltip(
+                  message: 'How grading works',
+                  child: GestureDetector(
+                    onTap: () => setState(() => help = !help),
+                    child: Container(
+                      alignment: Alignment.center,
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Icon(
+                        help ? Icons.close : Icons.info_outline,
+                        color: Colors.white,
+                        size: 20,
+                      ),
                     ),
-                    child: const Icon(Icons.info_outline, color: Colors.white),
                   ),
                 ),
               ],
@@ -347,8 +381,9 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
             Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(30),
+                color: Colors.white.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
               ),
               child: Row(
                 children: [
@@ -357,29 +392,43 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () => setState(() => mode = m),
-                        child: Container(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           decoration: BoxDecoration(
-                            color: mode == m ? c.white : Colors.transparent,
-                            borderRadius: BorderRadius.circular(24),
+                            color: mode == m ? Colors.white : Colors.transparent,
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: mode == m
+                                ? [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.18),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ]
+                                : null,
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
                                 m == GpaMode.relative
-                                    ? Icons.show_chart_outlined
+                                    ? Icons.show_chart_rounded
                                     : Icons.rule_outlined,
-                                size: 16,
-                                color: mode == m ? c.tealInk : Colors.white70,
+                                size: 15,
+                                color: mode == m
+                                    ? c.tealDeep
+                                    : Colors.white.withValues(alpha: 0.75),
                               ),
                               const SizedBox(width: 6),
                               Text(
                                 m == GpaMode.relative ? 'Relative' : 'Absolute',
                                 style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: mode == m ? c.tealInk : Colors.white70,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: mode == m
+                                      ? c.tealDeep
+                                      : Colors.white.withValues(alpha: 0.75),
                                 ),
                               ),
                             ],
@@ -397,31 +446,49 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: c.tealInk,
-                      borderRadius: BorderRadius.circular(24),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [c.tealDeep, c.teal],
+                      ),
+                      borderRadius: BorderRadius.circular(22),
                       boxShadow: [
-                        BoxShadow(color: c.clay, offset: const Offset(0, 6)),
+                        BoxShadow(
+                          color: c.teal.withValues(alpha: 0.35),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
                       ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'THIS SEMESTER',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: c.cream.withValues(alpha: 0.7),
-                          ),
+                        Row(
+                          children: [
+                            Icon(Icons.insights_rounded,
+                                size: 12, color: Colors.white70),
+                            const SizedBox(width: 5),
+                            Text(
+                              'THIS SEMESTER',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.7,
+                                color: Colors.white.withValues(alpha: 0.72),
+                              ),
+                            ),
+                          ],
                         ),
+                        const SizedBox(height: 6),
                         Text(
                           sgpa.toStringAsFixed(2),
-                          style: display(c, size: 36, color: c.cream),
+                          style: display(c, size: 38, color: Colors.white),
                         ),
                         Text(
                           'SGPA · $credits credits',
                           style: TextStyle(
                             fontSize: 12,
-                            color: c.cream.withValues(alpha: 0.7),
+                            color: Colors.white.withValues(alpha: 0.78),
                           ),
                         ),
                       ],
@@ -434,27 +501,45 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: c.white,
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: c.dustSoft.withValues(alpha: 0.55)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: c.tealInk.withValues(alpha: 0.06),
+                          blurRadius: 16,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'CUMULATIVE',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: c.tealInk.withValues(alpha: 0.55),
-                          ),
+                        Row(
+                          children: [
+                            Icon(Icons.stacked_line_chart_rounded,
+                                size: 12, color: c.tealDeep),
+                            const SizedBox(width: 5),
+                            Text(
+                              'CUMULATIVE',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.7,
+                                color: c.tealInk.withValues(alpha: 0.55),
+                              ),
+                            ),
+                          ],
                         ),
+                        const SizedBox(height: 6),
                         Text(
                           cgpa.toStringAsFixed(2),
-                          style: display(c, size: 36, color: c.teal),
+                          style: display(c, size: 38, color: c.tealDeep),
                         ),
                         Text(
                           '${cgpa >= prevCgpa ? '+' : ''}${(cgpa - prevCgpa).toStringAsFixed(2)} CGPA',
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                             color: cgpa >= prevCgpa ? c.teal : c.clay,
                           ),
                         ),
@@ -467,10 +552,18 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
             if (help)
               Container(
                 margin: const EdgeInsets.only(top: 16),
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
                   color: c.white,
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: c.dustSoft.withValues(alpha: 0.55)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: c.tealInk.withValues(alpha: 0.05),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -546,40 +639,82 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
               ),
             Container(
               margin: const EdgeInsets.only(top: 16),
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(
                 color: c.white,
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: c.dustSoft.withValues(alpha: 0.55)),
+                boxShadow: [
+                  BoxShadow(
+                    color: c.tealInk.withValues(alpha: 0.05),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'Previous record',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: c.teal.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(11),
+                        ),
+                        child: Icon(Icons.history_edu_outlined,
+                            size: 17, color: c.tealDeep),
                       ),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: _reset,
-                        child: const Row(
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.refresh, size: 14),
                             Text(
-                              ' Reset',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
+                              'Your record',
+                              style: display(c, size: 15.5, color: c.tealInk),
+                            ),
+                            Text(
+                              'Base CGPA & credits before this term',
+                              style: body(c,
+                                  size: 10.5,
+                                  color: c.tealInk.withValues(alpha: 0.5)),
                             ),
                           ],
                         ),
                       ),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _reset,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: c.dustSoft.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.refresh_rounded,
+                                  size: 13, color: c.tealInk),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Reset',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: c.tealInk,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
@@ -618,10 +753,22 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Container(
-                          padding: const EdgeInsets.all(10),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 12),
                           decoration: BoxDecoration(
-                            color: c.tealInk,
-                            borderRadius: BorderRadius.circular(12),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [c.tealDeep, c.teal],
+                            ),
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: [
+                              BoxShadow(
+                                color: c.teal.withValues(alpha: 0.30),
+                                blurRadius: 10,
+                                offset: const Offset(0, 5),
+                              ),
+                            ],
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -629,16 +776,18 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                               Text(
                                 'NEED SGPA',
                                 style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: c.cream.withValues(alpha: 0.7),
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.8,
+                                  color: Colors.white.withValues(alpha: 0.75),
                                 ),
                               ),
+                              const SizedBox(height: 2),
                               Text(
                                 credits == 0
                                     ? '—'
                                     : requiredSgpa.toStringAsFixed(2),
-                                style: display(c, size: 18, color: c.cream),
+                                style: display(c, size: 19, color: Colors.white),
                               ),
                             ],
                           ),
@@ -690,21 +839,39 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
             ),
             Container(
               margin: const EdgeInsets.only(top: 16),
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(
                 color: c.white,
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: c.dustSoft.withValues(alpha: 0.55)),
+                boxShadow: [
+                  BoxShadow(
+                    color: c.tealInk.withValues(alpha: 0.05),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Expanded(
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: c.board.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(11),
+                        ),
+                        child: Icon(Icons.history_outlined,
+                            size: 17, color: c.clay),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
                         child: Text(
                           'Previous semesters · from portal',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                          style: display(c, size: 15.5, color: c.tealInk),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -991,17 +1158,35 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                                   vertical: 12,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: c.tealInk,
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: Text(
-                                  'Use ${t.term} as base (CGPA ${t.cgpa})',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: c.cream,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [c.tealDeep, c.teal],
                                   ),
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: c.teal.withValues(alpha: 0.3),
+                                      blurRadius: 14,
+                                      offset: const Offset(0, 5),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      'Use ${t.term} as base (CGPA ${t.cgpa})',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Icon(Icons.arrow_forward_rounded,
+                                        size: 17, color: Colors.white),
+                                  ],
                                 ),
                               ),
                             ),
@@ -1014,9 +1199,32 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
             ),
             const SizedBox(height: 16),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Courses', style: display(c, size: 20)),
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: c.teal.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Icon(Icons.menu_book_outlined,
+                      size: 17, color: c.tealDeep),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Courses', style: display(c, size: 17.5, color: c.tealInk)),
+                      Text(
+                        'Tap a row to edit marks, mean and weighting',
+                        style: body(c,
+                            size: 10.5,
+                            color: c.tealInk.withValues(alpha: 0.5)),
+                      ),
+                    ],
+                  ),
+                ),
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => setState(() {
@@ -1035,21 +1243,34 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                   }),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
+                      horizontal: 14,
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: c.tealInk,
-                      borderRadius: BorderRadius.circular(20),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [c.tealDeep, c.teal],
+                      ),
+                      borderRadius: BorderRadius.circular(22),
+                      boxShadow: [
+                        BoxShadow(
+                          color: c.teal.withValues(alpha: 0.32),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                    child: Row(
+                    child: const Row(
                       children: [
-                        Icon(Icons.add, size: 16, color: c.cream),
+                        Icon(Icons.add_rounded, size: 17, color: Colors.white),
+                        SizedBox(width: 5),
                         Text(
-                          ' Add',
+                          'Add course',
                           style: TextStyle(
-                            color: c.cream,
-                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12.5,
                           ),
                         ),
                       ],
@@ -1069,7 +1290,15 @@ class _GpaCalcScreenState extends State<GpaCalcScreen> {
                     margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
                       color: c.white,
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: c.dustSoft.withValues(alpha: 0.55)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: c.tealInk.withValues(alpha: 0.05),
+                          blurRadius: 12,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
                     ),
                     child: Column(
                       children: [

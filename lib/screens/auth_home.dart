@@ -973,7 +973,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Builder(builder: (_) {
             final tiles = [
               _ExploreTile('Teacher reviews', 'Rate & explore',
-                  Icons.star_outlined, widget.onTeachers),
+                  Icons.school_outlined, widget.onTeachers),
               _ExploreTile('Timetable', 'Weekly classes',
                   Icons.calendar_month_outlined, widget.onTimetable),
               _ExploreTile('Attendance', 'Daily record',

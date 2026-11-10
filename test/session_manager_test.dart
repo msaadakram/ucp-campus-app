@@ -46,6 +46,11 @@ class _MemoryBackend implements SessionBackend {
 
   @override
   Future<String?> loadDashboard() async => dashboardJson;
+
+  @override
+  Future<void> saveConsent(String value) async {}
+  @override
+  Future<String?> readConsent() async => 'accepted';
 }
 
 /// Odoo stub: only `good-live-session` belongs to a logged-in user (uid 7).
@@ -190,4 +195,6 @@ void main() {
   });
 }
 
-class InteractionNeededForTest implements Exception {}
+class InteractionNeededForTest implements Exception {
+
+}

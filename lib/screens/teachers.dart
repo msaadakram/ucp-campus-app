@@ -543,7 +543,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
         Expanded(
           child: _statCard(
             c,
-            Icons.star_outline,
+            Icons.insights_outlined,
             avg.toStringAsFixed(1),
             'avg score',
           ),
@@ -889,7 +889,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
   }
 
   /// RateMyProfessors-style list card: photo with rating badge, name,
-  /// designation · dept, stars + `4.8 (174)`. Breakdown meters live on
+  /// designation · dept, score bar + `4.8 (174)`. Breakdown meters live on
   /// the detail profile — the card stays scannable at 60fps.
   Widget _teacherCard(BuildContext context, AppColors c, Teacher t) {
     return GestureDetector(
@@ -946,9 +946,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.star, size: 12, color: Colors.amber),
-                        const SizedBox(width: 3),
-                        Text(
+                                                Text(
                           t.reviewCount == 0
                               ? 'New'
                               : t.overallRating.toStringAsFixed(1),
@@ -992,7 +990,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      _starRow(t.overallRating, size: 14),
+                      _scoreBar(c, t.overallRating, width: 92),
                       const SizedBox(width: 6),
                       Flexible(
                         child: Text(
@@ -1056,18 +1054,32 @@ class _TeachersScreenState extends State<TeachersScreen> {
     );
   }
 
-  Widget _starRow(double rating, {double size = 14}) {
-    final full = rating.floor().clamp(0, 5);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (int i = 1; i <= 5; i++)
-          Icon(
-            i <= full ? Icons.star : Icons.star_outline,
-            size: size,
-            color: Colors.amber,
-          ),
-      ],
+  /// Professional score bar: track + filled ratio tinted by value.
+  /// (No star glyphs — the number is the message.)
+  Widget _scoreBar(AppColors c, double rating, {double width = 92}) {
+    final ratio = (rating / 5).clamp(0.0, 1.0).toDouble();
+    final tone = rating >= 4
+        ? c.teal
+        : rating >= 3
+            ? c.board
+            : c.clay;
+    return SizedBox(
+      width: width,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(3),
+        child: Stack(
+          children: [
+            Container(
+              height: 6,
+              color: c.dustSoft.withValues(alpha: 0.8),
+            ),
+            FractionallySizedBox(
+              widthFactor: ratio,
+              child: Container(height: 6, color: tone),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1287,7 +1299,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
 
   /// Single identity header, LinkedIn-style: cover banner with a floating
   /// back button, overlapping avatar, name + designation, one big score
-  /// with stars + count, and a full-width Rate CTA.
+  /// with score bar + count, and a full-width Rate CTA.
   Widget _detailHero(AppColors c, Teacher t) {
     return Container(
       decoration: BoxDecoration(
@@ -1437,9 +1449,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.star, size: 17, color: Colors.amber),
-                      const SizedBox(width: 4),
-                      Text(
+                                            Text(
                         t.reviewCount == 0
                             ? 'New'
                             : t.overallRating.toStringAsFixed(1),
@@ -1482,7 +1492,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    _starRow(t.overallRating, size: 16),
+                    _scoreBar(c, t.overallRating, width: 96),
                     const SizedBox(width: 8),
                     Flexible(
                       child: Text(
@@ -1766,9 +1776,8 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.star, size: 13, color: Colors.amber),
                     Text(
-                      ' ${r.average.toStringAsFixed(1)}',
+                      r.average.toStringAsFixed(1),
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 12,
@@ -1976,21 +1985,21 @@ class _RateSheetState extends State<_RateSheet> {
                 ],
               ),
               const SizedBox(height: 14),
-              _starsCard(
+              _rateCard(
                 c,
                 'Grading fairness',
                 'Fair marking & feedback',
                 grading,
                 (v) => setState(() => grading = v),
               ),
-              _starsCard(
+              _rateCard(
                 c,
                 'Leniency',
                 'Flexibility & support',
                 leniency,
                 (v) => setState(() => leniency = v),
               ),
-              _starsCard(
+              _rateCard(
                 c,
                 'Subject knowledge',
                 'Concepts & clarity',
@@ -2074,7 +2083,7 @@ class _RateSheetState extends State<_RateSheet> {
     );
   }
 
-  Widget _starsCard(
+  Widget _rateCard(
     AppColors c,
     String label,
     String hint,
@@ -2142,13 +2151,36 @@ class _RateSheetState extends State<_RateSheet> {
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => onPick(i),
-                  child: AnimatedScale(
-                    scale: i == value ? 1.18 : 1.0,
-                    duration: const Duration(milliseconds: 150),
-                    child: Icon(
-                      i <= value ? Icons.star : Icons.star_outline,
-                      size: 34,
-                      color: Colors.amber,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    curve: Curves.easeOut,
+                    width: 46,
+                    height: 46,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: i == value ? c.tealDeep : Colors.transparent,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: i == value ? c.tealDeep : c.dustSoft,
+                        width: 1.5,
+                      ),
+                      boxShadow: i == value
+                          ? [
+                              BoxShadow(
+                                color: c.tealDeep.withValues(alpha: 0.30),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Text(
+                      '$i',
+                      style: TextStyle(
+                        color: i == value ? Colors.white : c.tealInk,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
                     ),
                   ),
                 ),

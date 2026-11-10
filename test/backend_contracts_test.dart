@@ -22,6 +22,7 @@ import 'package:ucp/screens/leaderboard.dart';
 import 'package:ucp/community/backend_config.dart';
 import 'package:ucp/auth/session_manager.dart';
 import 'package:ucp/leaderboard/leaderboard_service.dart';
+import 'package:ucp/leaderboard/sync.dart';
 import 'package:ucp/screens/profile.dart';
 import 'package:ucp/theme/palette.dart';
 import 'package:ucp/widgets/common.dart';
@@ -148,6 +149,10 @@ class FakeBackend extends SessionBackend {
   Future<void> saveDashboard(String json) async {}
   @override
   Future<String?> loadDashboard() async => null;
+  @override
+  Future<void> saveConsent(String value) async {}
+  @override
+  Future<String?> readConsent() async => 'accepted';
 }
 
 /// Minimal portal dashboard HTML that parses into a student.
@@ -159,6 +164,26 @@ const _fakeDashboardHtml = '''
   <h6 class="card-title">Ali Haider</h6>
   <span class="sub-heading">CP233</span>
   <div class="card-body">Credits: 3 Attendance: 75%</div>
+</div></a>
+</body></html>
+''';
+
+/// Portal dashboard HTML with TWO courses — used to prove that opening a
+/// board reads only the selected course's grade page.
+const _fakeDashboardTwoCoursesHtml = '''
+<html><body>
+<h2 class="heading_b"><span class="sub-heading">L1F25BSCS0577</span>Saad Akram</h2>
+<a href="/student/course/info/ABCD1234abcd"><div class="card">
+  <div class="card-header"><span>Data Structures</span></div>
+  <h6 class="card-title">Ali Haider</h6>
+  <span class="sub-heading">CP233</span>
+  <div class="card-body">Credits: 3 Attendance: 75%</div>
+</div></a>
+<a href="/student/course/info/EFGH5678efgh"><div class="card">
+  <div class="card-header"><span>Object Oriented Programming</span></div>
+  <h6 class="card-title">Aasma Abdul Waheed</h6>
+  <span class="sub-heading">CP223</span>
+  <div class="card-body">Credits: 3 Attendance: 80%</div>
 </div></a>
 </body></html>
 ''';
@@ -283,9 +308,14 @@ void main() {
         back: () {},
       )));
       await tester.pumpAndSettle();
-      // The podium shows the grade AND the percentage together...
+      // Rows are the default; the podium shows the grade AND the
+      // percentage together on each card.
+      await tester.tap(find.text('Podium'));
+      await tester.pumpAndSettle();
       expect(find.text('A · 86.5%'), findsOneWidget);
       // ...and tapping a podium card opens the marks sheet.
+      await tester.ensureVisible(find.text('Marks Holder'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Marks Holder'));
       await tester.pumpAndSettle();
       expect(find.text('Quiz 1'), findsOneWidget);
@@ -391,5 +421,65 @@ void main() {
       // The publishes carry the STUDENT id.
       expect(svc.calls.any((c) => c.startsWith('syncTimetable:')), isTrue);
     });
+
+    testWidgets('a board open reads ONLY the selected course grade page', (
+        tester) async {
+      // Regression: the class sync used to fetch EVERY subject's grade
+      // page (~1.4 MB of HTML each) on every leaderboard open. It must
+      // read exactly one: the subject the student is looking at.
+      final paths = <String>[];
+      final portal = PortalApi(MockClient((req) async {
+        paths.add(req.url.path);
+        if (req.url.path.contains('/class/schedule')) {
+          return http.Response(_fakeTimetableHtml, 200);
+        }
+        if (req.url.path.contains('/gradebook/')) {
+          return http.Response(
+            '<table><tr class="table-parent-row show_child_row">'
+            '<td><a class="js-toggle-children-row">Quiz</a></td>'
+            '<td>10</td></tr></table>',
+            200,
+          );
+        }
+        return http.Response(_fakeDashboardTwoCoursesHtml, 200);
+      }));
+      if (extApiKey.length < 16) {
+        // ignore: avoid_print
+        print('SKIP: run with --dart-define=EXT_API_KEY=... to exercise '
+            'the targeted class-sync pipeline');
+        return;
+      }
+      final svc = RecordingService();
+      final app = CampusApp(
+        authHooks: AuthTestHooks(
+          backend: FakeBackend(),
+          validate: (_) async => true,
+        ),
+        serviceFactory: () => svc,
+        portalApiFactory: () => portal,
+      );
+      await tester.pumpWidget(_wrap(app));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 800));
+      final dynamic state = tester.state(find.byType(CampusApp));
+      // Background publish (dashboard load) must not touch grade pages.
+      await state.syncClassToServer();
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(paths.where((p) => p.contains('/gradebook/')), isEmpty);
+
+      // Opening ONE board reads exactly ONE grade page — the selected
+      // course (Data Structures → course id ABCD1234abcd).
+      paths.clear();
+      await state.syncClassToServer(
+        target: const LeaderboardSyncTarget(courseName: 'Data Structures'),
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      final gradePages =
+          paths.where((p) => p.contains('/gradebook/')).toList();
+      expect(gradePages, hasLength(1));
+      expect(gradePages.single, contains('ABCD1234abcd'));
+    });
   });
+
 }

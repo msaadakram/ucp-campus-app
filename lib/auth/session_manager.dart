@@ -24,6 +24,11 @@ abstract class SessionBackend {
   /// Cached dashboard JSON (see [DashboardData]) for instant paint.
   Future<void> saveDashboard(String json);
   Future<String?> loadDashboard();
+
+  /// Consent for publishing marks/timetable/session to the server.
+  /// 'accepted' | 'declined' | null (undecided).
+  Future<void> saveConsent(String value);
+  Future<String?> readConsent();
 }
 
 /// Result of [SessionManager.ensureValidSession].

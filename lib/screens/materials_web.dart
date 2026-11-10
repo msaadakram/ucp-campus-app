@@ -312,6 +312,34 @@ class _BlobAssembly {
   }) : chunks = List<String?>.filled(total, null);
 }
 
+/// Forces the loaded page to lay out at the phone's full width.
+///
+/// LMS pages regularly ship no viewport meta at all, or one pinned to a
+/// desktop width, so the site renders zoomed out and needs horizontal
+/// scrolling inside a 430px-wide frame. Injecting the standard mobile
+/// viewport makes the page reflow to the device width instead.
+///
+/// Runs on page start (before layout, so it wins for pages without a meta)
+/// and again on page finish (after the page's own meta has been parsed, so
+/// it wins for pages with a desktop-width one) — whichever lands last wins.
+///
+/// Deliberately conservative: `user-scalable` is left on and no
+/// `maximum-scale` is set, so pinch-zoom for accessibility still works.
+const viewportMetaJs = '''
+(function(){
+ try{
+  var want='width=device-width, initial-scale=1, viewport-fit=cover';
+  var m=document.querySelector('meta[name="viewport"]');
+  if(!m){
+    m=document.createElement('meta');
+    m.setAttribute('name','viewport');
+    (document.head||document.documentElement).appendChild(m);
+  }
+  if(m.getAttribute('content')!==want)m.setAttribute('content',want);
+ }catch(e){}
+})();
+''';
+
 /// In-page download hook: download-flavoured anchors/forms are reported to
 /// the `UcpDownload` JS channel instead of navigating the WebView (which
 /// has no session-cookie download handling). `blob:` payloads and
@@ -405,6 +433,22 @@ class WebViewScreen extends StatefulWidget {
   /// False in widget tests: platform WebViews don't exist headlessly, so a
   /// lightweight placeholder renders instead (title/chips stay identical).
   final bool renderWebView;
+
+  /// Clears the cached controller/portal page so a logged-out user never
+  /// rides on a stale authenticated WebView again (it holds the portal
+  /// DOM, JS timers and cookies — pinning all three past sign-out).
+  static void resetSessionCache() {
+    _cachedController = null;
+    _cachedSid = null;
+    _cachedPath = '/student/dashboard';
+    _cachedUrl = 'https://horizon.ucp.edu.pk/student/dashboard';
+  }
+
+  static WebViewController? _cachedController;
+  static String? _cachedSid;
+  static String _cachedPath = '/student/dashboard';
+  static String _cachedUrl = 'https://horizon.ucp.edu.pk/student/dashboard';
+
   const WebViewScreen(
       {super.key, this.sessionId, this.onSessionExpired, this.renderWebView = true});
   @override
@@ -418,14 +462,10 @@ class _WebViewScreenState extends State<WebViewScreen> {
   /// State is disposed on every tab switch. The controller + loaded page
   /// survive here instead, and coming back to the tab reuses them with NO
   /// reload. A changed session id still forces a fresh login load.
-  static WebViewController? _cachedController;
-  static String? _cachedSid;
-  static String _cachedPath = '/student/dashboard';
-  static String _cachedUrl = 'https://horizon.ucp.edu.pk/student/dashboard';
 
   WebViewController? _controller;
   String _path = '/student/dashboard';
-  String _currentUrl = _cachedUrl;
+  String _currentUrl = WebViewScreen._cachedUrl;
   bool _editingUrl = false;
   final TextEditingController _urlField = TextEditingController();
   double _progress = 0;
@@ -496,12 +536,13 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
   Future<void> _initController() async {
     // Tab switch.dispose -> fresh State: reuse the live portal, no reload.
-    if (_cachedController != null && _cachedSid == widget.sessionId) {
+    if (WebViewScreen._cachedController != null &&
+        WebViewScreen._cachedSid == widget.sessionId) {
       if (!mounted) return;
       setState(() {
-        _controller = _cachedController;
-        _path = _cachedPath;
-        _currentUrl = _cachedUrl;
+        _controller = WebViewScreen._cachedController;
+        _path = WebViewScreen._cachedPath;
+        _currentUrl = WebViewScreen._cachedUrl;
       });
       return;
     }
@@ -516,11 +557,19 @@ class _WebViewScreenState extends State<WebViewScreen> {
           onProgress: (p) {
             if (mounted) setState(() => _progress = p / 100);
           },
+          onPageStarted: (_) {
+            // Force the mobile viewport before the page lays out, so a
+            // page shipped without one still renders at device width.
+            unawaited(_injectViewport());
+          },
           onPageFinished: (_) {
             // Hook in-page download triggers (links, forms, fetch,
             // blob popups). Verified + retried below so taps never die
             // silently; never breaks the page itself.
             unawaited(_injectDownloadHook());
+            // Second pass after the page's own meta has been parsed — this
+            // is what wins when the site pins a desktop-width viewport.
+            _injectViewport();
             Future.delayed(const Duration(milliseconds: 800), () async {
               if (!mounted) return;
               try {
@@ -567,6 +616,15 @@ class _WebViewScreenState extends State<WebViewScreen> {
     } catch (_) {}
   }
 
+  /// Applies the mobile viewport. The DOM may not exist yet on an early
+  /// [onPageStarted] — those writes throw and are ignored, and the
+  /// [onPageFinished] pass is the one that always succeeds.
+  Future<void> _injectViewport() async {
+    try {
+      await _controller?.runJavaScript(viewportMetaJs);
+    } catch (_) {}
+  }
+
   Future<void> _loadUri(Uri uri) async {
     final controller = _controller;
     if (controller == null) return;
@@ -589,10 +647,10 @@ class _WebViewScreenState extends State<WebViewScreen> {
       _resourceError = null;
       if (uri.host == _host) _path = uri.path;
     });
-    _cachedController = controller;
-    _cachedSid = widget.sessionId;
-    _cachedUrl = uri.toString();
-    if (uri.host == _host) _cachedPath = uri.path;
+    WebViewScreen._cachedController = controller;
+    WebViewScreen._cachedSid = widget.sessionId;
+    WebViewScreen._cachedUrl = uri.toString();
+    if (uri.host == _host) WebViewScreen._cachedPath = uri.path;
     await controller.loadRequest(uri);
   }
 
@@ -604,7 +662,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
     final uri = change.url == null ? null : Uri.tryParse(change.url!);
     if (uri == null || !mounted) return;
     setState(() => _currentUrl = uri.toString());
-    _cachedUrl = uri.toString();
+    WebViewScreen._cachedUrl = uri.toString();
     if (uri.host == _host && uri.path.startsWith('/web/login')) {
       setState(() {
         _expired = true;
@@ -615,7 +673,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
         _path = uri.path;
         _expired = false;
       });
-      _cachedPath = uri.path;
+      WebViewScreen._cachedPath = uri.path;
     } else if (mounted) {
       setState(() => _expired = false);
     }
@@ -944,10 +1002,10 @@ class _WebViewScreenState extends State<WebViewScreen> {
     final barColor = Colors.white.withValues(alpha: 0.16);
     if (_editingUrl) {
       return Container(
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 2),
         decoration: BoxDecoration(
-            color: barColor, borderRadius: BorderRadius.circular(20)),
+            color: barColor, borderRadius: BorderRadius.circular(18)),
         child: Row(
           children: [
             const SizedBox(width: 8),
@@ -994,10 +1052,10 @@ class _WebViewScreenState extends State<WebViewScreen> {
         setState(() => _editingUrl = true);
       },
       child: Container(
-        height: 40,
-        padding: const EdgeInsets.only(left: 12, right: 4),
+        height: 36,
+        padding: const EdgeInsets.only(left: 10, right: 2),
         decoration: BoxDecoration(
-            color: barColor, borderRadius: BorderRadius.circular(20)),
+            color: barColor, borderRadius: BorderRadius.circular(18)),
         child: Row(
           children: [
             Icon(secure ? Icons.lock_outline : Icons.lock_open_outlined,
@@ -1054,56 +1112,150 @@ class _WebViewScreenState extends State<WebViewScreen> {
     );
   }
 
+  /// Firefox's overflow menu. Replaces the always-on download button in the
+  /// address bar: Reload and Downloads live here, keeping the bar to the
+  /// omnibox and one icon. The active-download badge still surfaces on the
+  /// icon so a running download is visible without opening the menu.
+  Widget _menuButton(AppColors c) {
+    final active = _downloads.where((d) => d.isActive).length;
+    final unseen = _unseenFinished;
+    return Stack(
+      alignment: Alignment.topRight,
+      children: [
+        PopupMenuButton<String>(
+          tooltip: 'Menu',
+          icon: Icon(Icons.more_vert, size: 18, color: Colors.white),
+          iconSize: 18,
+          color: c.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: c.dustSoft),
+          ),
+          onSelected: (value) {
+            switch (value) {
+              case 'reload':
+                if (widget.renderWebView) {
+                  _controller?.reload();
+                } else {
+                  setState(() {});
+                }
+              case 'downloads':
+                _openDownloadsSheet();
+              case 'home':
+                _loadPortal('/student/dashboard');
+            }
+          },
+          itemBuilder: (_) => [
+            PopupMenuItem<String>(
+              value: 'home',
+              child: _menuRow(c, Icons.home_outlined, 'Portal home'),
+            ),
+            PopupMenuItem<String>(
+              value: 'reload',
+              child: _menuRow(c, Icons.refresh, 'Reload'),
+            ),
+            PopupMenuItem<String>(
+              value: 'downloads',
+              child: _menuRow(
+                c,
+                Icons.download_outlined,
+                'Downloads${unseen > 0 ? '  ($unseen new)' : ''}',
+              ),
+            ),
+          ],
+        ),
+        if (active > 0 || unseen > 0)
+          Positioned(
+            right: 2,
+            top: 2,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: c.board,
+                shape: BoxShape.circle,
+                border: Border.all(color: c.tealDeep, width: 1),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _menuRow(AppColors c, IconData icon, String label) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: c.tealInk),
+        const SizedBox(width: 12),
+        Expanded(child: Text(label, style: body(c, size: 14))),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
     final tray = _trayItem;
-    return UHead(
-      height: 108,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    // NOT a [UHead]: that wraps its child in a SingleChildScrollView, whose
+    // unbounded vertical constraint can't host an Expanded. The header needs
+    // a fixed height anyway, and the page below must fill the viewport, so
+    // this screen owns its own bounded layout (a stack above the Scaffold
+    // gives it a finite height).
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Header band on the palette gradient, matching the other tabs.
+        Container(
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 7),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topRight,
+              end: Alignment.bottomLeft,
+              colors: [c.tealDeep, c.teal],
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(child: _omnibox(c)),
-              const SizedBox(width: 6),
-              DownloadIconButton(
-                activeCount: _downloads.where((d) => d.isActive).length,
-                pendingCount: _unseenFinished,
-                onTap: _openDownloadsSheet,
+              Row(
+                children: [
+                  Expanded(child: _omnibox(c)),
+                  const SizedBox(width: 6),
+                  _menuButton(c),
+                ],
+              ),
+              const SizedBox(height: 6),
+              // Chrome-style loading bar: full-width, pinned directly
+              // under the omnibox, above the page.
+              SizedBox(
+                height: 3,
+                child: (_progress > 0 && _progress < 1)
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: _progress,
+                          backgroundColor:
+                              Colors.white.withValues(alpha: 0.25),
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(c.board),
+                          minHeight: 3,
+                        ),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          // Chrome-style loading bar: full-width, pinned above the
-          // viewport (not inside the rounded frame).
-          SizedBox(
-            height: 3,
-            child: (_progress > 0 && _progress < 1)
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(3),
-                    child: LinearProgressIndicator(
-                      value: _progress,
-                      backgroundColor: Colors.white.withValues(alpha: 0.25),
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(c.board),
-                      minHeight: 3,
-                    ),
-                  )
-                : const SizedBox.shrink(),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            height: 600,
-            decoration: BoxDecoration(
-              color: c.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: c.dustSoft, width: 2),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(22),
-              child: Stack(
-                children: [
+        ),
+        // The page itself occupies every remaining pixel: no rounded frame,
+        // no border and no fixed height, so the site gets the full mobile
+        // width and reaches the bottom of the screen instead of stopping
+        // short with dead space under the fold.
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(color: c.white),
+            child: Stack(
+              children: [
                   if (widget.renderWebView && _controller != null)
                     WebViewWidget(
                       controller: _controller!,
@@ -1227,9 +1379,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 24),
-        ],
-      ),
+      ],
     );
   }
 }

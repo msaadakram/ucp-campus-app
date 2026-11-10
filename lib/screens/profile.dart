@@ -16,7 +16,7 @@ class ProfilePrefs {
   AppPalette palette;
   bool big;
   bool motion;
-  ProfilePrefs({this.theme = ThemeModePref.light, this.palette = AppPalette.skater, this.big = false, this.motion = true});
+  ProfilePrefs({this.theme = ThemeModePref.light, this.palette = defaultAppPalette, this.big = false, this.motion = true});
 
   /// Device snapshot so the theme survives restarts until the user
   /// changes it again (see PrefsStore). Tolerant: unknown/corrupt
@@ -33,7 +33,9 @@ class ProfilePrefs {
     try {
       theme = ThemeModePref.values.byName('${json['theme']}');
     } catch (_) {}
-    var palette = AppPalette.skater;
+    // Tolerant decode: an unknown/missing value must land on the same theme
+    // a fresh install opens in, not on some other palette.
+    var palette = defaultAppPalette;
     try {
       palette = AppPalette.values.byName('${json['palette']}');
     } catch (_) {}
@@ -59,6 +61,11 @@ class ProfileScreen extends StatefulWidget {
   final double? earnedCredits;
   /// Shared backend service (one http client for the whole app).
   final LeaderboardService? service;
+  /// Device consent choice for publishing marks/timetable/session-jar
+  /// to the server ('accepted' | 'declined' | null = never asked).
+  final String? publishConsent;
+  /// Flips the consent choice (called by the toggle below).
+  final Future<void> Function(String value)? onConsentChanged;
   const ProfileScreen(
       {super.key,
       required this.logout,
@@ -69,7 +76,9 @@ class ProfileScreen extends StatefulWidget {
       this.faculty,
       this.email,
       this.earnedCredits,
-      this.service});
+      this.service,
+      this.publishConsent,
+      this.onConsentChanged});
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
@@ -428,6 +437,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     SettingRow(icon: Icons.text_fields_outlined, tone: c.board, label: 'Larger text', sub: 'Easier reading', trailing: AppToggle(value: widget.prefs.big, onChanged: (v) => _set(ProfilePrefs(theme: widget.prefs.theme, palette: widget.prefs.palette, big: v, motion: widget.prefs.motion)), colors: c)),
                     SettingRow(icon: Icons.auto_awesome_outlined, tone: c.dust, label: 'Animations', sub: 'Smooth screen transitions', trailing: AppToggle(value: widget.prefs.motion, onChanged: (v) => _set(ProfilePrefs(theme: widget.prefs.theme, palette: widget.prefs.palette, big: widget.prefs.big, motion: v)), colors: c)),
+                    if ((widget.studentId ?? '').trim().isNotEmpty)
+                      SettingRow(
+                        icon: Icons.share_outlined,
+                        tone: c.clay,
+                        label: 'Share my marks & timetable',
+                        sub: widget.publishConsent == 'accepted'
+                            ? 'Classmates see you on the boards'
+                            : 'Private — boards never list you',
+                        trailing: AppToggle(
+                          value: widget.publishConsent == 'accepted',
+                          onChanged: (v) => widget.onConsentChanged?.call(
+                              v ? 'accepted' : 'declined'),
+                          colors: c,
+                        ),
+                      ),
                     if ((widget.studentId ?? '').trim().isNotEmpty) ...[
                       SettingRow(
                         icon: Icons.visibility_off_outlined,

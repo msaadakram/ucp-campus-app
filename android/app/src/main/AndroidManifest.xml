@@ -1,4 +1,18 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Remove the media-library permissions that open_filex declares.
+         This app only OPENS files it downloaded itself (portal PDFs and
+         notes into Documents/downloads and Android Download/UCP/) — it
+         never reads the user's photo, video or audio library. The
+         photo picker used for community image uploads runs through
+         image_picker, which needs no library permission (system photo
+         picker on API 33+, a granted content URI below that).
+         Leaving AUDIO/VIDEO in would trigger Play's permissions
+         declaration for features the app does not have. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"
+        tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"
+        tools:node="remove" />
     <!-- Required for Microsoft OAuth, Horizon portal and API calls -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
@@ -19,7 +33,11 @@
         android:label="UCP University"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher">
+        android:roundIcon="@mipmap/ic_launcher"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"

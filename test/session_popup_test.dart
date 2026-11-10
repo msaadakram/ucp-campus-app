@@ -43,6 +43,11 @@ class _MemoryBackend implements SessionBackend {
 
   @override
   Future<String?> loadDashboard() async => dashboardJson;
+
+  @override
+  Future<void> saveConsent(String value) async {}
+  @override
+  Future<String?> readConsent() async => 'accepted';
 }
 
 int _recentMs() =>
@@ -161,4 +166,5 @@ void main() {
     expect(backend.sid, 'dead-2');
     expect(validated, greaterThanOrEqualTo(1));
   });
+
 }

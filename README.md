@@ -23,6 +23,28 @@ flutter build web --release
 flutter build linux --release
 ```
 
+## Release builds must ship `EXT_API_KEY`
+
+The live leaderboard (`/api/ext/*`) is gated by the shared `x-api-key`
+header. The key lives in three places and **all three must match**:
+
+1. Server — Vercel project `ucp-community-api` → env `EXT_API_KEY` (production)
+2. Chrome extension — `ucp-live-grading-extenstion/src/config.js`
+3. This app — build-time `--dart-define`
+
+Without it the app silently falls back to the demo leaderboard board
+(`isExtConfigured` is false). So a release build must be:
+
+```bash
+flutter build apk --release \
+  --dart-define=NODE_API_URL=https://ucp.animezone.me \
+  --dart-define=EXT_API_KEY=<the key the server holds>
+```
+
+The key is also embedded in the shipped app binary, so treat it as
+public — it gates the ext surface from random callers, it is **not**
+student authentication.
+
 A few resources to get you started if this is your first Flutter project:
 
 - [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)

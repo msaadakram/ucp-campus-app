@@ -108,7 +108,12 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(find.text('Material'));
       await t.pumpAndSettle();
-      await t.tap(find.byIcon(Icons.download).first);
+      // The file already exists on this device — the button shows Open,
+      // never Download; tapping it never re-fetches.
+      expect(find.byIcon(Icons.open_in_new_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.download), findsNothing);
+      expect(find.text('Saved · tap Open'), findsOneWidget);
+      await t.tap(find.byIcon(Icons.open_in_new_rounded).first);
       await t.pumpAndSettle();
       expect(opened, ['/data/OOP-WEEK1.cpp']);
       expect(fake.startCalls, 0); // no network fetch
@@ -137,6 +142,10 @@ void main() {
       expect(opened, ['/data/new/OOP-WEEK1.cpp']); // auto-opened once
       expect(find.textContaining('Saved OOP-WEEK1.cpp'), findsOneWidget);
       expect(find.text('Open'), findsOneWidget); // manual backup action
+      // …and the row button flips from Download to Open right away.
+      expect(find.byIcon(Icons.open_in_new_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.download), findsNothing);
+      expect(find.text('Saved · tap Open'), findsOneWidget);
     });
 
     testWidgets('"Download again" forces a fresh fetch and opens it',
@@ -156,7 +165,8 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(find.text('Material'));
       await t.pumpAndSettle();
-      await t.tap(find.byIcon(Icons.download).first);
+      expect(find.byIcon(Icons.open_in_new_rounded), findsOneWidget);
+      await t.tap(find.byIcon(Icons.open_in_new_rounded).first);
       await t.pumpAndSettle();
       expect(opened, ['/data/old.cpp']);
       await t.tap(find.text('Download again'));

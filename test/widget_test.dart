@@ -49,6 +49,10 @@ class _HookDashBackend implements SessionBackend {
   Future<void> saveDashboard(String json) async => dashboardJson = json;
   @override
   Future<String?> loadDashboard() async => dashboardJson;
+  @override
+  Future<void> saveConsent(String value) async {}
+  @override
+  Future<String?> readConsent() async => 'accepted';
 }
 
 void main() {
@@ -333,8 +337,9 @@ void main() {
     await tester.pumpAndSettle();
     final scaffold =
         tester.widget<Scaffold>(find.byType(Scaffold).first);
+    // Default palette in dark mode, matching [defaultAppPalette].
     expect(scaffold.backgroundColor,
-        AppColors.of(AppPalette.skater, true).cream2);
+        AppColors.of(defaultAppPalette, true).cream2);
   });
 
   testWidgets('home pull down fires refresh-all', (tester) async {

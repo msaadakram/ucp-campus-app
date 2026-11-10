@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
 
@@ -114,6 +116,14 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
   PortalDownloader? _downloader;
   String? _busyDownload;
 
+  /// File names confirmed to already exist in the downloads folder —
+  /// shown as "Open" instead of "Download" in the Material tab.
+  final Set<String> _downloaded = {};
+
+  /// File names already classified this session (each storage check is
+  /// asynchronous — this prevents re-hitting the disk on every rebuild).
+  final Set<String> _checkedNames = {};
+
   @override
   void initState() {
     super.initState();
@@ -173,6 +183,10 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
         item.fileName.isEmpty ? null : await _downloader!.findDownloaded(item.fileName);
     if (saved != null) {
       if (!mounted) return;
+      // Flip the button to "Open" — the file never leaves storage.
+      if (item.fileName.isNotEmpty) {
+        setState(() => _downloaded.add(item.fileName));
+      }
       _openFile(saved);
       final c = AppScope.colorsOf(context);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -211,6 +225,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
       final c = AppScope.colorsOf(context);
       final ok = dl.status == DownloadStatus.complete && dl.filePath != null;
       if (ok) {
+        setState(() => _downloaded.add(item.fileName));
         _openFile(dl.filePath!); // auto-open right after the download
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -249,6 +264,33 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
     try {
       await OpenFilex.open(path);
     } catch (_) {}
+  }
+
+  /// Classifies which material files already exist in storage — so the
+  /// button flips from "Download" to "Open" for anything saved earlier.
+  /// Runs once per file name per session, off the build path.
+  void _scheduleDownloadScan(List<CourseMaterialItem> items) {
+    final pending = [
+      for (final m in items)
+        if (m.fileName.isNotEmpty &&
+            !_checkedNames.contains(m.fileName))
+          m,
+    ];
+    if (pending.isEmpty) return;
+    _checkedNames.addAll(pending.map((m) => m.fileName));
+    unawaited(_scanDownloadedAsync(pending));
+  }
+
+  Future<void> _scanDownloadedAsync(List<CourseMaterialItem> pending) async {
+    // Reuse the screen's downloader so tests reach their fakes.
+    _downloader ??= widget.downloader ?? PortalDownloader();
+    final hits = <String>{};
+    for (final m in pending) {
+      final saved = await _downloader!.findDownloaded(m.fileName);
+      if (saved != null) hits.add(m.fileName);
+    }
+    if (!mounted) return;
+    if (hits.isNotEmpty) setState(() => _downloaded.addAll(hits));
   }
 
   /// Soft translucent disc for the hero band (same motif as Teachers).
@@ -465,15 +507,19 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
           ],
         );
       case 'material':
+        final materialItems = CourseDetailCache.material[id] ?? const [];
+        _scheduleDownloadScan(materialItems);
         return courseMaterialBody(
-            c, CourseDetailCache.material[id] ?? const [],
-            _busyDownload, _download);
+            c, materialItems,
+            _busyDownload, _download,
+            downloaded: _downloaded);
       case 'assessments':
         return courseAssessBody(
             c, CourseDetailCache.assessments[id] ?? const []);
       case 'submission':
         return courseSubmissionBody(
-            c, CourseDetailCache.submissions[id] ?? const []);
+            c, CourseDetailCache.submissions[id] ?? const [],
+            onDownload: _download);
       case 'grades':
         return courseGradesBody(
           c,

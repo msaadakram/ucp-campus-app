@@ -112,7 +112,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(board, warnIfMissed: false);
     await tester.pumpAndSettle();
-    expect(find.text('Your rank in CS 214'), findsWidgets);
+    // The board screen opened. With the ext key configured this is the
+    // live board; without it the bundled demo board (which also carries
+    // the "Leaderboard" title). Assert the shared heading.
+    expect(find.text('Leaderboard'), findsWidgets);
   });
 
   testWidgets('UI walkthrough: community thread renders', (WidgetTester tester) async {

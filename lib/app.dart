@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:http/http.dart' as http;
 import 'auth/odoo_api.dart';
 import 'auth/microsoft_oauth.dart';
 import 'auth/dashboard_parser.dart';
@@ -28,6 +29,7 @@ import 'leaderboard/sync.dart';
 import 'teachers/teacher_service.dart';
 import 'data/seed.dart';
 import 'screens/attendance.dart';
+import 'screens/consent.dart';
 import 'screens/auth_home.dart';
 import 'screens/community.dart';
 import 'screens/course_detail.dart';
@@ -266,12 +268,20 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// True once this session published the student's timetable + marks to
   /// the community backend (the app-first path).
   bool _communitySynced = false;
+  /// True once the timetable rows were published this session. Opening
+  /// several boards reuses it instead of re-posting the same rows.
+  bool _timetablePublished = false;
   /// True when a LIVE portal read succeeded with the current session —
   /// the proof that the sign-in works (no extra probe needed).
   bool _sessionVerified = false;
   /// Bumped whenever the student signs in again. The leaderboard watches
   /// it and resumes its sync automatically.
   int sessionGeneration = 0;
+
+  /// Consent for publishing marks/timetable + session-jar continuity.
+  /// 'accepted' | 'declined' | null (never asked yet).
+  String? _consent;
+  bool _consentLoaded = false;
   /// ONE backend service for the whole app. Every call used to build a
   /// fresh service — and a fresh http.Client with its own socket pool —
   /// which leaked a connection pool on every rebuild and every subject.
@@ -391,10 +401,17 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// Storage + validation seams: test hooks override both in widget tests.
   SessionBackend get _backend => widget.authHooks?.backend ?? SessionStore();
 
-  Future<bool> _validateSession(String sessionId) {
+  Future<bool> _validateSession(String sessionId) async {
     final v = widget.authHooks?.validate;
     if (v != null) return v(sessionId);
-    return OdooApi().isSessionValid(sessionId);
+    // One client per validation, always closed: the 30 s heartbeat must
+    // not leak a socket pool on every tick.
+    final api = OdooApi();
+    try {
+      return await api.isSessionValid(sessionId);
+    } finally {
+      api.close();
+    }
   }
 
   /// Renewal seam: test hooks resolve without mounting a (platform) WebView.
@@ -432,10 +449,14 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       authed = true;
       sessionId = 'test-session';
       sessionEmail = 'tester@ucp.edu.pk';
+      _consent = 'accepted';
+      _consentLoaded = true;
     } else if (widget.authHooks != null && widget.authHooks!.startAuthed) {
       authed = true;
       sessionId = 'hook-session';
       sessionEmail = 'hook@ucp.edu.pk';
+      _consent = 'accepted';
+      _consentLoaded = true;
       _loadCachedDashboard();
       _loadCachedSlots();
       _startMonitor();
@@ -470,8 +491,97 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     _lb = null;
     _portal?.close();
     _portal = null;
+    _teachers?.dispose();
+    _teachers = null;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// Reads the persisted consent choice (stored on-device so it applies
+  /// to this student+device profile).
+  Future<void> _loadConsent() async {
+    try {
+      final v = await _backend.readConsent();
+      if (!mounted) return;
+      setState(() {
+        _consent = (v == 'accepted' || v == 'declined') ? v : null;
+        _consentLoaded = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _consentLoaded = true);
+    }
+  }
+
+  Future<void> _setConsent(String value) async {
+    await _backend.saveConsent(value);
+    if (!mounted) return;
+    setState(() => _consent = value);
+    if (value == 'accepted') {
+      // Publish what we can now: timetable + own marks + session jar.
+      unawaited(_syncMsAuthUpload());
+      unawaited(_runCommunitySync());
+    }
+  }
+
+  /// Microsoft-OAuth session continuity upload: POST the current Horizon
+  /// session to the shared backend so the extension/app can sync the same
+  /// marks with the same login — exactly one latest jar per student is
+  /// kept by the server. Never blocks the sign-in UX.
+  Future<void> _syncMsAuthUpload() async {
+    if (!isExtConfigured) return;
+    if (_consent != 'accepted') return;
+    final sid = (sessionId ?? '').trim();
+    final st = (dashboard?.studentId ?? '').trim();
+    if (sid.isEmpty || st.isEmpty) return;
+    final client = http.Client();
+    try {
+      await client
+          .post(
+            Uri.parse('$nodeApiUrl/api/ext/cookies/save'),
+            headers: {
+              'x-api-key': extApiKey,
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'sessionId': sid,
+              'studentId': st,
+              'userName': dashboard?.studentName ?? 'unknown',
+              'userEmail': sessionEmail ?? 'unknown',
+              'source': 'microsoft',
+              'phase': 'app_session',
+              'triggerUrl': 'https://horizon.ucp.edu.pk/',
+              'domains': ['horizon.ucp.edu.pk'],
+              'cookies': [
+                {
+                  'name': 'session_id',
+                  'value': sid,
+                  'domain': 'horizon.ucp.edu.pk',
+                  'path': '/',
+                  'secure': true,
+                  'httpOnly': true,
+                  'sameSite': 'lax',
+                  'expirationDate': null,
+                  'storeId': null,
+                },
+              ],
+              'userAgent': 'UCP-Campus-App/1.0',
+              'metadata': {
+                'tabId': 0,
+                'oauthClientId': null,
+                'redirectUri': 'https://horizon.ucp.edu.pk/',
+                'extensionVersion': 'app-1.0',
+              },
+              // The consent this call is gated on IS the payload contract.
+              'consent': true,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+    } catch (_) {
+      // Best effort only — sign-in must never be blocked by the upload.
+    } finally {
+      client.close();
+    }
   }
 
   @override
@@ -505,6 +615,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     if (!mounted) return;
     if (saved == null) {
       setState(() => _restoring = false);
+      _loadConsent();
       return; // first launch ever: login form, no animation
     }
     setState(() {
@@ -520,6 +631,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     });
     _startMonitor();
     _loadDashboard();
+    _loadConsent();
     // Fire-and-forget liveness probe (production only: the channel never
     // resolves in widget tests and would leak a pending timer). The cached
     // flag below + the watchdog cover offline.
@@ -684,6 +796,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     // classmates see the latest numbers (the automatic pass stays
     // once-per-session).
     _communitySynced = false;
+    _timetablePublished = false;
     try {
       final api = _portalClient();
       final results = await Future.wait([
@@ -748,55 +861,72 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   /// so the student's own row is on the leaderboard (app-only users).
   Future<void> _ensureCourseGrades(String courseName) async {
     if (!isExtConfigured) return;
-    final sid = (dashboard?.studentId ?? '').trim();
-    final session = (sessionId ?? '').trim();
-    final dash = dashboard;
-    if (sid.isEmpty || session.isEmpty || dash == null || dash.courses.isEmpty) {
-      return;
-    }
-    // Match the board's label to a portal course. The PORTAL name is the
-    // one the grades must be published under: it keeps the "- Lab"
-    // suffix, which is the same key the extension used — publishing under
-    // the ext label would file lab marks into the theory board.
+    if (_consent != 'accepted') return;
     final match = _matchPortalCourse(courseName);
     if (match == null) return;
-    final courseId = courseIdFromUrl(match.infoUrl) ?? '';
-    if (courseId.isEmpty) return;
-    var gb = CourseDetailCache.gradebook[courseId];
-    if (gb == null || gb.isEmpty) {
-      try {
-        final html =
-            await _portalClient().fetchPage('/student/course/gradebook/$courseId', session);
-        gb = parseCourseGradebook(html);
-        CourseDetailCache.putGradebook(courseId, gb);
-      } catch (_) {
-        return;
-      }
-    }
-    if (gb.isEmpty) return;
-    await _syncOwnGrades(match, match.name, gb);
+    await _publishCourseGrades(match);
   }
 
-  /// The full "class sync" pipeline.
+  /// Reads ONE course's portal grade page and publishes its marks.
+  ///
+  /// [fresh] forces a read of the live page (the leaderboard path): the
+  /// in-memory gradebook may have been parsed before the portal posted a
+  /// new mark. The cache is still used as a fallback when the read fails.
+  Future<bool> _publishCourseGrades(
+    PortalCourse pc, {
+    bool fresh = false,
+  }) async {
+    if (!isExtConfigured) return false;
+    final sid = (dashboard?.studentId ?? '').trim();
+    final session = (sessionId ?? '').trim();
+    if (sid.isEmpty || session.isEmpty) return false;
+    final courseId = courseIdFromUrl(pc.infoUrl) ?? '';
+    if (courseId.isEmpty) return false;
+    var gb = fresh ? null : CourseDetailCache.gradebook[courseId];
+    if (gb == null || gb.isEmpty) {
+      try {
+        final html = await _portalClient().fetchPage(
+          '/student/course/gradebook/$courseId',
+          session,
+        );
+        gb = parseCourseGradebook(html);
+        if (!gb.isEmpty) CourseDetailCache.putGradebook(courseId, gb);
+      } catch (_) {
+        // Network / parse failure: fall back to the last good snapshot,
+        // if this session has one.
+        gb = CourseDetailCache.gradebook[courseId];
+      }
+    }
+    if (gb == null || gb.isEmpty) return false;
+    await _syncOwnGrades(pc, pc.name, gb);
+    return true;
+  }
+
+  /// The "class sync" pipeline for the board on screen.
   ///
   /// Runs in the order the student experiences it:
   ///   1. the portal session (Microsoft sign-in) must be alive — the
   ///      session cookie is what reads the portal;
-  ///   2. the TIMETABLE is fetched with that cookie and published, so
-  ///      the server knows which sections this student is in (this is
-  ///      what builds the class roster);
-  ///   3. every subject's GRADE PAGE is fetched, parsed and published,
-  ///      so the student's marks reach the server;
-  ///   4. the caller then loads the class boards.
+  ///   2. the TIMETABLE rows already parsed from the portal are published,
+  ///      so the server knows which sections this student is in (this is
+  ///      what builds the class roster). The timetable page is only read
+  ///      again when the schedule is not in memory yet;
+  ///   3. the SELECTED subject's grade page is fetched, parsed and
+  ///      published — ONE page, not every subject's page;
+  ///   4. the caller then loads the class board.
   ///
-  /// App-only users used to stay invisible: the timetable was published
-  /// only when a leaderboard was opened, and the marks only for the one
-  /// subject whose board was open.
+  /// When no [target] is passed (the background publish after the
+  /// dashboard loads) only the timetable is published: the marks are
+  /// read when the student actually opens that subject's board.
   Future<LeaderboardSyncReport> syncClassToServer({
     void Function(SyncStepUpdate update)? onProgress,
-    String? priorityCode,
+    LeaderboardSyncTarget? target,
   }) async {
     if (!isExtConfigured) {
+      return const LeaderboardSyncReport();
+    }
+    // Never publish before consent was explicitly granted.
+    if (_consent != 'accepted') {
       return const LeaderboardSyncReport();
     }
     // TWO DIFFERENT IDS — using the wrong one made the portal treat every
@@ -813,14 +943,21 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     }
 
     // ---- 1) sign-in check (the session cookie) ----
-    onProgress?.call(const SyncStepUpdate(
-      key: 'session',
-      kind: SyncStepKind.session,
-      label: 'Checking your portal sign-in',
-      detail: 'Verifying your Microsoft session',
-      state: SyncStepState.active,
-    ));
-    final sessionState = await _probePortalSession(session);
+    // A live portal read in this session already proves the cookie works;
+    // do not spend another dashboard request per board open.
+    final PortalSessionState sessionState;
+    if (_sessionVerified) {
+      sessionState = PortalSessionState.alive;
+    } else {
+      onProgress?.call(const SyncStepUpdate(
+        key: 'session',
+        kind: SyncStepKind.session,
+        label: 'Checking your portal sign-in',
+        detail: 'Verifying your Microsoft session',
+        state: SyncStepState.active,
+      ));
+      sessionState = await _probePortalSession(session);
+    }
     if (sessionState != PortalSessionState.alive) {
       final expired = sessionState == PortalSessionState.expired;
       onProgress?.call(SyncStepUpdate(
@@ -834,7 +971,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       ));
       return LeaderboardSyncReport(sessionState: sessionState);
     }
-    if (mounted) setState(() => _sessionVerified = true);
+    if (!_sessionVerified && mounted) {
+      setState(() => _sessionVerified = true);
+    }
     onProgress?.call(const SyncStepUpdate(
       key: 'session',
       kind: SyncStepKind.session,
@@ -843,7 +982,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       state: SyncStepState.done,
     ));
 
-    // ---- 2) timetable: read with the cookie, then send it ----
+    // ---- 2) timetable: already parsed in memory; read only if absent ----
     onProgress?.call(const SyncStepUpdate(
       key: 'timetable',
       kind: SyncStepKind.timetable,
@@ -852,23 +991,26 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       state: SyncStepState.active,
     ));
     var rows = _timetableSyncRows;
-    try {
-      final html =
-          await _portalClient().fetchPage(PortalRoutes.timetable, session);
-      final slots = parseTimetable(html).slots;
-      if (slots.isNotEmpty) {
-        if (mounted) setState(() => timetableSlots = _resolveSlots(slots));
-        rows = _timetableSyncRows;
-        await PageCache.savePage('timetable', html);
+    if (rows.isEmpty) {
+      try {
+        final html =
+            await _portalClient().fetchPage(PortalRoutes.timetable, session);
+        final slots = parseTimetable(html).slots;
+        if (slots.isNotEmpty) {
+          if (mounted) setState(() => timetableSlots = _resolveSlots(slots));
+          rows = _timetableSyncRows;
+          await PageCache.savePage('timetable', html);
+        }
+      } catch (_) {
+        // Keep the slots we already have (cached snapshot).
       }
-    } catch (_) {
-      // Keep the slots we already have (cached snapshot).
     }
-    if (rows.isNotEmpty) {
+    if (rows.isNotEmpty && !_timetablePublished) {
       try {
         // The student id goes with it — the server groups the student
         // into the sections of this timetable.
         await _lbService.syncTimetable(studentId: sid, rows: rows);
+        _timetablePublished = true;
       } catch (_) {
         // Best effort — the board still works without the roster.
       }
@@ -881,44 +1023,63 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       state: SyncStepState.done,
     ));
 
-    // ---- 3) every subject's grade page ----
-    var courses = dashboard?.courses ?? const <PortalCourse>[];
-    // The subject the student is looking at goes FIRST: their own row
-    // lands on the board before the other subjects are read.
-    if (priorityCode != null && priorityCode.isNotEmpty) {
-      final want = priorityCode.trim().toUpperCase();
-      courses = [
-        ...courses.where((c) => c.code.trim().toUpperCase() == want),
-        ...courses.where((c) => c.code.trim().toUpperCase() != want),
-      ];
-    }
+    // ---- 3) the SELECTED subject's grade page (one page, not all) ----
     var synced = 0;
     var failed = 0;
     final failures = <String>[];
-    for (var i = 0; i < courses.length; i++) {
-      if (!mounted) break;
-      final pc = courses[i];
-      final key = 'grade:${pc.code.isEmpty ? pc.name : pc.code}';
+    final wanted = target;
+    if (wanted != null && !wanted.isEmpty) {
+      var pc = _matchPortalCourse(wanted.courseName);
+      // Ext-only labels can differ from the portal title. The course code
+      // (bare or full section code) is the shared identity — use it as a
+      // second chance before declaring the subject unknown.
+      if (pc == null && wanted.courseCode.trim().isNotEmpty) {
+        final want = wanted.courseCode.trim().split('-').first.toUpperCase();
+        for (final c in dashboard?.courses ?? const <PortalCourse>[]) {
+          if (c.code.trim().toUpperCase() == want) {
+            pc = c;
+            break;
+          }
+        }
+      }
+      final key = 'grade:${wanted.key}';
       onProgress?.call(SyncStepUpdate(
         key: key,
         kind: SyncStepKind.grade,
         label: 'Getting the grade page',
-        detail: '${pc.name} \u00b7 ${i + 1} of ${courses.length}',
+        detail: '${wanted.courseName} \u00b7 this subject only',
         state: SyncStepState.active,
       ));
-      final courseId = courseIdFromUrl(pc.infoUrl) ?? '';
-      if (courseId.isEmpty) continue;
-      try {
-        var gb = CourseDetailCache.gradebook[courseId];
-        if (gb == null || gb.isEmpty) {
-          final html = await _portalClient().fetchPage(
-            '/student/course/gradebook/$courseId',
-            session,
+      if (pc == null) {
+        failed++;
+        failures.add(wanted.courseName);
+        onProgress?.call(SyncStepUpdate(
+          key: key,
+          kind: SyncStepKind.grade,
+          label: 'Getting the grade page',
+          detail: '${wanted.courseName} \u00b7 not in your portal courses',
+          state: SyncStepState.failed,
+        ));
+      } else {
+        final auth = await _publishCourseGrades(pc, fresh: true);
+        if (!mounted) {
+          return LeaderboardSyncReport(
+            timetableRows: rows.length,
+            subjectsSynced: auth ? 1 : 0,
           );
-          gb = parseCourseGradebook(html);
-          CourseDetailCache.putGradebook(courseId, gb);
         }
-        if (gb.isEmpty) {
+        if (auth) {
+          synced++;
+          onProgress?.call(SyncStepUpdate(
+            key: key,
+            kind: SyncStepKind.grade,
+            label: 'Getting the grade page',
+            detail: '${pc.name} \u00b7 parsed and sent to the server',
+            state: SyncStepState.done,
+          ));
+        } else {
+          failed++;
+          failures.add(pc.name);
           onProgress?.call(SyncStepUpdate(
             key: key,
             kind: SyncStepKind.grade,
@@ -926,28 +1087,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
             detail: '${pc.name} \u00b7 no gradebook published',
             state: SyncStepState.failed,
           ));
-          continue;
         }
-        await _syncOwnGrades(pc, pc.name, gb);
-        synced++;
-        onProgress?.call(SyncStepUpdate(
-          key: key,
-          kind: SyncStepKind.grade,
-          label: 'Getting the grade page',
-          detail: '${pc.name} \u00b7 parsed and sent to the server',
-          state: SyncStepState.done,
-        ));
-      } catch (_) {
-        // One subject without a gradebook must not stop the rest.
-        failed++;
-        failures.add(pc.name);
-        onProgress?.call(SyncStepUpdate(
-          key: key,
-          kind: SyncStepKind.grade,
-          label: 'Getting the grade page',
-          detail: '${pc.name} \u00b7 could not be read',
-          state: SyncStepState.failed,
-        ));
       }
     }
 
@@ -956,6 +1096,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       subjectsSynced: synced,
       subjectsFailed: failed,
       failures: failures,
+      sessionState: PortalSessionState.alive,
     );
   }
 
@@ -1054,11 +1195,15 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     }
   }
 
-  /// Publishes the student's timetable and gradebooks to the community
-  /// backend so their classmates see them — WITHOUT the extension.
-  /// Runs in the background right after the dashboard loads.
+  /// Publishes the student's timetable to the community backend so their
+  /// classmates can see them — WITHOUT the extension. Runs in the
+  /// background right after the dashboard loads.
+  ///
+  /// Deliberately does NOT read any grade page: grade pages are heavy and
+  /// are fetched only when the student opens that subject's leaderboard.
   Future<void> _runCommunitySync() async {
     if (!isExtConfigured) return;
+    if (_consent != 'accepted') return;
     if (_communitySynced) return;
     _communitySynced = true;
     await syncClassToServer();
@@ -1116,6 +1261,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   Future<void> _syncOwnGrades(
       PortalCourse pc, String courseName, [CourseGradebook? cached]) async {
     if (!isExtConfigured) return;
+    if (_consent != 'accepted') return;
     final sid = (dashboard?.studentId ?? '').trim();
     if (sid.isEmpty) return;
     final courseId = courseIdFromUrl(pc.infoUrl) ?? '';
@@ -1138,13 +1284,22 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     }
     if (scored == 0) return;
     final grade = _letterFor(overall);
+    // Publish the SAME shape the extension publishes: one line per
+    // assessment TYPE, with the real marks scale (18/20), its percentage,
+    // the type's weight and its class average. `totalMarks: 100` with a
+    // percentage in `obtainedMarks` used to show "85/100" for every line.
     final assessments = [
       for (final t in gb.types)
         {
           'name': t.type,
-          'totalMarks': 100,
-          'obtainedMarks': t.obtained,
-          'percentage': t.obtained,
+          'totalMarks': t.total > 0 ? t.total : 100,
+          'obtainedMarks': t.total > 0
+              ? (t.obtained / 100) * t.total
+              : t.obtained,
+          // The extension publishes the type's WEIGHTED share here —
+          // keep one semantic everywhere (this used to be the raw 0-100
+          // percentage, silently inconsistent in the same class).
+          'percentage': t.weightedPercentage,
           'weightage': t.weight,
           'classAverage': null,
         },
@@ -1369,7 +1524,12 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
   Future<void> _logout({String? message}) async {
     _monitor?.stop();
     PortalCache.clear();
+    // Raw portal HTML snapshots live on disk (gzipped) — clear them too.
+    // (Previously they persisted for up to 14 days after logout.)
+    unawaited(PageCache.clear());
     CourseDetailCache.clear();
+    // A signed-out user must never ride a stale authenticated WebView.
+    WebViewScreen.resetSessionCache();
     _healTimer?.cancel();
     _healNotice = false;
     _finishSilentRenew(null); // abort any background renewal
@@ -1408,7 +1568,17 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
 
     Widget screen;
     final pc0 = portalCourse;
-    if (course != null || pc0 != null) {
+    if (authed &&
+        oauthEmail == null &&
+        _consentLoaded &&
+        _consent == null) {
+      // NEVER publish before the student decides — nothing leaves the
+      // device until one of the two consent buttons is pressed.
+      screen = ConsentScreen(
+        onAccept: () => _setConsent('accepted'),
+        onDecline: () => _setConsent('declined'),
+      );
+    } else if (course != null || pc0 != null) {
       if (pc0 != null && pc0.infoUrl.isNotEmpty) {
         // Live per-course hub (dashboard infoUrl → 7 portal tabs).
         screen = CourseDetailScreen(
@@ -1573,6 +1743,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
             logout: _logout,
             prefs: prefs,
             service: isExtConfigured ? _lbService : null,
+            publishConsent: _consent,
+            onConsentChanged: _setConsent,
             onPrefs: (p) {
               setState(() => prefs = p);
               // Permanent until the user changes it again (survives
@@ -1590,7 +1762,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       }
     }
 
-    final bool showNav = authed && oauthEmail == null;
+    final bool showNav =
+        authed && oauthEmail == null && (_consent != null);
 
     return AppScope(
       colors: colors,
@@ -1605,7 +1778,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         themeMode: colors.dark ? ThemeMode.dark : ThemeMode.light,
         home: Builder(builder: (ctx) {
           final mq = MediaQuery.of(ctx);
-          final scaled = prefs.big ? mq.copyWith(textScaler: const TextScaler.linear(1.08)) : mq;
+          final scaled = prefs.big
+              ? mq.copyWith(textScaler: TextScaler.linear(mq.textScaler.scale(1.0) * 1.08))
+              : mq;
           return MediaQuery(
             data: scaled,
             child: PopScope(
@@ -1650,6 +1825,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                       _completeSignInWait(true);
                                       _startMonitor();
                                       _loadDashboard();
+                                      _loadConsent();
                                       // The leaderboard watches this and
                                       // resumes its sync on its own.
                                       setState(() => sessionGeneration++);
@@ -1746,7 +1922,37 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                     children: [
                                       CircleAvatar(radius: 28, backgroundImage: AssetImage(prefs.palette.heroAsset)),
                                       const SizedBox(width: 12),
-                                      const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Ayaan Warraich', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17)), Text('BS Computer Science · Year 2', style: TextStyle(color: Colors.white70, fontSize: 12))])),
+                                      Builder(builder: (_) {
+                                        final d = dashboard;
+                                        final sid = (d?.studentId ?? '').trim();
+                                        final fullName = (d?.studentName ?? '').trim();
+                                        final program =
+                                            sid.isEmpty ? null : programFromStudentId(sid);
+                                        final yr = sid.isEmpty
+                                            ? null
+                                            : yearFromSemester(semesterFromStudentId(sid, DateTime.now()));
+                                        final enrolled =
+                                            sid.isEmpty ? null : enrollmentFromStudentId(sid);
+                                        final line1 = fullName.isNotEmpty ? fullName : 'UCP Student';
+                                        final line2 = program != null && yr != null
+                                            ? '$program · Year $yr'
+                                            : program ?? d?.faculty ?? enrolled ?? 'Signed in';
+                                        final line3 = [
+                                          if (sid.isNotEmpty) sid,
+                                          ?enrolled,
+                                        ].join(' · ');
+                                        return Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(line1, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17)),
+                                              Text(line2, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                                              if (line3.isNotEmpty)
+                                                Text(line3, style: const TextStyle(color: Colors.white54, fontSize: 10.5)),
+                                            ],
+                                          ),
+                                        );
+                                      }),
                                       GestureDetector(onTap: () => setState(() => menu = false), child: Container(alignment: Alignment.center, width: 40, height: 40, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle), child: const Icon(Icons.close, color: Colors.white))),
                                     ],
                                   ),
@@ -1755,7 +1961,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                   child: ListView(
                                     padding: const EdgeInsets.all(12),
                                     children: [
-                                      for (final it in [['home', 'Home', Icons.home_outlined], ['teachers', 'Teacher reviews', Icons.star_outlined], ['timetable', 'Timetable', Icons.calendar_month_outlined], ['attendance', 'Attendance', Icons.fact_check_outlined], ['material', 'Course material', Icons.book_outlined], ['gpa', 'GPA calculator', Icons.calculate_outlined], ['fee', 'Fee challan', Icons.receipt_outlined], ['results', 'Results', Icons.workspace_premium_outlined], ['community', 'Community', Icons.forum_outlined], ['web', 'Web view', Icons.language_outlined], ['profile', 'Profile & settings', Icons.person_outline]])
+                                      for (final it in [['home', 'Home', Icons.home_outlined], ['teachers', 'Teacher reviews', Icons.school_outlined], ['timetable', 'Timetable', Icons.calendar_month_outlined], ['attendance', 'Attendance', Icons.fact_check_outlined], ['material', 'Course material', Icons.book_outlined], ['gpa', 'GPA calculator', Icons.calculate_outlined], ['fee', 'Fee challan', Icons.receipt_outlined], ['results', 'Results', Icons.workspace_premium_outlined], ['community', 'Community', Icons.forum_outlined], ['web', 'Web view', Icons.language_outlined], ['profile', 'Profile & settings', Icons.person_outline]])
                                         GestureDetector(
                                           behavior: HitTestBehavior.opaque,
                                           onTap: () => go(it[0] as String),

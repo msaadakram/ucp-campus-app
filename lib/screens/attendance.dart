@@ -235,8 +235,17 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                               AlwaysStoppedAnimation<Color>(c.board),
                         ),
                       ),
-                      Text('${avg.toStringAsFixed(0)}%',
-                          style: display(c, size: 16, color: c.cream)),
+                      SizedBox(width: 72, height: 72, child: Center(
+                        child: SizedBox(
+                          width: 56,
+                          height: 56,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text('${avg.toStringAsFixed(0)}%',
+                                style: display(c, size: 16, color: c.cream)),
+                          ),
+                        ),
+                      )),
                     ],
                   ),
                 ),
@@ -316,11 +325,20 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                           AlwaysStoppedAnimation<Color>(tone),
                                     ),
                                   ),
-                                  Text(
-                                      '${course.percent.toStringAsFixed(course.percent == course.percent.roundToDouble() ? 0 : 1)}%',
-                                      style: const TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold)),
+                                  Center(
+                                    child: SizedBox(
+                                      width: 40,
+                                      height: 40,
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                            '${course.percent.toStringAsFixed(course.percent == course.percent.roundToDouble() ? 0 : 1)}%',
+                                            style: const TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold)),
+                                      ),
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),

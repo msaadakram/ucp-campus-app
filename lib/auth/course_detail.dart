@@ -20,6 +20,8 @@ library;
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
 
+import 'portal_dates.dart';
+
 String _clean(String? s) => (s ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
 
 double? _num(String s) {
@@ -458,12 +460,18 @@ class CourseAssessment {
   final String date;
   final String dueDate;
   final bool canUpload;
+
+  /// Parsed portal timestamps (null when the cell text is not a date).
+  final DateTime? posted;
+  final DateTime? due;
   const CourseAssessment({
     required this.name,
     required this.type,
     required this.date,
     required this.dueDate,
     this.canUpload = false,
+    this.posted,
+    this.due,
   });
 }
 
@@ -494,12 +502,15 @@ List<CourseAssessment> parseCourseAssessments(String html) {
         continue;
       }
       String at(int i) => i < cells.length ? cells[i] : '';
+      final dueDate = at(4);
       out.add(CourseAssessment(
         name: at(1),
         type: at(2),
         date: at(3),
-        dueDate: at(4),
+        dueDate: dueDate,
         canUpload: cells.length > 5 && !at(5).toLowerCase().contains('no '),
+        posted: parsePortalDateTime(at(3)),
+        due: parsePortalDateTime(dueDate),
       ));
     }
   }
@@ -512,13 +523,41 @@ class CourseSubmission {
   final String startDate;
   final String dueDate;
   final bool hasAttachment;
+
+  /// File name pulled from the attachment cell link (e.g. "Lab 1.pdf");
+  /// empty when the portal posted nothing or an unlabelled attachment.
+  final String attachmentName;
+
+  /// Relative portal href for the attachment (resolved against the
+  /// portal origin by the downloader); empty when absent.
+  final String attachmentUrl;
+
+  /// Parsed window bounds (null when unparseable).
+  final DateTime? from;
+  final DateTime? to;
   const CourseSubmission({
     required this.name,
     required this.description,
     required this.startDate,
     required this.dueDate,
     this.hasAttachment = false,
+    this.attachmentName = '',
+    this.attachmentUrl = '',
+    this.from,
+    this.to,
   });
+
+  /// `upcoming` before the window opens, `open` inside it, `closed`
+  /// after the due moment. Unknown window bounds read as [open] when
+  /// a due date exists and still lies ahead, else [closed].
+  String get windowState {
+    final now = DateTime.now();
+    final from = this.from;
+    final to = this.to;
+    if (from != null && now.isBefore(from)) return 'upcoming';
+    if (to != null && now.isAfter(to)) return 'closed';
+    return 'open';
+  }
 }
 
 /// Submissions table
@@ -542,22 +581,42 @@ List<CourseSubmission> parseCourseSubmissions(String html) {
       continue;
     }
     for (final tr in table.querySelectorAll('tbody tr')) {
-      final cells =
-          tr.querySelectorAll('td').map((e) => _clean(e.text)).toList();
+      final tds = tr.querySelectorAll('td');
+      final cells = tds.map((e) => _clean(e.text)).toList();
       if (cells.isEmpty) continue;
       if (cells.length == 1 &&
           cells.first.toLowerCase().contains('no submission')) {
         continue;
       }
       String at(int i) => i < cells.length ? cells[i] : '';
+      // Attachment cell: grab the link target and its label if present.
+      var attachmentName = '';
+      var attachmentUrl = '';
+      final link = tds.isNotEmpty && tds.length > 5 ? tds[5].querySelector('a[href]') : null;
+      if (link != null) {
+        attachmentUrl = _clean(link.attributes['href']);
+        attachmentName = _clean(link.text);
+        if (attachmentName.isEmpty) {
+          attachmentName = attachmentUrl.split('/').last;
+        }
+        if (attachmentUrl.startsWith('https://horizon.ucp.edu.pk')) {
+          attachmentUrl =
+              attachmentUrl.replaceFirst('https://horizon.ucp.edu.pk', '');
+        }
+      }
       out.add(CourseSubmission(
         name: at(1),
         description: at(2),
         startDate: at(3),
         dueDate: at(4),
-        hasAttachment: cells.length > 5 &&
-            at(5).isNotEmpty &&
-            !at(5).toLowerCase().contains('no '),
+        hasAttachment: link != null ||
+            (cells.length > 5 &&
+                at(5).isNotEmpty &&
+                !at(5).toLowerCase().contains('no ')),
+        attachmentName: attachmentName,
+        attachmentUrl: attachmentUrl,
+        from: parsePortalDateTime(at(3)),
+        to: parsePortalDateTime(at(4)),
       ));
     }
   }
@@ -589,12 +648,17 @@ class CourseGradeType {
 
 class CourseGradeRow {
   final String assessment;
+
+  /// Name of the assessment TYPE this child row belongs to (the parent
+  /// row's type), so the UI can group marks under their type.
+  final String type;
   final double maxMarks;
   final double obtainedMarks;
   final double classAverage;
   final double percentage;
   const CourseGradeRow({
     required this.assessment,
+    this.type = '',
     required this.maxMarks,
     required this.obtainedMarks,
     required this.classAverage,
@@ -683,6 +747,7 @@ CourseGradebook parseCourseGradebook(String html) {
           obtainedMarks += obt;
           rows.add(CourseGradeRow(
             assessment: cells[0],
+            type: name,
             maxMarks: max,
             obtainedMarks: obt,
             classAverage: avg,

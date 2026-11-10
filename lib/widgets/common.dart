@@ -31,7 +31,7 @@ class _BandInner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = _AppScope.of(context);
-    final c = app?.colors ?? fallback ?? AppColors.of(AppPalette.skater, false);
+    final c = app?.colors ?? fallback ?? AppColors.of(defaultAppPalette, false);
     return Container(
       height: height,
       width: double.infinity,
@@ -65,9 +65,9 @@ class AppScope extends StatelessWidget {
   final Widget child;
   const AppScope({super.key, required this.colors, required this.palette, required this.child});
   static AppColors colorsOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<_AppScope>()?.colors ?? AppColors.of(AppPalette.skater, false);
+      context.dependOnInheritedWidgetOfExactType<_AppScope>()?.colors ?? AppColors.of(defaultAppPalette, false);
   static AppPalette paletteOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<_AppScope>()?.palette ?? AppPalette.skater;
+      context.dependOnInheritedWidgetOfExactType<_AppScope>()?.palette ?? defaultAppPalette;
   @override
   Widget build(BuildContext context) => _AppScope(colors: colors, palette: palette, child: child);
 }

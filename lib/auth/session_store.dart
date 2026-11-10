@@ -12,6 +12,7 @@ class SessionStore implements SessionBackend {
   static const _kEmail = 'ucp_login_email';
   static const _kSavedAt = 'ucp_horizon_session_saved_at_ms';
   static const _kDashboard = 'ucp_horizon_dashboard_json';
+  static const _kConsent = 'ucp_consent_v1';
 
   final FlutterSecureStorage _storage;
   SessionStore([FlutterSecureStorage? storage])
@@ -40,6 +41,13 @@ class SessionStore implements SessionBackend {
     }
     return (sessionId: sid, email: email);
   }
+
+  @override
+  Future<void> saveConsent(String value) =>
+      _storage.write(key: _kConsent, value: value);
+
+  @override
+  Future<String?> readConsent() => _storage.read(key: _kConsent);
 
   Future<String?> readSessionId() => _storage.read(key: _kSessionId);
   @override

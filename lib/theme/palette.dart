@@ -3,6 +3,13 @@ import 'package:google_fonts/google_fonts.dart';
 
 enum AppPalette { skater, autumn, mono, ember, mint, leap }
 
+/// The palette a fresh install starts in (and the one every tolerant
+/// decode falls back to), so the app always opens in the same theme.
+///
+/// "Sky Leap" is the brand look: sky-blue primary, warm amber accent,
+/// green detail and orange clay.
+const AppPalette defaultAppPalette = AppPalette.leap;
+
 extension AppPaletteX on AppPalette {
   String get label {
     switch (this) {
@@ -181,7 +188,7 @@ class AppPrefs {
   AppPalette palette;
   bool dark;
   bool bigText;
-  AppPrefs({this.palette = AppPalette.skater, this.dark = false, this.bigText = false});
+  AppPrefs({this.palette = defaultAppPalette, this.dark = false, this.bigText = false});
 }
 
 TextStyle display(AppColors c, {double size = 20, FontWeight weight = FontWeight.w800, Color? color}) {

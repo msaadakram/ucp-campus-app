@@ -94,11 +94,12 @@ class LiveLeaderboardScreen extends StatefulWidget {
   /// to read the timetable and the grade pages.
   final Future<bool> Function()? onEnsureSession;
 
-  /// The full class sync: session -> timetable -> grade pages ->
-  /// publish. Reports progress so the screen can show what it is doing.
+  /// The class sync for ONE subject: session -> timetable (already
+  /// parsed) -> that subject's grade page -> publish. Every board view
+  /// reads exactly the subject on screen, never the whole timetable.
   final Future<LeaderboardSyncReport> Function({
     void Function(SyncStepUpdate update)? onProgress,
-    String? priorityCode,
+    LeaderboardSyncTarget? target,
   })?
   onSyncClass;
 
@@ -164,8 +165,9 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
   /// Student ids whose marks are expanded in the list.
   final Set<String> _expanded = {};
 
-  /// How the board is shown: podium cards or a full ranked LIST.
-  bool listView = false;
+  /// How the board is shown: a full ranked LIST (default — the row-wise
+  /// production view) or the celebratory podium cards.
+  bool listView = true;
 
   /// True when the portal sign-in is required before anything can be
   /// read (the session really expired).
@@ -178,9 +180,10 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
   /// Result of the last class sync.
   LeaderboardSyncReport? _syncReport;
 
-  /// True once the class pipeline ran in this screen session — switching
-  /// subjects reuses it (the grades are already on the server).
-  bool _classSyncDone = false;
+  /// Subjects whose grade page was already synced in this screen session.
+  /// Switching back to a subject reuses the published marks; a forced
+  /// sync (the publish button) always re-reads.
+  final Set<String> _syncedTargets = {};
 
   /// The finished step list collapses to one line; tap to expand.
   bool _stepsCollapsed = false;
@@ -315,8 +318,8 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
     if (mounted) setState(() => syncing = false);
   }
 
-  /// Runs the class-sync pipeline before the board is fetched:
-  /// sign-in check -> timetable -> grade pages -> publish.
+  /// Runs the class-sync pipeline for the subject on screen:
+  /// sign-in check -> timetable publish -> THIS subject's grade page.
   ///
   /// This is the "app-first" path: the app reads the portal with the
   /// student's own session (no extension needed) and publishes what it
@@ -326,7 +329,17 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
     final sync = widget.onSyncClass;
     final ensureSession = widget.onEnsureSession;
     if (sync == null && ensureSession == null) return;
-    if (_classSyncDone && !force) return;
+    final sel = course;
+    final target = sel == null
+        ? null
+        : LeaderboardSyncTarget(
+            courseName: sel.name,
+            courseCode: sel.code,
+          );
+    final targetKey = target?.key ?? '';
+    if (!force && targetKey.isNotEmpty && _syncedTargets.contains(targetKey)) {
+      return;
+    }
     setState(() {
       _steps.clear();
       _needsSignIn = false;
@@ -360,20 +373,22 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
           return;
         }
       }
-      // 2) timetable + 3) grade pages (read with the session cookie and
-      //    published to the server, with the student's id).
+      // 2) timetable (published once) + 3) the selected subject's grade
+      //    page (one request) — with the student's id.
       if (sync != null) {
         final report = await sync(
           onProgress: (update) {
             _pushStep(update);
           },
-          // The subject on screen first — their own row shows up fast.
-          priorityCode: course?.code,
+          target: target,
         );
         if (!mounted) return;
         setState(() {
           _syncReport = report;
-          _classSyncDone = true;
+          if (report.sessionState != PortalSessionState.expired &&
+              targetKey.isNotEmpty) {
+            _syncedTargets.add(targetKey);
+          }
           _stepsCollapsed = true;
           // A portal we could not reach is a network problem — the
           // student does NOT need to sign in again.
@@ -436,7 +451,10 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
     }
   }
 
-  Future<void> _loadBoard({bool refreshOnly = false}) async {
+  Future<void> _loadBoard({
+    bool refreshOnly = false,
+    bool forceSync = false,
+  }) async {
     final sel = course;
     if (_svc == null || sel == null) return;
     setState(() {
@@ -445,12 +463,12 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       noCredits = false;
     });
     try {
-      // The class sync (sign-in -> timetable -> grade pages -> publish)
-      // runs in the BACKGROUND: the board appears right away and is
-      // refreshed when the marks land. Waiting for every grade page
-      // first meant a blank screen for ~10s on mobile data.
+      // The class sync (sign-in -> timetable -> this subject's grade page
+      // -> publish) runs in the BACKGROUND: the board appears right away
+      // and is refreshed when the marks land. Waiting for the grade page
+      // first meant a blank screen on mobile data.
       if (!refreshOnly) {
-        unawaited(_runClassSync());
+        unawaited(_runClassSync(force: forceSync));
         // A dead session must not show a stale board.
         await Future<void>.delayed(const Duration(milliseconds: 120));
         if (!mounted) return;
@@ -459,12 +477,17 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
           return;
         }
       }
-      final ensure = widget.onEnsureGrades;
-      if (ensure != null) {
-        try {
-          await ensure(sel.name);
-        } catch (_) {
-          // Grade publishing is best-effort.
+      // When the class-sync pipeline is available it publishes this
+      // subject's marks itself (one grade page). Only the legacy path —
+      // a screen without the pipeline — publishes explicitly here.
+      if (widget.onSyncClass == null) {
+        final ensure = widget.onEnsureGrades;
+        if (ensure != null) {
+          try {
+            await ensure(sel.name);
+          } catch (_) {
+            // Grade publishing is best-effort.
+          }
         }
       }
       // The board request carries the SUBJECT and the STUDENT ID, so the
@@ -580,35 +603,110 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                 ),
               const Spacer(),
               if (credits != null || freeView)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.16),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        freeView ? Icons.bolt_outlined : Icons.toll_outlined,
-                        size: 14,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        freeView ? 'Free' : '$credits credits',
-                        style: const TextStyle(
+                // Constrained on narrow phones: the label ellipsizes
+                // instead of overflowing the header row.
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          freeView
+                              ? Icons.bolt_outlined
+                              : Icons.toll_outlined,
+                          size: 14,
                           color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            freeView ? 'Free' : '$credits credits',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+              if (_svc != null &&
+                  (widget.studentId ?? '').trim().isNotEmpty) ...[
+                const SizedBox(width: 6),
+                // Your privacy: the same toggles as Profile → Privacy &
+                // security, right where students look at the board.
+                Tooltip(
+                  message: 'Your privacy',
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _openPrivacySheet,
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.privacy_tip_outlined,
+                        size: 17,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(width: 6),
+              // Manual refresh: re-reads this subject's grade page and the
+              // board. Disabled while a load is already running.
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: (loading || loadingBoard)
+                    ? null
+                    : () {
+                        final sel = course;
+                        if (sel == null) {
+                          _loadCourses();
+                          return;
+                        }
+                        // A manual refresh re-reads the live grade page:
+                        // drop the once-per-session marker, then sync.
+                        _syncedTargets.remove(
+                          LeaderboardSyncTarget(
+                            courseName: sel.name,
+                            courseCode: sel.code,
+                          ).key,
+                        );
+                        _loadBoard(forceSync: true);
+                      },
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.refresh_rounded,
+                    size: 18,
+                    color: Colors.white.withValues(
+                      alpha: (loading || loadingBoard) ? 0.45 : 1,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -726,6 +824,8 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                 ],
               )
             else ...[
+              _statsStrip(c),
+              const SizedBox(height: 10),
               _viewToggle(c),
               const SizedBox(height: 12),
               if (!listView) _podium(c, entries.take(3).toList()),
@@ -1038,10 +1138,12 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
           : () async {
               setState(() => _syncingGrades = true);
               try {
-                // Full re-sync: re-read the timetable + every grade page
-                // with the session and publish them again.
+                // Full re-sync: re-read the timetable + this subject's
+                // grade page with the session and publish them again.
                 await _runClassSync(force: true);
-                await widget.onEnsureGrades?.call(course?.name ?? '');
+                if (widget.onSyncClass == null) {
+                  await widget.onEnsureGrades?.call(course?.name ?? '');
+                }
               } catch (_) {
                 // Fall through to the reload below.
               }
@@ -1347,10 +1449,124 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
     );
   }
 
+  /// The three numbers that matter at a glance: where the student stands,
+  /// the best score in the section and the section average.
+  Widget _statsStrip(AppColors c) {
+    final n = entries.length;
+    final mine = entries.where((e) => e.isMe);
+    final myRank = mine.isEmpty ? null : mine.first.rank;
+    var top = 0.0;
+    var sum = 0.0;
+    for (final e in entries) {
+      if (e.percentage > top) top = e.percentage;
+      sum += e.percentage;
+    }
+    final avg = n == 0 ? 0.0 : sum / n;
+
+    Widget stat(String label, String value, Color tint, IconData icon) {
+      return Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 11, color: tint.withValues(alpha: 0.9)),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: body(
+                      c,
+                      size: 9,
+                      weight: FontWeight.w800,
+                      color: c.tealInk.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(value, style: display(c, size: 17.5, color: tint)),
+          ],
+        ),
+      );
+    }
+
+    Widget divider() => Container(
+          width: 1,
+          height: 30,
+          margin: const EdgeInsets.symmetric(horizontal: 12),
+          color: c.dustSoft.withValues(alpha: 0.6),
+        );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+      decoration: BoxDecoration(
+        color: c.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: c.dustSoft.withValues(alpha: 0.55)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: c.dark ? 0.18 : 0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          stat('RANK', myRank == null ? '—' : '#$myRank', c.tealDeep,
+              Icons.trending_up_rounded),
+          divider(),
+          stat('TOP', '${top.toStringAsFixed(1)}%', c.clay,
+              Icons.workspace_premium_rounded),
+          divider(),
+          stat('AVG', '${avg.toStringAsFixed(1)}%', c.teal,
+              Icons.groups_rounded),
+        ],
+      ),
+    );
+  }
+
+  /// Gold / silver / bronze for the podium ranks; null for everyone else.
+  static Color? _medalTone(int rank) {
+    switch (rank) {
+      case 1:
+        return const Color(0xFFFFC53D);
+      case 2:
+        return const Color(0xFF9FB3C8);
+      case 3:
+        return const Color(0xFFE2854E);
+    }
+    return null;
+  }
+
+  /// One row of the ranked list — rank medal, avatar, name, grade chip,
+  /// score bar and the percentage. Tapping a row with marks expands the
+  /// assessment breakdown inline.
   Widget _rankRow(AppColors c, LeaderboardEntry e) {
     final me = e.isMe;
     final open = _expanded.contains(e.studentId);
     final hasMarks = e.assessments.isNotEmpty;
+    final medal = _medalTone(e.rank);
+    var top = 0.0;
+    for (final row in entries) {
+      if (row.percentage > top) top = row.percentage;
+    }
+    final ratio = top <= 0
+        ? 0.0
+        : (e.percentage / top).clamp(0.0, 1.0).toDouble();
+    final name = me
+        ? 'You'
+        : (e.isAnonymous
+              ? 'Anonymous'
+              : (e.studentName.isEmpty ? 'Student' : e.studentName));
+    final initial = e.isAnonymous || e.studentName.isEmpty
+        ? '?'
+        : e.studentName[0].toUpperCase();
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: hasMarks
@@ -1362,53 +1578,92 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
               }
             })
           : null,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
         decoration: BoxDecoration(
-          color: me ? c.teal.withValues(alpha: 0.10) : c.white,
-          borderRadius: BorderRadius.circular(18),
+          color: me
+              ? c.teal.withValues(alpha: c.dark ? 0.20 : 0.09)
+              : c.white,
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: me ? c.teal : c.dustSoft.withValues(alpha: 0.6),
-            width: me ? 1.5 : 1,
+            color: me
+                ? c.teal.withValues(alpha: 0.75)
+                : c.dustSoft.withValues(alpha: 0.55),
+            width: me ? 1.4 : 1,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: me
+                  ? c.teal.withValues(alpha: c.dark ? 0.36 : 0.22)
+                  : Colors.black.withValues(alpha: c.dark ? 0.16 : 0.045),
+              blurRadius: me ? 18 : 16,
+              offset: const Offset(0, 7),
+            ),
+          ],
         ),
         child: Column(
           children: [
             Row(
               children: [
+                // Rank chip: medals for the top three, a quiet square
+                // for the rest.
                 Container(
+                  width: 38,
+                  height: 38,
                   alignment: Alignment.center,
-                  width: 34,
-                  height: 34,
                   decoration: BoxDecoration(
-                    color: me ? c.teal : c.dustSoft.withValues(alpha: 0.7),
-                    borderRadius: BorderRadius.circular(11),
+                    gradient: medal != null
+                        ? LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              medal.withValues(alpha: 0.98),
+                              medal.withValues(alpha: 0.66),
+                            ],
+                          )
+                        : null,
+                    color: medal == null
+                        ? c.dustSoft.withValues(alpha: 0.55)
+                        : null,
+                    borderRadius: BorderRadius.circular(13),
+                    boxShadow: medal == null
+                        ? null
+                        : [
+                            BoxShadow(
+                              color: medal.withValues(alpha: 0.40),
+                              blurRadius: 9,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                   ),
                   child: Text(
                     '${e.rank}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: me ? Colors.white : c.tealInk,
+                    style: display(
+                      c,
+                      size: 15,
+                      color: medal != null
+                          ? Colors.white
+                          : c.tealInk.withValues(alpha: 0.8),
                     ),
                   ),
                 ),
                 const SizedBox(width: 10),
                 CircleAvatar(
-                  radius: 16,
-                  backgroundColor: c.dustSoft,
-                  foregroundImage: e.imageUrl.isNotEmpty
-                      ? NetworkImage(e.imageUrl)
-                      : null,
+                  radius: 18,
+                  backgroundColor: medal?.withValues(alpha: 0.22) ??
+                      c.dustSoft.withValues(alpha: 0.7),
+                  foregroundImage:
+                      e.imageUrl.isNotEmpty ? NetworkImage(e.imageUrl) : null,
                   child: e.imageUrl.isNotEmpty
                       ? null
                       : Text(
-                          e.isAnonymous
-                              ? '?'
-                              : e.studentName.isNotEmpty
-                              ? e.studentName[0].toUpperCase()
-                              : '?',
-                          style: const TextStyle(fontWeight: FontWeight.w800),
+                          initial,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: medal ?? c.tealInk,
+                          ),
                         ),
                 ),
                 const SizedBox(width: 10),
@@ -1416,32 +1671,110 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        me
-                            ? 'You'
-                            : (e.isAnonymous ? 'Anonymous' : e.studentName),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: body(c, size: 14, weight: FontWeight.w700),
-                      ),
-                      if (e.grade.isNotEmpty)
-                        // Grade AND percentage — one used to hide the other.
-                        Text(
-                          'Grade ${e.grade} · '
-                          '${e.percentage.toStringAsFixed(1)}%',
-                          style: body(
-                            c,
-                            size: 12,
-                            color: c.tealInk.withValues(alpha: 0.55),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: body(
+                                c,
+                                size: 14.5,
+                                weight: FontWeight.w800,
+                                color: me ? c.tealDeep : c.tealInk,
+                              ),
+                            ),
                           ),
-                        ),
+                          if (me) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: c.teal,
+                                borderRadius: BorderRadius.circular(7),
+                              ),
+                              child: const Text(
+                                'YOU',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                          if (e.grade.isNotEmpty) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: c.tealInk.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(7),
+                              ),
+                              child: Text(
+                                e.grade,
+                                style: body(
+                                  c,
+                                  size: 10,
+                                  weight: FontWeight.w800,
+                                  color: c.tealInk.withValues(alpha: 0.7),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 7),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: TweenAnimationBuilder<double>(
+                                duration: const Duration(milliseconds: 420),
+                                tween: Tween<double>(begin: 0, end: ratio),
+                                curve: Curves.easeOutCubic,
+                                builder: (context, v, _) {
+                                  return LinearProgressIndicator(
+                                    value: v,
+                                    minHeight: 5,
+                                    backgroundColor:
+                                        c.dustSoft.withValues(alpha: 0.5),
+                                    valueColor:
+                                        AlwaysStoppedAnimation<Color>(
+                                      medal ?? (me ? c.tealDeep : c.teal),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            '${e.percentage.toStringAsFixed(1)}%',
+                            style: display(c, size: 16, color: c.tealDeep),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
-                Text(
-                  '${e.percentage.toStringAsFixed(1)}%',
-                  style: display(c, size: 16, color: c.teal),
-                ),
+                if (hasMarks) ...[
+                  const SizedBox(width: 4),
+                  Icon(
+                    open ? Icons.expand_less : Icons.expand_more,
+                    size: 18,
+                    color: c.tealInk.withValues(alpha: 0.45),
+                  ),
+                ],
               ],
             ),
             if (open && hasMarks) _marksPanel(c, e),
@@ -1451,10 +1784,18 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
     );
   }
 
-  /// Podium / LIST switch.
+  /// Rows / Podium switch — rows are the default production view.
   Widget _viewToggle(AppColors c) {
     return Row(
       children: [
+        _viewChip(
+          c,
+          label: 'Rows',
+          icon: Icons.view_agenda_outlined,
+          selected: listView,
+          onTap: () => setState(() => listView = true),
+        ),
+        const SizedBox(width: 6),
         _viewChip(
           c,
           label: 'Podium',
@@ -1462,22 +1803,19 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
           selected: !listView,
           onTap: () => setState(() => listView = false),
         ),
-        const SizedBox(width: 8),
-        _viewChip(
-          c,
-          label: 'List',
-          icon: Icons.view_agenda_outlined,
-          selected: listView,
-          onTap: () => setState(() => listView = true),
-        ),
         const Spacer(),
         if (entries.length > 1)
-          Text(
-            '${entries.length} ranked',
-            style: body(
-              c,
-              size: 11.5,
-              color: Colors.white.withValues(alpha: 0.6),
+          Flexible(
+            child: Text(
+              '${entries.length} ranked',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: body(
+                c,
+                size: 11,
+                color: Colors.white.withValues(alpha: 0.6),
+              ),
             ),
           ),
       ],
@@ -1496,7 +1834,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: selected
               ? Colors.white.withValues(alpha: 0.28)
@@ -1562,10 +1900,10 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
             padding: const EdgeInsets.only(bottom: 8),
             child: _Shimmer(
               child: Container(
-                height: 58,
+                height: 76,
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(20),
                 ),
               ),
             ),
@@ -1575,52 +1913,94 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
   }
 
   /// The marks behind a score: every assessment with obtained/total,
-  /// weight and (when reported) the class average.
+  /// weight and (when reported) the class average — a small table under
+  /// the expanded row.
   Widget _marksPanel(AppColors c, LeaderboardEntry e) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 10, left: 2, right: 2),
+    Widget heading(String label, {TextAlign align = TextAlign.start}) {
+      return Text(
+        label,
+        textAlign: align,
+        style: body(
+          c,
+          size: 9,
+          weight: FontWeight.w800,
+          color: c.tealInk.withValues(alpha: 0.42),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.fromLTRB(11, 10, 11, 9),
+      decoration: BoxDecoration(
+        color: c.cream2,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.dustSoft.withValues(alpha: 0.5)),
+      ),
       child: Column(
         children: [
+          Row(
+            children: [
+              Expanded(flex: 3, child: heading('ASSESSMENT')),
+              Expanded(
+                flex: 2,
+                child: heading('MARKS', align: TextAlign.right),
+              ),
+              SizedBox(
+                width: 52,
+                child: heading('%', align: TextAlign.right),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
           for (final a in e.assessments)
             Padding(
-              padding: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.only(bottom: 7),
               child: Row(
                 children: [
                   Expanded(
+                    flex: 3,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          a.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: body(
+                            c,
+                            size: 12.5,
+                            weight: FontWeight.w700,
+                            color: c.tealInk,
+                          ),
+                        ),
+                        if (a.weightage > 0)
+                          Text(
+                            '${a.weightage.toStringAsFixed(0)}% weight',
+                            style: body(
+                              c,
+                              size: 9.5,
+                              color: c.tealInk.withValues(alpha: 0.45),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
                     child: Text(
-                      a.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      a.marksLabel,
+                      textAlign: TextAlign.right,
                       style: body(
                         c,
                         size: 12.5,
-                        weight: FontWeight.w700,
+                        weight: FontWeight.w800,
                         color: c.tealInk,
                       ),
                     ),
                   ),
-                  if (a.weightage > 0)
-                    Text(
-                      '${a.weightage.toStringAsFixed(0)}% w',
-                      style: body(
-                        c,
-                        size: 11,
-                        color: c.tealInk.withValues(alpha: 0.5),
-                      ),
-                    ),
-                  const SizedBox(width: 10),
-                  Text(
-                    a.marksLabel,
-                    style: body(
-                      c,
-                      size: 12.5,
-                      weight: FontWeight.w800,
-                      color: c.tealInk,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
                   SizedBox(
-                    width: 48,
+                    width: 52,
                     child: Text(
                       '${a.percentage.toStringAsFixed(0)}%',
                       textAlign: TextAlign.right,
@@ -1637,7 +2017,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
             ),
           if (e.classAverage > 0)
             Padding(
-              padding: const EdgeInsets.only(top: 4),
+              padding: const EdgeInsets.only(top: 3),
               child: Row(
                 children: [
                   Icon(
@@ -1658,6 +2038,24 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  /// Opens the privacy sheet: hide/show my name and photo on every
+  /// leaderboard (you and the extension obey the same server setting).
+  void _openPrivacySheet() {
+    final sid = (widget.studentId ?? '').trim();
+    final svc = _svc;
+    if (sid.isEmpty || svc == null) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _LeaderboardPrivacySheet(
+        svc: svc,
+        studentId: sid,
+        onChanged: () => _loadBoard(refreshOnly: true),
       ),
     );
   }
@@ -1891,4 +2289,268 @@ class GradientTranslation implements GradientTransform {
   @override
   Matrix4? transform(Rect bounds, {TextDirection? textDirection}) =>
       Matrix4.translationValues(x, 0, 0);
+}
+
+/// The privacy sheet shown from the leaderboard header: name and photo
+/// visibility on every leaderboard. This is the SAME server setting that
+/// Profile -> Privacy & security edits — one source of truth everywhere,
+/// and the extension obeys it too.
+class _LeaderboardPrivacySheet extends StatefulWidget {
+  final LeaderboardService svc;
+  final String studentId;
+
+  /// Called after every successful save so the board can re-render with
+  /// the server's (possibly masked) view of the roster.
+  final Future<void> Function() onChanged;
+
+  const _LeaderboardPrivacySheet({
+    required this.svc,
+    required this.studentId,
+    required this.onChanged,
+  });
+
+  @override
+  State<_LeaderboardPrivacySheet> createState() =>
+      _LeaderboardPrivacySheetState();
+}
+
+class _LeaderboardPrivacySheetState extends State<_LeaderboardPrivacySheet> {
+  bool _loaded = false;
+  bool _busy = false;
+  bool _hideName = false;
+  bool _hidePhoto = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final p = await widget.svc.fetchPrivacy(widget.studentId);
+      if (!mounted) return;
+      setState(() {
+        _hideName = p.hideName;
+        _hidePhoto = p.hidePhoto;
+        _loaded = true;
+      });
+    } catch (_) {
+      // Server unreachable: show the sheet with conservative defaults —
+      // toggles will error visibly on save instead of lying silently.
+      if (!mounted) return;
+      setState(() => _loaded = true);
+    }
+  }
+
+  Future<void> _save({
+    required bool hideName,
+    required bool hidePhoto,
+  }) async {
+    final prevName = _hideName;
+    final prevPhoto = _hidePhoto;
+    setState(() {
+      _hideName = hideName;
+      _hidePhoto = hidePhoto;
+      _busy = true;
+    });
+    try {
+      // The other setting is passed through untouched — flipping one
+      // must never silently re-reveal the other.
+      final p = await widget.svc.savePrivacy(
+        widget.studentId,
+        hideName: hideName,
+        hidePhoto: hidePhoto,
+      );
+      if (!mounted) return;
+      setState(() {
+        _hideName = p.hideName;
+        _hidePhoto = p.hidePhoto;
+        _busy = false;
+      });
+      // The mask is applied server-side per request: refresh the board
+      // so it shows exactly what other students now see.
+      await widget.onChanged();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _hideName = prevName;
+        _hidePhoto = prevPhoto;
+        _busy = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not update your privacy. Try again.'),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppScope.colorsOf(context);
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 20, 12, 12),
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
+        decoration: BoxDecoration(
+          color: c.cream2,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: const [
+            BoxShadow(blurRadius: 30, color: Colors.black26),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 44,
+                height: 4.5,
+                decoration: BoxDecoration(
+                  color: c.dustSoft.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: c.teal.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    Icons.visibility_off_outlined,
+                    size: 21,
+                    color: c.tealDeep,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Your privacy',
+                        style: display(c, size: 19, color: c.tealInk),
+                      ),
+                      Text(
+                        'The extension obeys the same setting.',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: body(
+                          c,
+                          size: 11,
+                          color: c.tealInk.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (!_loaded)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 26),
+                child: Center(
+                  child: SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: CircularProgressIndicator(strokeWidth: 2.4),
+                  ),
+                ),
+              )
+            else
+              Container(
+                decoration: BoxDecoration(
+                  color: c.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border:
+                      Border.all(color: c.dustSoft.withValues(alpha: 0.55)),
+                ),
+                child: Column(
+                  children: [
+                    SettingRow(
+                      icon: Icons.visibility_off_outlined,
+                      tone: c.teal,
+                      label: 'Hide my name on leaderboards',
+                      sub: _hideName
+                          ? 'You appear as Anonymous everywhere'
+                          : 'Your name is visible to your section',
+                      trailing: AppToggle(
+                        value: _hideName,
+                        onChanged: _busy
+                            ? (_) {}
+                            : (v) => _save(hideName: v, hidePhoto: _hidePhoto),
+                        colors: c,
+                      ),
+                    ),
+                    Divider(
+                      height: 1,
+                      color: c.dustSoft.withValues(alpha: 0.5),
+                    ),
+                    SettingRow(
+                      icon: Icons.account_circle_outlined,
+                      tone: c.clay,
+                      label: 'Hide my photo on leaderboards',
+                      sub: _hidePhoto
+                          ? 'Your picture stays off other students boards'
+                          : 'Your picture is visible to your section',
+                      trailing: AppToggle(
+                        value: _hidePhoto,
+                        onChanged: _busy
+                            ? (_) {}
+                            : (v) => _save(hideName: _hideName, hidePhoto: v),
+                        colors: c,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 12),
+            Text(
+              "Hidden rows appear as 'Anonymous' with no photo. This is the same setting as Profile -> Privacy & security.",
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: body(
+                c,
+                size: 10.5,
+                color: c.tealInk.withValues(alpha: 0.5),
+              ),
+            ),
+            const SizedBox(height: 10),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _busy ? null : () => Navigator.pop(context),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [c.tealDeep, c.teal]),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  'Done',
+                  textAlign: TextAlign.center,
+                  style: body(
+                    c,
+                    size: 14,
+                    weight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

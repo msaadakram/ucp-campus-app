@@ -5,11 +5,11 @@
 ///
 ///   1. the student is signed in to the portal (Microsoft account ->
 ///      Horizon session cookie) — without a session nothing can be read;
-///   2. the TIMETABLE (read with that session cookie) — it says which
-///      sections the student is in, so the server can build the class
-///      roster;
-///   3. every subject's GRADE PAGE — the HTML is fetched, parsed and
-///      published with the student's id, so the server knows the marks;
+///   2. the TIMETABLE is published (the parsed schedule is already in
+///      memory; it says which sections the student is in, so the server
+///      can build the class roster);
+///   3. the SELECTED subject's grade page — one page, fetched and parsed,
+///      never the whole timetable's worth of grade pages;
 ///   4. the BOARD of the selected subject is requested with the subject
 ///      AND the student's id — the server answers with the classmates'
 ///      grades and the student's own grade.
@@ -17,6 +17,35 @@
 /// This whole path works WITHOUT the Chrome extension: the app reads the
 /// portal with the student's own session and publishes what it finds.
 library;
+
+/// The ONE subject a leaderboard open needs to read from the portal.
+///
+/// The old pipeline fetched every subject's grade page on every board
+/// view — six to eight full portal pages (about 1.4 MB of HTML each) to
+/// show a single class. Production reads what the screen is about: the
+/// selected subject only. The timetable is still published (it is already
+/// parsed locally), because it is what groups the student with their
+/// section.
+class LeaderboardSyncTarget {
+  /// The portal course name (keeps the "- Lab" suffix, so theory and lab
+  /// stay separate). This is the name the marks are published under.
+  final String courseName;
+
+  /// Course code or FULL section code (e.g. "CP233-R26-BS-SE-F24-SED1").
+  /// Used only to disambiguate two subjects with the same title.
+  final String courseCode;
+
+  const LeaderboardSyncTarget({
+    required this.courseName,
+    this.courseCode = '',
+  });
+
+  /// Stable key for de-duplicating syncs in one screen session.
+  String get key =>
+      (courseCode.trim().isNotEmpty ? courseCode : courseName).trim().toUpperCase();
+
+  bool get isEmpty => courseName.trim().isEmpty && courseCode.trim().isEmpty;
+}
 
 /// Kind of a pipeline step.
 enum SyncStepKind {

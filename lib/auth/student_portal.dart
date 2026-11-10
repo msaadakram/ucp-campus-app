@@ -427,10 +427,13 @@ TimetableData parseTimetable(String html) {
   for (final group in doc.querySelectorAll('.cd-schedule__group')) {
     final day = _clean(group.querySelector('.cd-schedule__top-info')?.text);
     for (final a in group.querySelectorAll('li.cd-schedule__event > a')) {
+      // Keep EVERY cell (even empty ones): the portal renders a fixed
+      // column layout, and dropping empties shifts every later field
+      // (teacher ↔ subject ↔ section ↔ room) — the empty cell must stay
+      // as an empty value at its position instead.
       final parts = a
           .querySelectorAll('em, span')
           .map((e) => _clean(e.text))
-          .where((t) => t.isNotEmpty)
           .toList();
       String at(int i) => i < parts.length ? parts[i] : '';
       // The portal truncates long names ("Computer Organization and

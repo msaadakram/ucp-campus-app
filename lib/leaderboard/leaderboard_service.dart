@@ -401,8 +401,10 @@ class NodeLeaderboardService extends LeaderboardService {
         imageUrl: '${r['studentImage'] ?? ''}',
         percentage: _asDouble(r['overallPercentage']),
         grade: '${r['grade'] ?? ''}',
-        // Hidden students (privacy on) serve 'hidden' and never match.
-        isMe: sid.isNotEmpty && id == sid,
+        // The server flags the viewing student's row (isMe) — this works
+        // even when a privacy-masked row carries studentId 'hidden'.
+        // Falls back to the id match for older deployments without it.
+        isMe: r['isMe'] == true || (sid.isNotEmpty && id == sid),
         assessments: marks,
         classAverage: _asDouble(r['classAverage']),
       ));

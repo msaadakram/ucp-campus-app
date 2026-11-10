@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ backup/transfer rules.
+
+  The app stores the Horizon session cookie in flutter_secure_storage and
+  caches scraped portal pages on disk. None of that should leave the device
+  through cloud backup or device-to-device transfer, so everything is
+  excluded (allowBackup="false" already blocks the legacy path; this file
+  covers the Android 12+ dataExtractionRules path).
+
+  Ref: https://developer.android.com/about/versions/12/backup-restore
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

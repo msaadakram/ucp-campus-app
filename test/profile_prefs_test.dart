@@ -9,7 +9,7 @@ void main() {
       prefs.theme = ThemeModePref.dark;
       final restored = ProfilePrefs.fromJson(prefs.toJson());
       expect(restored.theme, ThemeModePref.dark);
-      expect(restored.palette, AppPalette.skater);
+      expect(restored.palette, defaultAppPalette);
       expect(restored.big, isFalse);
       expect(restored.motion, isTrue);
     });
@@ -35,15 +35,15 @@ void main() {
         'big': 'yes',
       });
       expect(restored.theme, ThemeModePref.light);
-      expect(restored.palette, AppPalette.skater);
+      expect(restored.palette, defaultAppPalette);
       expect(restored.big, isFalse);
       expect(restored.motion, isTrue); // absent → default on
     });
 
-    test('partial snapshot keeps saved fields', () {
+    test('a saved palette survives a partial snapshot', () {
       final restored = ProfilePrefs.fromJson({'theme': 'dark'});
       expect(restored.theme, ThemeModePref.dark);
-      expect(restored.palette, AppPalette.skater);
+      expect(restored.palette, defaultAppPalette);
     });
   });
 }

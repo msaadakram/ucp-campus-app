@@ -115,6 +115,18 @@ class FakeLeaderboardService extends LeaderboardService {
     for (var i = 0; i < rows.length; i++) {
       final r = rows[i];
       final id = '${r['studentId'] ?? ''}';
+      final marks = <LeaderboardAssessment>[];
+      for (final a in (r['assessments'] as List? ?? const [])) {
+        if (a is! Map) continue;
+        marks.add(LeaderboardAssessment(
+          name: '${a['name'] ?? 'Assessment'}',
+          totalMarks: (a['totalMarks'] as num?)?.toDouble() ?? 0,
+          obtainedMarks: (a['obtainedMarks'] as num?)?.toDouble() ?? 0,
+          percentage: (a['percentage'] as num?)?.toDouble() ?? 0,
+          weightage: (a['weightage'] as num?)?.toDouble() ?? 0,
+          classAverage: (a['classAverage'] as num?)?.toDouble() ?? 0,
+        ));
+      }
       entries.add(LeaderboardEntry(
         rank: i + 1,
         studentName: '${r['studentName'] ?? ''}',
@@ -122,23 +134,36 @@ class FakeLeaderboardService extends LeaderboardService {
         imageUrl: '${r['studentImage'] ?? ''}',
         percentage: (r['overallPercentage'] as num?)?.toDouble() ?? 0,
         grade: '${r['grade'] ?? ''}',
-        isMe: (studentId ?? '').isNotEmpty && id == studentId,
+        // A privacy-masked row can carry studentId 'hidden' while the
+        // server still flags it as the viewer's own row.
+        isMe: r['isMe'] == true ||
+            ((studentId ?? '').isNotEmpty && id == studentId),
+        assessments: marks,
+        classAverage: (r['classAverage'] as num?)?.toDouble() ?? 0,
       ));
     }
     return LeaderboardResult(entries: entries, remainingCredits: credits);
   }
 
+  bool savedHideName = false;
+  bool savedHidePhoto = false;
+  int privacySaves = 0;
+
   @override
   Future<LeaderboardPrivacy> fetchPrivacy(String studentId) async =>
-      const LeaderboardPrivacy();
+      LeaderboardPrivacy(hideName: savedHideName, hidePhoto: savedHidePhoto);
 
   @override
   Future<LeaderboardPrivacy> savePrivacy(
     String studentId, {
     required bool hideName,
     required bool hidePhoto,
-  }) async =>
-      LeaderboardPrivacy(hideName: hideName, hidePhoto: hidePhoto);
+  }) async {
+    privacySaves++;
+    savedHideName = hideName;
+    savedHidePhoto = hidePhoto;
+    return LeaderboardPrivacy(hideName: hideName, hidePhoto: hidePhoto);
+  }
 
   @override
   void dispose() {}
@@ -261,8 +286,7 @@ void main() {
   });
 
   group('LiveLeaderboardScreen', () {
-    testWidgets('podium, ranked list, me-row and course chips render',
-        (tester) async {
+    testWidgets('rows, me-row, stats and course chips render', (tester) async {
       final svc = FakeLeaderboardService(
         credits: 48,
         rows: [
@@ -284,15 +308,134 @@ void main() {
       // Course preselected by initial match, board fetched with my id.
       expect(svc.boardCalls, 1);
       expect(find.text('Data Structures'), findsOneWidget); // short chip
-      expect(find.text('Ali'), findsWidgets); // podium + (no list row)
+      expect(find.text('Ali'), findsOneWidget); // a row
       expect(find.text('You'), findsOneWidget); // me-row
-      expect(find.text('Anonymous'), findsWidgets);
+      expect(find.text('Anonymous'), findsOneWidget);
       expect(find.text('48 credits'), findsOneWidget);
-      expect(find.byIcon(Icons.workspace_premium), findsOneWidget);
-      // Rank 4/5 rows below the podium.
-      expect(find.text('#4'), findsNothing); // rank shown as square "4"
+      // Production default is the row-wise list; the podium is one tap
+      // away and not mounted yet.
+      expect(find.text('Rows'), findsOneWidget);
+      expect(find.byIcon(Icons.workspace_premium), findsNothing);
+      // The stats strip shows MY rank, and every row carries its rank.
+      expect(find.text('#4'), findsOneWidget);
       expect(find.text('4'), findsWidgets);
       expect(find.text('80.0%'), findsOneWidget);
+    });
+
+    testWidgets('a privacy-masked row still shows your row as You',
+        (tester) async {
+      // The server flags the viewing student's own row as isMe (the
+      // studentId is masked to 'hidden' on the wire). The rank chip and
+      // the stats strip must put you on top.
+      final svc = FakeLeaderboardService(
+        rows: const [
+          {
+            'studentId': 'hidden',
+            'studentName': 'Anonymous',
+            'overallPercentage': 92.5,
+            'grade': 'A',
+            'isMe': true,
+          },
+          {
+            'studentId': 'L2',
+            'studentName': 'Someone Else',
+            'overallPercentage': 80.0,
+            'grade': 'B+',
+          },
+        ],
+      );
+      await tester.pumpWidget(_wrap(LiveLeaderboardScreen(
+        service: svc,
+        studentId: 'L1TEST',
+        portalCourses: const [
+          PortalCourse(
+            name: 'Data Structures',
+            teacher: 'T',
+            code: 'CP233',
+            credits: 3,
+            attendance: 0,
+            infoUrl: '/student/course/info/AAA111',
+          ),
+        ],
+        back: () {},
+      )));
+      await tester.pumpAndSettle();
+      expect(find.text('You'), findsOneWidget);
+      // The masked row never shows someone else's name; it shows "You".
+      expect(find.text('Anonymous'), findsNothing);
+      expect(find.text('Someone Else'), findsOneWidget);
+      expect(find.text('#1'), findsOneWidget);
+    });
+
+    testWidgets('privacy sheet flips name and photo on the board',
+        (tester) async {
+      final svc = FakeLeaderboardService(
+        rows: const [
+          {
+            'studentId': 'ME',
+            'studentName': 'Saad',
+            'overallPercentage': 92.0,
+            'grade': 'A',
+          },
+        ],
+      );
+      await tester.pumpWidget(_wrap(LiveLeaderboardScreen(
+        service: svc,
+        studentId: 'ME',
+        portalCourses: const [
+          PortalCourse(
+            name: 'Data Structures',
+            teacher: 'T',
+            code: 'CP233',
+            credits: 3,
+            attendance: 0,
+            infoUrl: '/student/course/info/AAA111',
+          ),
+        ],
+        back: () {},
+      )));
+      await tester.pumpAndSettle();
+      // Header shield is the entry point.
+      final privacy = find.byIcon(Icons.privacy_tip_outlined);
+      expect(privacy, findsOneWidget);
+      await tester.tap(privacy);
+      await tester.pumpAndSettle();
+      expect(find.text('Your privacy'), findsOneWidget);
+      expect(find.text('Hide my name on leaderboards'), findsOneWidget);
+      expect(find.text('Hide my photo on leaderboards'), findsOneWidget);
+      final initialBoardCalls = svc.boardCalls;
+
+      // Flip the name toggle.
+      final nameRow = find.ancestor(
+        of: find.text('Hide my name on leaderboards'),
+        matching: find.byType(SettingRow),
+      );
+      final nameToggle =
+          find.descendant(of: nameRow, matching: find.byType(AppToggle));
+      await tester.ensureVisible(nameToggle);
+      await tester.pumpAndSettle();
+      await tester.tap(nameToggle, warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(svc.privacySaves, 1);
+      expect(svc.savedHideName, isTrue);
+      expect(svc.savedHidePhoto, isFalse);
+      // The board re-read the roster after the change.
+      expect(svc.boardCalls, greaterThan(initialBoardCalls));
+
+      // Flip the photo toggle: the name is left untouched.
+      final photoRow = find.ancestor(
+        of: find.text('Hide my photo on leaderboards'),
+        matching: find.byType(SettingRow),
+      );
+      final photoToggle =
+          find.descendant(of: photoRow, matching: find.byType(AppToggle));
+      await tester.ensureVisible(photoToggle);
+      await tester.pumpAndSettle();
+      await tester.tap(photoToggle, warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(svc.privacySaves, 2);
+      expect(svc.savedHideName, isTrue);
+      expect(svc.savedHidePhoto, isTrue);
     });
 
     testWidgets('no-credits state explains the cost', (tester) async {
@@ -384,7 +527,7 @@ void main() {
           sessionChecks++;
           return false;
         },
-        onSyncClass: ({onProgress, priorityCode}) async {
+        onSyncClass: ({onProgress, target}) async {
           syncs++;
           return const LeaderboardSyncReport(
             timetableRows: 22,
@@ -416,7 +559,7 @@ void main() {
         service: svc,
         studentId: 'L1TEST',
         onEnsureSession: () async => true,
-        onSyncClass: ({onProgress, priorityCode}) async {
+        onSyncClass: ({onProgress, target}) async {
           syncs++;
           onProgress?.call(const SyncStepUpdate(
             key: 'session',
@@ -487,7 +630,7 @@ void main() {
         studentId: 'L1TEST',
         onEnsureSession: () async => true,
         // The sync never finishes during the test.
-        onSyncClass: ({onProgress, priorityCode}) => gate.future,
+        onSyncClass: ({onProgress, target}) => gate.future,
         back: () {},
       )));
       await tester.pump();
@@ -511,7 +654,7 @@ void main() {
         service: svc,
         studentId: 'L1TEST',
         onEnsureSession: () async => true,
-        onSyncClass: ({onProgress, priorityCode}) async {
+        onSyncClass: ({onProgress, target}) async {
           // The portal could not be reached.
           return const LeaderboardSyncReport(
             sessionState: PortalSessionState.unreachable,
@@ -558,7 +701,7 @@ void main() {
       expect(svc.lastCourseCode, 'AR221-F26-BS-CS-F25-C1');
     });
 
-    testWidgets('podium and LIST views both render every student', (
+    testWidgets('rows are the default view and podium keeps every student', (
         tester) async {
       final svc = FakeLeaderboardService(
         rows: const [
@@ -588,25 +731,107 @@ void main() {
         back: () {},
       )));
       await tester.pumpAndSettle();
-      // Podium view: the top three are cards, the fourth is a row
-      // (your own row reads "You").
+      // Production default: every student is a ROW (your own reads "You").
+      expect(find.text('Rows'), findsOneWidget);
       expect(find.text('Podium'), findsOneWidget);
-      expect(find.text('List'), findsOneWidget);
       expect(find.text('You'), findsOneWidget);
-      // Switch to the LIST view.
-      await tester.tap(find.text('List'));
-      await tester.pumpAndSettle();
-      // ALL four students are now rows, including the podium's top.
       expect(find.text('Top Student'), findsOneWidget);
       expect(find.text('Mid Student'), findsOneWidget);
       expect(find.text('Low Student'), findsOneWidget);
       expect(find.text('4 students ranked in this section'), findsOneWidget);
-      // The toggle reports the count in podium mode too.
+      // The toggle reports the count in both modes.
       expect(find.text('4 ranked'), findsOneWidget);
-      // Back to the podium.
+      // Switch to the podium: the top three become cards, the fourth is
+      // still a row.
       await tester.tap(find.text('Podium'));
       await tester.pumpAndSettle();
       expect(find.text('Top Student'), findsOneWidget);
+      expect(find.text('4 students ranked in this section'), findsNothing);
+      expect(find.byIcon(Icons.workspace_premium), findsOneWidget);
+      // Back to rows: all four are rows again.
+      await tester.tap(find.text('Rows'));
+      await tester.pumpAndSettle();
+      expect(find.text('4 students ranked in this section'), findsOneWidget);
+      expect(find.text('Top Student'), findsOneWidget);
+    });
+
+    testWidgets('phone width: rows fit and tapping one expands the marks',
+        (tester) async {
+      // A 340 dp surface is narrower than most Androids in the wild. The
+      // row layout (rank + avatar + name + grade + score + percentage)
+      // must fit without overflowing, and the inline marks table must
+      // stay readable when expanded.
+      await tester.binding.setSurfaceSize(const Size(340, 780));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final svc = FakeLeaderboardService(
+        credits: 12,
+        rows: const [
+          {
+            'studentId': 'TOP',
+            'studentName': 'Ayesha Khan',
+            'overallPercentage': 94.5,
+            'grade': 'A',
+          },
+          {
+            'studentId': 'ME',
+            'studentName': 'Saad Akram',
+            'overallPercentage': 81.0,
+            'grade': 'B+',
+            'classAverage': 76.5,
+            'assessments': [
+              {
+                'name': 'Quiz 1',
+                'totalMarks': 20,
+                'obtainedMarks': 18,
+                'percentage': 90,
+                'weightage': 10,
+              },
+              {
+                'name': 'Class Activity',
+                'totalMarks': 100,
+                'obtainedMarks': 72,
+                'percentage': 72,
+                'weightage': 5,
+              },
+            ],
+          },
+        ],
+      );
+      await tester.pumpWidget(_wrap(LiveLeaderboardScreen(
+        service: svc,
+        studentId: 'ME',
+        portalCourses: const [
+          PortalCourse(
+            name: 'Data Structures',
+            teacher: 'T',
+            code: 'CP233',
+            credits: 3,
+            attendance: 0,
+            infoUrl: '/student/course/info/AAA111',
+          ),
+        ],
+        back: () {},
+      )));
+      await tester.pumpAndSettle();
+      // Nothing overflowed at phone width.
+      expect(tester.takeException(), isNull);
+      expect(find.text('You'), findsOneWidget);
+      expect(find.text('Ayesha Khan'), findsOneWidget);
+
+      // Tap the row: the marks table expands inline.
+      await tester.ensureVisible(find.text('You'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('You'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('ASSESSMENT'), findsOneWidget);
+      expect(find.text('Quiz 1'), findsOneWidget);
+      expect(find.text('18/20'), findsOneWidget);
+      expect(find.text('90%'), findsOneWidget);
+      expect(find.text('10% weight'), findsOneWidget);
+      expect(find.text('Class Activity'), findsOneWidget);
+      expect(find.text('72/100'), findsOneWidget);
+      expect(find.text('Class average 76.5%'), findsOneWidget);
     });
 
     testWidgets('theory and lab are separate subjects in the picker', (

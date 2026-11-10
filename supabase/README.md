@@ -45,7 +45,9 @@ Community → post something → watch it appear.
 ## 5b. Point the app at your Node server
 Build with your server's public HTTPS URL (or run a local one for tests):
 ```
-flutter build apk --release --dart-define=NODE_API_URL=https://api.yourdomain.xyz
+flutter build apk --release \
+  --dart-define=NODE_API_URL=https://ucp.animezone.me \
+  --dart-define=EXT_API_KEY=<the key the server holds>
 ```
 For the Android emulator against a laptop server: `http://10.0.2.2:3001`.
 Deploy, verify and troubleshoot steps live in `backend/README.md`.

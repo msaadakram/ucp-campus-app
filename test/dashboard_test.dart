@@ -18,6 +18,10 @@ class _DashMemory implements SessionBackend {
   @override
   Future<({String email, String sessionId})?> load() async => null;
   @override
+  Future<void> saveConsent(String value) async {}
+  @override
+  Future<String?> readConsent() async => 'accepted';
+  @override
   Future<String?> readEmail() async => null;
   @override
   Future<int?> savedAtMs() async => null;
@@ -227,4 +231,5 @@ void main() {
       api.close();
     });
   });
+
 }
