@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../leaderboard/leaderboard_service.dart';
 import '../leaderboard/sync.dart';
+import '../auth/portal_dates.dart';
 import '../auth/student_portal.dart' show PortalCourse;
 import '../theme/palette.dart';
 import '../widgets/common.dart';
@@ -802,6 +803,28 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
               )
             else ...[
               _statsStrip(c),
+              if (_latestUpdate != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(
+                    children: [
+                      Icon(Icons.sync_rounded,
+                          size: 12,
+                          color: c.tealInk.withValues(alpha: 0.4)),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          'Board updated ${formatPortalShort(_latestUpdate!)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: body(c, size: 10.5,
+                              weight: FontWeight.w600,
+                              color: c.tealInk.withValues(alpha: 0.45)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 10),
               _viewToggle(c),
               const SizedBox(height: 12),
@@ -1728,7 +1751,18 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                           ],
                         ],
                       ),
-                      const SizedBox(height: 7),
+                      if (e.timestamp != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 1, bottom: 4),
+                          child: Text(
+                            'Updated ${formatPortalStamp(e.timestamp!)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: body(c, size: 10.5,
+                                color: c.tealInk.withValues(alpha: 0.45)),
+                          ),
+                        ),
+                      const SizedBox(height: 3),
                       Row(
                         children: [
                           Expanded(
@@ -1781,6 +1815,18 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
   }
 
   /// Rows / Podium switch — rows are the default production view.
+  /// Most recent publication time across rows, or null when the server
+  /// did not send timestamps.
+  DateTime? get _latestUpdate {
+    DateTime? latest;
+    for (final e in entries) {
+      final t = e.timestamp;
+      if (t == null) continue;
+      if (latest == null || t.isAfter(latest)) latest = t;
+    }
+    return latest;
+  }
+
   Widget _viewToggle(AppColors c) {
     return Row(
       children: [
@@ -1807,12 +1853,8 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
-              style: body(
-                c,
-                size: 11,
-                weight: FontWeight.w700,
-                color: c.tealInk.withValues(alpha: 0.55),
-              ),
+              style: body(c, size: 11, weight: FontWeight.w700,
+                  color: c.tealInk.withValues(alpha: 0.55)),
             ),
           ),
       ],

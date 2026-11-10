@@ -177,6 +177,10 @@ String formatPortalTime(DateTime d) {
 String formatPortalStamp(DateTime d) =>
     '${formatPortalDay(d)} · ${formatPortalTime(d)}';
 
+/// "13 Oct · 1:00 PM" — compact stamp for tight captions.
+String formatPortalShort(DateTime d) =>
+    '${d.day.toString().padLeft(2, '0')} ${_monthShort[d.month]} · ${formatPortalTime(d)}';
+
 /// Due-in relation: signed count of calendar days between [due] and
 /// [now] at day resolution. Negative = already past.
 int dueDayDelta(DateTime now, DateTime due) {

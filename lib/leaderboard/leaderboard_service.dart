@@ -49,6 +49,8 @@ class LeaderboardEntry {
   final double percentage;
   final String grade;
   final bool isMe;
+  /// When the marks behind this row were published.
+  final DateTime? timestamp;
   /// The marks behind the percentage (the portal's gradebook lines).
   final List<LeaderboardAssessment> assessments;
   /// Section average, when the backend reported it.
@@ -62,6 +64,7 @@ class LeaderboardEntry {
     required this.percentage,
     required this.grade,
     this.isMe = false,
+    this.timestamp,
     this.assessments = const [],
     this.classAverage = 0,
   });
@@ -410,6 +413,7 @@ class NodeLeaderboardService extends LeaderboardService {
         imageUrl: '${r['studentImage'] ?? ''}',
         percentage: _asDouble(r['overallPercentage']),
         grade: '${r['grade'] ?? ''}',
+        timestamp: DateTime.tryParse('${r['timestamp'] ?? ''}')?.toLocal(),
         // The server flags the viewing student's row (isMe) — this works
         // even when a privacy-masked row carries studentId 'hidden'.
         // Falls back to the id match for older deployments without it.

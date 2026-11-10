@@ -125,11 +125,11 @@ class _FakeLeaderboardService extends LeaderboardService {
   }) async =>
       LeaderboardResult(
         entries: [
-          const LeaderboardEntry(rank: 1, studentName: 'Hira Shahzad', studentId: 'H1', imageUrl: '', percentage: 91.3, grade: 'A'),
-          const LeaderboardEntry(rank: 2, studentName: 'Test Student', studentId: 'ME', imageUrl: '', percentage: 87.25, grade: 'A', isMe: true),
-          const LeaderboardEntry(rank: 3, studentName: 'Anonymous', studentId: 'hidden', imageUrl: '', percentage: 74.0, grade: 'B'),
-          const LeaderboardEntry(rank: 4, studentName: 'Usman Aamer', studentId: 'U4', imageUrl: '', percentage: 66.5, grade: 'C+'),
-          const LeaderboardEntry(rank: 5, studentName: 'Bilal Khan', studentId: 'B5', imageUrl: '', percentage: 52.2, grade: 'D+'),
+          LeaderboardEntry(rank: 1, studentName: 'Hira Shahzad', studentId: 'H1', imageUrl: '', percentage: 91.3, grade: 'A', timestamp: DateTime.now().subtract(const Duration(hours: 3))),
+          LeaderboardEntry(rank: 2, studentName: 'Test Student', studentId: 'ME', imageUrl: '', percentage: 87.25, grade: 'A', isMe: true, timestamp: DateTime.now().subtract(const Duration(minutes: 26))),
+          LeaderboardEntry(rank: 3, studentName: 'Anonymous', studentId: 'hidden', imageUrl: '', percentage: 74.0, grade: 'B', timestamp: DateTime.now().subtract(const Duration(days: 2))),
+          LeaderboardEntry(rank: 4, studentName: 'Usman Aamer', studentId: 'U4', imageUrl: '', percentage: 66.5, grade: 'C+', timestamp: DateTime.now().subtract(const Duration(days: 5))),
+          LeaderboardEntry(rank: 5, studentName: 'Bilal Khan', studentId: 'B5', imageUrl: '', percentage: 52.2, grade: 'D+', timestamp: DateTime.now().subtract(const Duration(days: 12))),
         ],
         remainingCredits: 42,
         free: true,
