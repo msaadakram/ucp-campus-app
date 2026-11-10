@@ -47,6 +47,7 @@ import 'widgets/offline_banner.dart';
 import 'widgets/session_expired_dialog.dart';
 import 'theme/palette.dart';
 import 'widgets/common.dart';
+import 'widgets/user_avatar.dart';
 
 @visibleForTesting
 class FakeValidatingApi extends OdooApi {
@@ -716,6 +717,49 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     }
   }
 
+  /// Keep published/cached avatars small enough to travel with the
+  /// leaderboard payload and the dashboard snapshot. 256 KB of image
+  /// bytes — portal avatars are served at most a 512px PNG, far below
+  /// this; bigger files (corrupt captures) are dropped, not published.
+  static const int _maxAvatarBytes = 256 * 1024;
+
+  /// The portal's `<img>` src is either a `data:` URI (Odoo binary
+  /// field) or a session-protected `/web/image/…` URL. Classmates can't
+  /// read the latter anonymously, so download it once with the live
+  /// session and keep the base64 bytes instead. Never throws.
+  Future<DashboardData> _resolveDashboardAvatar(
+    DashboardData parsed,
+    String sessionId,
+    PortalApi api,
+  ) async {
+    final src = parsed.studentImage?.trim();
+    if (src == null || src.isEmpty) return parsed;
+    if (src.toLowerCase().startsWith('data:image/')) {
+      // Keep it only when it is small enough to publish. A giant
+      // capture breaks nothing by dropping out of the payload.
+      final estimate = src.length - src.indexOf(',') - 1;
+      return estimate * 3 ~/ 4 <= _maxAvatarBytes
+          ? parsed
+          : parsed.copyWith(studentImage: null);
+    }
+    try {
+      final bytes = await api
+          .fetchBytes(src, sessionId)
+          .timeout(const Duration(seconds: 10));
+      if (bytes != null &&
+          bytes.isNotEmpty &&
+          bytes.length <= _maxAvatarBytes) {
+        final mime = PortalApi.sniffImageMime(bytes);
+        return parsed.copyWith(
+          studentImage: 'data:$mime;base64,${base64Encode(bytes)}',
+        );
+      }
+    } catch (_) {
+      // Keep whatever we had.
+    }
+    return parsed;
+  }
+
   /// Loads the last dashboard snapshot from the phone so Home paints
   /// instantly, then the live fetch in [_loadDashboard] refreshes it.
   Future<void> _loadCachedDashboard() async {
@@ -728,6 +772,17 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         jsonDecode(raw) as Map<String, dynamic>,
       );
       if (!parsed.isEmpty) setState(() => dashboard = parsed);
+    } catch (_) {}
+  }
+
+  /// Saves the dashboard snapshot, dropping the avatar when it would
+  /// bloat the on-disk cache (the live fetch rebuilds it quickly).
+  Future<void> _persistDashboard(DashboardData parsed) async {
+    try {
+      final json = parsed.toJson();
+      final img = json['image'];
+      if (img is String && img.length > 512 * 1024) json.remove('image');
+      await _backend.saveDashboard(jsonEncode(json));
     } catch (_) {}
   }
 
@@ -761,8 +816,9 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         api.fetchPage(PortalRoutes.timetable, sid).catchError((_) => ''),
       ]);
       if (!mounted || run != _dashRun) return;
-      final parsed = parseDashboard(results[0]);
+      var parsed = parseDashboard(results[0]);
       if (parsed.isEmpty) return;
+      parsed = await _resolveDashboardAvatar(parsed, sid, api);
       final slots = (results[1]).isEmpty
           ? const <TimetableSlot>[]
           : parseTimetable(results[1]).slots;
@@ -772,7 +828,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         // A live read with this session — the sign-in works.
         _sessionVerified = true;
       });
-      unawaited(_backend.saveDashboard(jsonEncode(parsed.toJson())));
+      unawaited(_persistDashboard(parsed));
       unawaited(PageCache.savePage('timetable', results[1]));
       // Publish this student's class + marks so classmates (app-only or
       // extension) see them. Background, non-blocking.
@@ -815,7 +871,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       final resHtml = results[4];
       final dsHtml = results[5];
 
-      final parsed = parseDashboard(dashHtml);
+      var parsed = parseDashboard(dashHtml);
       List<TimetableSlot> slots = timetableSlots;
       if (ttHtml.isNotEmpty) {
         final tt = parseTimetable(ttHtml);
@@ -840,11 +896,13 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         unawaited(PageCache.savePage('results', resHtml));
       }
       if (!parsed.isEmpty) {
+        parsed = await _resolveDashboardAvatar(parsed, sid, api);
+        if (!mounted) return;
         setState(() {
           dashboard = parsed;
           timetableSlots = _resolveSlots(slots);
         });
-        unawaited(_backend.saveDashboard(jsonEncode(parsed.toJson())));
+        unawaited(_persistDashboard(parsed));
       } else if (mounted) {
         setState(() => timetableSlots = _resolveSlots(slots));
       }
@@ -1308,6 +1366,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
       await _lbService.syncGrades(
         studentId: sid,
         studentName: dashboard?.studentName ?? '',
+        studentImage: dashboard?.studentImage ?? '',
         courseName: courseName,
         // The FULL section code — identical in every client, so the app
         // and the extension write onto the same record.
@@ -1920,7 +1979,7 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
                                   ),
                                   child: Row(
                                     children: [
-                                      CircleAvatar(radius: 28, backgroundImage: AssetImage(prefs.palette.heroAsset)),
+                                      PortalAvatar(src: dashboard?.studentImage, radius: 28, fallbackAsset: prefs.palette.heroAsset),
                                       const SizedBox(width: 12),
                                       Builder(builder: (_) {
                                         final d = dashboard;

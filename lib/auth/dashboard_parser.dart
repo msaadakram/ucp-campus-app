@@ -1,6 +1,7 @@
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
 
+import 'odoo_api.dart';
 import 'student_portal.dart';
 
 /// Parsed view of the Horizon student dashboard.
@@ -9,6 +10,8 @@ import 'student_portal.dart';
 /// `/student/dashboard` page (Odoo 15 + Altair admin theme):
 ///
 /// - name     : `h2.heading_b > span.uk-text-truncate`
+/// - avatar   : `.user_heading_avatar img` (relative hrefs are absolutized
+///   against the portal host; data: URIs pass through untouched)
 /// - studentId: `h2.heading_b > span.sub-heading` [0]  (e.g. L1F25…)
 /// - faculty  : `h2.heading_b > span.sub-heading` [1]
 /// - CGPA     : `.user_heading_content` containing "Academic Standings",
@@ -37,6 +40,11 @@ class DashboardData {
   final String? todayClasses;
   final List<String> news;
   final List<PortalCourse> courses;
+  /// Portal avatar of the signed-in student: an absolute https URL or a
+  /// `data:image/...;base64,...` URI (Odoo usually emits the latter; the
+  /// app swaps it for downloaded bytes so classmates can see it too).
+  /// Null when the dashboard carries no usable avatar.
+  final String? studentImage;
   const DashboardData({
     this.studentName,
     this.studentId,
@@ -45,10 +53,23 @@ class DashboardData {
     this.todayClasses,
     this.news = const [],
     this.courses = const [],
+    this.studentImage,
   });
+
+  DashboardData copyWith({String? studentImage}) => DashboardData(
+        studentName: studentName,
+        studentId: studentId,
+        faculty: faculty,
+        stats: stats,
+        todayClasses: todayClasses,
+        news: news,
+        courses: courses,
+        studentImage: studentImage ?? this.studentImage,
+      );
 
   bool get isEmpty =>
       studentName == null &&
+      studentImage == null &&
       studentId == null &&
       stats.isEmpty &&
       todayClasses == null &&
@@ -65,6 +86,7 @@ class DashboardData {
         'today': todayClasses,
         'news': news,
         'courses': [for (final c in courses) c.toJson()],
+        'image': studentImage,
       };
 
   factory DashboardData.fromJson(Map<String, dynamic> json) {
@@ -106,6 +128,7 @@ class DashboardData {
       todayClasses: str(json['today']),
       news: newsOf(json['news']),
       courses: courses,
+      studentImage: str(json['image']),
     );
   }
 }
@@ -205,6 +228,7 @@ DashboardData parseDashboard(String html) {
     todayClasses: exact.todayClasses,
     news: exact.news,
     courses: parseCourses(html),
+    studentImage: _parseAvatar(doc),
   );
 }
 
@@ -275,7 +299,46 @@ DashboardData _parseExact(Document doc) {
     stats: stats,
     todayClasses: today,
     news: news,
+    studentImage: _parseAvatar(doc),
   );
+}
+
+/// Avatar resolver: finds `.user_heading_avatar img` (and close relatives
+/// for older portal markups) and normalizes the src:
+///   - data: URIs (Odoo's inline binary fields) pass through untouched,
+///   - absolute http(s) URLs pass through,
+///   - protocol-relative and root-relative hrefs are absolutized against
+///     the portal host.
+/// Never throws; returns null when nothing usable is found.
+const _avatarSelectors = [
+  '.user_heading_avatar img',
+  '.user_heading_dash img[data-savepage-loading]',
+  '.sidebar_main_header img',
+  '.o_main_navbar img.o_avatar',
+  '.o_avatar img',
+];
+
+String? _parseAvatar(Document doc) {
+  for (final sel in _avatarSelectors) {
+    final img = doc.querySelector(sel);
+    final src = img?.attributes['src']?.trim() ?? '';
+    if (src.isEmpty) continue;
+    final normalized = normalizePortalImageSrc(src);
+    if (normalized != null) return normalized;
+  }
+  return null;
+}
+
+/// Normalizes a portal image src to something the Flutter image pipeline
+/// and the community backend can both consume. See [_parseAvatar].
+String? normalizePortalImageSrc(String src) {
+  final s = src.trim();
+  if (s.isEmpty) return null;
+  if (s.toLowerCase().startsWith('data:image/')) return s;
+  if (s.startsWith('http://') || s.startsWith('https://')) return s;
+  if (s.startsWith('//')) return 'https:$s';
+  final path = s.startsWith('/') ? s : '/$s';
+  return 'https://${OdooApi.host}$path';
 }
 
 const _nameSelectors = [

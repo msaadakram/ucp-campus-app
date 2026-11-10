@@ -5,6 +5,7 @@ import '../data/seed.dart';
 import '../theme/palette.dart';
 import '../widgets/common.dart';
 import '../widgets/loading.dart';
+import '../widgets/user_avatar.dart';
 
 /// Time-of-day greeting: night <5, morning <12, afternoon <17,
 /// evening <21, else night.
@@ -420,7 +421,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: widget.toProfile,
                 child: Container(
                   width: 48, height: 48,
-                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2), image: DecorationImage(image: AssetImage(hero), fit: BoxFit.cover, alignment: Alignment.topCenter)),
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)),
+                  child: ClipOval(
+                    child: SizedBox(
+                      width: 44, height: 44,
+                      child: PortalAvatar(
+                        src: live?.studentImage,
+                        radius: 22,
+                        fallbackAsset: hero,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],

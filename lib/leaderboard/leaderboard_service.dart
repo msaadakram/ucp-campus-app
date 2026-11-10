@@ -152,6 +152,10 @@ abstract class LeaderboardService {
     required double overallPercentage,
     required String grade,
     required List<Map<String, dynamic>> assessments,
+    /// Portal avatar (data URI or URL) shown to classmates on the
+    /// board. Sent only when non-empty — an omitted key leaves the
+    /// server-side image untouched instead of wiping it.
+    String studentImage = '',
   });
   Future<LeaderboardResult> fetchLeaderboard({
     required String courseName,
@@ -322,8 +326,21 @@ class NodeLeaderboardService extends LeaderboardService {
     required double overallPercentage,
     required String grade,
     required List<Map<String, dynamic>> assessments,
+    String studentImage = '',
   }) async {
     if (studentId.trim().isEmpty) return;
+    // Never overwrite a previously-published image with an empty one.
+    final payload = <String, dynamic>{
+      'studentID': studentId,
+      'studentName': studentName,
+      'courseName': courseName,
+      'courseCode': courseCode,
+      'overallPercentage': overallPercentage,
+      'grade': grade,
+      'assessments': assessments,
+    };
+    final image = studentImage.trim();
+    if (image.isNotEmpty) payload['studentImage'] = image;
     final res = await _client
         .post(
           Uri.parse('$nodeApiUrl/api/ext/grades/save'),
@@ -331,15 +348,7 @@ class NodeLeaderboardService extends LeaderboardService {
             ..._headers,
             'Content-Type': 'application/json',
           },
-          body: jsonEncode({
-            'studentID': studentId,
-            'studentName': studentName,
-            'courseName': courseName,
-            'courseCode': courseCode,
-            'overallPercentage': overallPercentage,
-            'grade': grade,
-            'assessments': assessments,
-          }),
+          body: jsonEncode(payload),
         )
         .timeout(_timeout);
     if (res.statusCode >= 400) {

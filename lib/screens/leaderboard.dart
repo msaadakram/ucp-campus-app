@@ -7,6 +7,7 @@ import '../leaderboard/sync.dart';
 import '../auth/student_portal.dart' show PortalCourse;
 import '../theme/palette.dart';
 import '../widgets/common.dart';
+import '../widgets/user_avatar.dart';
 
 /// Identity key for a course: the section suffix is dropped, but the
 /// "- Lab" suffix is KEPT — theory and lab are different subjects with
@@ -1369,25 +1370,16 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
               Container(
                 padding: const EdgeInsets.all(2.5),
                 decoration: BoxDecoration(shape: BoxShape.circle, color: tone),
-                child: CircleAvatar(
+                child: LeaderboardAvatar(
+                  src: e.isAnonymous ? null : e.imageUrl,
                   radius: podium == 1 ? 30 : 24,
-                  backgroundColor: c.white,
-                  foregroundImage: e.imageUrl.isNotEmpty
-                      ? NetworkImage(e.imageUrl)
-                      : null,
-                  child: e.imageUrl.isNotEmpty
-                      ? null
-                      : Text(
-                          e.isAnonymous
-                              ? '?'
-                              : e.studentName.isNotEmpty
-                              ? e.studentName[0].toUpperCase()
-                              : '?',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: tone,
-                          ),
-                        ),
+                  ring: c.white,
+                  tone: tone,
+                  initial: e.isAnonymous
+                      ? '?'
+                      : e.studentName.isNotEmpty
+                          ? e.studentName[0].toUpperCase()
+                          : '?',
                 ),
               ),
               const SizedBox(height: 8),
@@ -1650,21 +1642,13 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                CircleAvatar(
+                LeaderboardAvatar(
+                  src: e.isAnonymous ? null : e.imageUrl,
                   radius: 18,
-                  backgroundColor: medal?.withValues(alpha: 0.22) ??
+                  ring: medal?.withValues(alpha: 0.22) ??
                       c.dustSoft.withValues(alpha: 0.7),
-                  foregroundImage:
-                      e.imageUrl.isNotEmpty ? NetworkImage(e.imageUrl) : null,
-                  child: e.imageUrl.isNotEmpty
-                      ? null
-                      : Text(
-                          initial,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: medal ?? c.tealInk,
-                          ),
-                        ),
+                  tone: medal ?? c.tealInk,
+                  initial: initial,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -2086,22 +2070,16 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
           children: [
             Row(
               children: [
-                CircleAvatar(
+                LeaderboardAvatar(
+                  src: e.isAnonymous ? null : e.imageUrl,
                   radius: 18,
-                  backgroundColor: c.dustSoft,
-                  foregroundImage: e.imageUrl.isNotEmpty
-                      ? NetworkImage(e.imageUrl)
-                      : null,
-                  child: e.imageUrl.isNotEmpty
-                      ? null
-                      : Text(
-                          e.isAnonymous
-                              ? '?'
-                              : (e.studentName.isNotEmpty
-                                    ? e.studentName[0].toUpperCase()
-                                    : '?'),
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
+                  ring: c.dustSoft,
+                  tone: c.tealInk,
+                  initial: e.isAnonymous
+                      ? '?'
+                      : (e.studentName.isNotEmpty
+                          ? e.studentName[0].toUpperCase()
+                          : '?'),
                 ),
                 const SizedBox(width: 10),
                 Expanded(

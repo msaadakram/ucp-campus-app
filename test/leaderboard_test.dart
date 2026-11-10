@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -39,6 +40,7 @@ class FakeLeaderboardService extends LeaderboardService {
   int boardCalls = 0;
   int timetableSyncs = 0;
   int gradeSyncs = 0;
+  String lastStudentImage = '';
   List<Map<String, String>>? lastTimetableRows;
   String? lastGrade;
   /// Course code sent with the last board/roster request.
@@ -95,7 +97,9 @@ class FakeLeaderboardService extends LeaderboardService {
     required double overallPercentage,
     required String grade,
     required List<Map<String, dynamic>> assessments,
+    String studentImage = '',
   }) async {
+    lastStudentImage = studentImage;
     gradeSyncs++;
     lastGrade = grade;
     lastOverall = overallPercentage;
@@ -282,6 +286,48 @@ void main() {
       );
       s.dispose();
       s2.dispose();
+    });
+    test('syncGrades publishes the avatar when one is available',
+        () async {
+      Map<String, dynamic>? body;
+      final s = svc(MockClient((req) async {
+        body = jsonDecode(req.body) as Map<String, dynamic>;
+        return http.Response('{"ok":true}', 201);
+      }));
+      await s.syncGrades(
+        studentId: 'L1F25BSCS0577',
+        studentName: 'Saad',
+        studentImage: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==',
+        courseName: 'OOP (CP223)',
+        courseCode: 'CP223-R26-BS-SE-F24-SED1',
+        overallPercentage: 84,
+        grade: 'B+',
+        assessments: const [],
+      );
+      expect(body, isNotNull);
+      expect(body!['studentImage'],
+          'data:image/jpeg;base64,/9j/4AAQSkZJRg==');
+      s.dispose();
+    });
+
+    test('syncGrades omits the avatar key entirely when empty', () async {
+      Map<String, dynamic>? body;
+      final s = svc(MockClient((req) async {
+        body = jsonDecode(req.body) as Map<String, dynamic>;
+        return http.Response('{"ok":true}', 201);
+      }));
+      await s.syncGrades(
+        studentId: 'L1F25BSCS0577',
+        studentName: 'Saad',
+        courseName: 'OOP (CP223)',
+        courseCode: 'CP223',
+        overallPercentage: 84,
+        grade: 'B+',
+        assessments: const [],
+      );
+      expect(body, isNotNull);
+      expect(body!.containsKey('studentImage'), isFalse);
+      s.dispose();
     });
   });
 

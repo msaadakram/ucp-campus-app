@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -95,7 +97,43 @@ void main() {
       );
       expect(d.todayClasses, 'No class is scheduled');
       expect(d.news, contains('Stay tuned.'));
+      // Relative portal href is absolutized against the portal host.
+      expect(d.studentImage, 'https://horizon.ucp.edu.pk/avatar.jpg');
       expect(d.isEmpty, isFalse);
+    });
+
+    test('avatar: data URI passes through untouched', () {
+      const html = '<div class="user_heading_avatar"><div class="thumbnail"><img alt="user" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="></div></div><div class="user_heading_content"><h2 class="heading_b"><span class="uk-text-truncate">Dot</span></h2></div>';
+      final d = parseDashboard(html);
+      expect(d.studentImage, 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==');
+    });
+
+    test('avatar: absolute https URL passes through', () {
+      const html = '<div class="user_heading_avatar"><img alt="user" src="https://horizon.ucp.edu.pk/web/image/98/1/avatar_image"></div>';
+      final d = parseDashboard(html);
+      expect(d.studentImage, 'https://horizon.ucp.edu.pk/web/image/98/1/avatar_image');
+    });
+
+    test('avatar: protocol-relative src is absolutized', () {
+      const html = '<div class="user_heading_avatar"><img alt="user" src="//horizon.ucp.edu.pk/web/image/98/1/avatar_image"></div>';
+      final d = parseDashboard(html);
+      expect(d.studentImage, 'https://horizon.ucp.edu.pk/web/image/98/1/avatar_image');
+    });
+
+    test('avatar: missing src yields null, never a crash', () {
+      const html = '<div class="user_heading_content"><h2 class="heading_b"><span class="uk-text-truncate">No Photo</span></h2></div><div class="user_heading_avatar"><div class="thumbnail"><img alt="user" src=""></div></div>';
+      final d = parseDashboard(html);
+      expect(d.studentImage, isNull);
+    });
+
+    test('avatar: dashboard snapshot round-trips the image', () {
+      const html = '<div class="user_heading_avatar"><img alt="user" src="https://horizon.ucp.edu.pk/web/image/98/1/a"></div><div class="user_heading_content"><h2 class="heading_b"><span class="uk-text-truncate">Dot</span></h2></div>';
+      final d = parseDashboard(html);
+      final back = DashboardData.fromJson(
+        jsonDecode(jsonEncode(d.toJson())) as Map<String, dynamic>,
+      );
+      expect(back.studentImage, d.studentImage);
+      expect(back.studentName, d.studentName);
     });
   });
 

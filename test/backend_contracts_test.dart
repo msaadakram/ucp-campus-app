@@ -80,6 +80,7 @@ class RecordingService extends LeaderboardService {
     required double overallPercentage,
     required String grade,
     required List<Map<String, dynamic>> assessments,
+    String studentImage = '',
   }) async =>
       calls.add('syncGrades:$studentId:$courseName');
 
