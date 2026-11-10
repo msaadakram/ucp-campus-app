@@ -254,8 +254,8 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
         setState(() {
           loading = false;
           error =
-              'No class data yet — the leaderboard fills once students '
-              'open the extension.';
+              'No class data yet — boards fill in as students open them '
+              'in the app or sync the extension.';
         });
         return;
       }
@@ -742,7 +742,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                 c,
                 icon: Icons.info_outline,
                 text: 'Courses from your portal timetable — classmates '
-                    'appear once the extension syncs.',
+                    'appear once they share their marks (app or extension).',
               ),
             ],
             const SizedBox(height: 10),

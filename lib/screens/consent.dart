@@ -109,7 +109,7 @@ class ConsentScreen extends StatelessWidget {
           const SizedBox(height: 14),
           Text(
             'You can change this later in Profile → Privacy & security. '
-            'Details: the policy page of the extension, and Profile → Help.',
+            'Details: the privacy policy on the app backend, and Profile → Help.',
             style: body(c, size: 11,
                 color: c.tealInk.withValues(alpha: 0.5)),
           ),
