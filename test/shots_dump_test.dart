@@ -310,6 +310,11 @@ void main() {
       await _shot(tester, 'teachers_$mode');
     });
 
+    const newsHtml = '<table><thead><tr><th>Sr No.</th><th>Subject</th>'
+        '<th>Date</th><th>Description</th><th>Attachment</th></tr></thead>'
+        '<tbody><tr><td>1</td><td>Midterm venue</td>'
+        '<td>2026-10-10</td><td>Room C-301</td><td></td></tr></tbody></table>';
+
     const gradeHtml = '<table><tr class="table-parent-row show_child_row">'
         '<td><a href="#" class="js-toggle-children-row toggle-childrens">'
         ' Quiz <div class="uk-badge md-bg-orange-800"> 15.0 % </div>'
@@ -322,6 +327,103 @@ void main() {
         ' </a> </td> <td>72.00</td></tr>'
         '<tr class="table-child-row md-bg-blue-grey-800"><th>Assessment</th><th>Max Mark</th><th>Obtained Marks</th><th>Class Average</th><th>Percentage</th></tr>'
         '<tr class="table-child-row"><td>Final Exam</td><td>100</td><td>72.00</td><td>60.00</td><td>72.00</td></tr></table>';
+
+    const outlineHtml =
+        '<h5>Course Objectives:</h5>'
+        '<ul>'
+        '<li>Understand fundamental data structures and algorithms including arrays, linked lists, stacks, queues, trees and graphs along with their proofs of correctness.</li>'
+        '<li>Analyze the time and space complexity of algorithmic solutions using Big-O notation and compare alternative designs.</li>'
+        '<li>Design and implement complete solutions using appropriate data structures in C++ or Java with proper testing.</li>'
+        '</ul>'
+        '<h5>Learning Outcomes:</h5>'
+        '<table><thead><tr><th>CLO</th><th>Statement</th><th>Bloom</th><th>PLO</th></tr></thead>'
+        '<tbody>'
+        '<tr><td>CLO1</td><td>Apply fundamental concepts of linear and non-linear data structures</td><td>Apply</td><td>PLO2</td></tr>'
+        '<tr><td>CLO2</td><td>Design efficient algorithms for complex problem solving tasks</td><td>Analyze</td><td>PLO4</td></tr>'
+        '<tr><td>CLO3</td><td>Evaluate complexity tradeoffs between competing implementations</td><td>Evaluate</td><td>PLO6</td></tr>'
+        '</tbody></table>'
+        '<h5>Text Books:</h5>'
+        '<table><thead><tr><th>Sr</th><th>Title</th><th>Authors</th><th>Edition</th><th>Publisher</th><th>Year</th></tr></thead>'
+        '<tbody>'
+        '<tr><td>1</td><td>Data Structures and Algorithms in C++</td><td>Goodrich, Tamassia, Goldwasser</td><td>2nd</td><td>Wiley</td><td>2014</td></tr>'
+        '<tr><td>2</td><td>The Algorithm Design Manual</td><td>Skiena, S.</td><td>3rd</td><td>Springer</td><td>2020</td></tr>'
+        '</tbody></table>'
+        '<h5>Weekly Plan:</h5>'
+        '<table><thead><tr><th>Week</th><th>Contents</th><th>Activity</th><th>Files</th></tr></thead>'
+        '<tbody>'
+        '<tr><td>1</td><td>Introduction to data structures and algorithm analysis</td><td>Lecture</td><td></td></tr>'
+        '<tr><td>2</td><td>Arrays, stacks, queues and linked lists</td><td>Lecture + Lab</td><td>chapter2.pdf</td></tr>'
+        '<tr><td>3</td><td>Trees, heaps and hash tables</td><td>Lecture + Lab</td><td></td></tr>'
+        '<tr><td>4</td><td>Graphs, shortest paths and minimum spanning trees</td><td>Lecture</td><td></td></tr>'
+        '</tbody></table>'
+        '<h5>Assessment and Evaluation:</h5>'
+        '<table><thead><tr><th>Assessment Type</th><th>Weightage %</th><th>Consider Top</th></tr></thead>'
+        '<tbody>'
+        '<tr><td>Final Term</td><td>40.0</td><td>0</td></tr>'
+        '<tr><td>Midterm</td><td>25.0</td><td>0</td></tr>'
+        '<tr><td>Class Quizzes</td><td>15.0</td><td>3</td></tr>'
+        '<tr><td>Assignments</td><td>10.0</td><td>0</td></tr>'
+        '<tr><td>Labs</td><td>10.0</td><td>0</td></tr>'
+        '</tbody></table>';
+
+    const submissionsHtml =
+        '<table><thead><tr><th>Sr</th><th>Name</th><th>Description</th><th>Start Date</th><th>Due Date</th><th>Attachment</th></tr></thead>'
+        '<tbody>'
+        '<tr><td>1</td><td>Assignment 3 — Balanced Trees</td><td>Implement an AVL tree with insertion, deletion and in-order traversal. Submit the source code along with a brief complexity analysis of each tree operation, justifying the O(log n) bound with rotations explained.</td><td>2026-11-01 09:00:00</td><td>2026-12-14 23:59:00</td><td><a href="/student/class/material/download/a1">assignment3-spec.pdf</a></td></tr>'
+        '<tr><td>2</td><td>Lab Report 5 — Hashing</td><td>Hashing lab with chaining and linear probing analysis</td><td>2026-11-20 09:00:00</td><td>2026-11-27 23:59:00</td><td></td></tr>'
+        '<tr><td>3</td><td>Quiz 3 — Trees and Graphs</td><td>Closed book quiz covering tree traversals and BFS/DFS</td><td>2026-10-15 09:00:00</td><td>2026-10-22 23:59:00</td><td></td></tr>'
+        '</tbody></table>';
+
+    CourseDetailScreen buildCourse(Map<String, String> html) => CourseDetailScreen(
+          portalCourse: const PortalCourse(
+            name: 'Object Oriented Programming',
+            teacher: 'Aasma Abdul Waheed',
+            code: 'CP223',
+            credits: 3.0,
+            attendance: 75.0,
+            infoUrl: '/student/course/info/pBG3ykar5ZOkdJ8v4NYV',
+          ),
+          back: _noop,
+          debugHtml: html,
+        );
+
+    testWidgets('course outline $mode', (tester) async {
+      tester.view.physicalSize = const Size(390 * 2, 844 * 2);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      CourseDetailCache.clear();
+      await tester.pumpWidget(
+        _wrap(buildCourse({'outline': outlineHtml, 'news': newsHtml}), dark: dark),
+      );
+      await tester.pumpAndSettle();
+      final tab = find.text('Outline');
+      if (tab.evaluate().isNotEmpty) {
+        await tester.tap(tab.first, warnIfMissed: false);
+        await tester.pumpAndSettle();
+      }
+      await _shot(tester, 'course_outline_$mode');
+    });
+
+    testWidgets('course submissions $mode', (tester) async {
+      tester.view.physicalSize = const Size(390 * 2, 844 * 2);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      CourseDetailCache.clear();
+      await tester.pumpWidget(
+        _wrap(buildCourse({'submission': submissionsHtml, 'news': newsHtml}), dark: dark),
+      );
+      await tester.pumpAndSettle();
+      final tab = find.text('Submit');
+      if (tab.evaluate().isNotEmpty) {
+        await tester.ensureVisible(tab.first);
+        await tester.pumpAndSettle();
+        await tester.tap(tab.first, warnIfMissed: false);
+        await tester.pumpAndSettle();
+      }
+      await _shot(tester, 'course_submissions_$mode');
+    });
 
     testWidgets('course grades $mode', (tester) async {
       CourseDetailCache.clear();

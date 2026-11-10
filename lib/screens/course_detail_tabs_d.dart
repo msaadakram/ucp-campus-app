@@ -496,12 +496,10 @@ Widget courseSubmissionBody(AppColors c, List<CourseSubmission> items,
                     ],
                     if (s.description.isNotEmpty) ...[
                       const SizedBox(height: 4),
-                      Text(s.description,
-                          maxLines: 4,
-                          overflow: TextOverflow.ellipsis,
-                          style: body(c,
-                              size: 12,
-                              color: c.tealInk.withValues(alpha: 0.68))),
+                      _ExpandableDescription(
+                        c: c,
+                        text: s.description,
+                      ),
                     ],
                   ],
                 ),
@@ -576,32 +574,28 @@ Widget courseSubmissionBody(AppColors c, List<CourseSubmission> items,
                     Icon(Icons.play_arrow_rounded,
                         size: 15, color: c.teal),
                     const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(windowLine('Opens', s.from, s.startDate),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: body(c,
-                              size: 12,
-                              weight: FontWeight.w700,
-                              color: c.tealInk.withValues(alpha: 0.8))),
+                    Flexible(
+                      child: Text(
+                        windowLine('Opens', s.from, s.startDate),
+                        style: body(c,
+                            size: 12,
+                            weight: FontWeight.w700,
+                            color: c.tealInk.withValues(alpha: 0.85))),
                     ),
-                    Padding(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 6),
-                      child: Icon(Icons.arrow_forward_rounded,
-                          size: 13,
-                          color: c.tealInk.withValues(alpha: 0.35)),
-                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
                     Icon(Icons.schedule_rounded, size: 15, color: c.clay),
                     const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(windowLine('Closes', s.to, s.dueDate),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: body(c,
-                              size: 12,
-                              weight: FontWeight.w800,
-                              color: c.clay)),
+                    Flexible(
+                      child: Text(
+                        windowLine('Closes', s.to, s.dueDate),
+                        style: body(c,
+                            size: 12,
+                            weight: FontWeight.w800,
+                            color: c.clay)),
                     ),
                   ],
                 ),
@@ -661,4 +655,54 @@ Widget courseSubmissionBody(AppColors c, List<CourseSubmission> items,
       for (final s in items) cardFor(s),
     ],
   );
+}
+
+/// Long descriptions never lose information: clamp to a few lines with
+/// a Show more / Show less toggle (the portal writes essay-length
+/// briefs in this cell).
+class _ExpandableDescription extends StatefulWidget {
+  final AppColors c;
+  final String text;
+  const _ExpandableDescription({required this.c, required this.text});
+
+  @override
+  State<_ExpandableDescription> createState() => _ExpandableDescriptionState();
+}
+
+class _ExpandableDescriptionState extends State<_ExpandableDescription> {
+  bool expanded = false;
+
+  static const int _clampLines = 4;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.c;
+    final long = widget.text.length > 150;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.text,
+          maxLines: expanded ? null : _clampLines,
+          overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+          style: body(c, size: 12, color: c.tealInk.withValues(alpha: 0.68)),
+        ),
+        if (long)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => expanded = !expanded),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                expanded ? 'Show less' : 'Show more',
+                style: body(c,
+                    size: 11.5,
+                    weight: FontWeight.w800,
+                    color: c.tealDeep),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }

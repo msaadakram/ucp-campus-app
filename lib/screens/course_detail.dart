@@ -421,7 +421,10 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
           if (ctl.loading) const PortalLoadingBar(),
           if (ctl.refreshFailed)
             PortalRefreshFailed(onRetry: () => ctl.loadTab(ctl.tab)),
-          const SizedBox(height: 8),
+          // The band's elliptical bottom edge dips to its lowest point
+          // in the middle — the first row of a tab would land on the
+          // curve without this gap.
+          const SizedBox(height: 26),
           _tabBody(c),
           if (ctl.cachedAt != null)
             PortalCachedNotice(savedAtMs: ctl.cachedAt!),
