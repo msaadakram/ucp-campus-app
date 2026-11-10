@@ -41,6 +41,36 @@ void main() {
     });
   });
 
+  group('portalAvatarProvider', () {
+    test('data URI decodes to a memory image', () {
+      // 1x1 transparent PNG
+      const png =
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+      final p = portalAvatarProvider(png);
+      expect(p, isA<MemoryImage>());
+    });
+
+    test('absolute URL passes through as a network image', () {
+      final p =
+          portalAvatarProvider('https://horizon.ucp.edu.pk/web/image/98/1/a');
+      expect(p, isA<NetworkImage>());
+    });
+
+    test('garbage and empty values produce no provider', () {
+      expect(portalAvatarProvider(''), isNull);
+      expect(portalAvatarProvider(null), isNull);
+      expect(portalAvatarProvider('data:image/png;base64,@@@not-base64@@@'),
+          isNull);
+      expect(portalAvatarProvider('javascript:alert(1)'), isNull);
+      expect(portalAvatarProvider('//evil.com/x.png'), isNull);
+    });
+
+    test('truncated data URI fails closed', () {
+      expect(portalAvatarProvider('data:image/png;base64,'), isNull);
+      expect(portalAvatarProvider('data:image/png;base64'), isNull);
+    });
+  });
+
   group('UserAvatar widget', () {
     testWidgets('renders the deterministic asset circularly',
         (tester) async {
