@@ -815,8 +815,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                       Expanded(
                         child: Text(
                           'Board updated ${formatPortalShort(_latestUpdate!)}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          maxLines: 2,
                           style: body(c, size: 10.5,
                               weight: FontWeight.w600,
                               color: c.tealInk.withValues(alpha: 0.45)),
@@ -1755,9 +1754,8 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                         Padding(
                           padding: const EdgeInsets.only(top: 1, bottom: 4),
                           child: Text(
-                            'Updated ${formatPortalStamp(e.timestamp!)}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            'Updated ${formatPortalShort(e.timestamp!)}',
+                            maxLines: 2,
                             style: body(c, size: 10.5,
                                 color: c.tealInk.withValues(alpha: 0.45)),
                           ),
