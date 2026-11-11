@@ -238,7 +238,7 @@ void main() {
     });
 
     testWidgets('consent $mode', (tester) async {
-      await tester.pumpWidget(_wrap(ConsentScreen(onAccept: _asyncNoop, onDecline: _asyncNoop), dark: dark));
+      await tester.pumpWidget(_wrap(ConsentScreen(onAccept: _asyncNoop), dark: dark));
       await _shot(tester, 'consent_$mode');
     });
 

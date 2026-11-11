@@ -431,7 +431,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     final list = board(code, metric);
     final myRank = list.indexWhere((e) => e.me) + 1;
     final podium = [list[1], list[0], list[2]];
-    final sub = courses.firstWhere((x) => x.code == code);
+    final sub = courses.firstWhere((x) => x.code == code,
+        orElse: () => courses.first);
     return UHead(
       height: 304,
       child: Column(

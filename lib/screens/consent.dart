@@ -4,23 +4,14 @@ import '../theme/palette.dart';
 import '../widgets/common.dart';
 
 /// First-run consent gate shown before ANY student data is ever sent to
-/// the ucp.animezone.me server. Until the student picks one of the two
-/// options, the app publishes nothing (no timetable, no grades, no
-/// session jar).
-///
-/// The two choices are NOT symmetric and the copy must not pretend
-/// otherwise:
-///   * publish — appears on the class board with marks + timetable +
-///               (one latest encrypted session jar for app↔extension
-///               continuity). This is what makes the leaderboard worth
-///               having for the class.
-///   * private — the app works read-only: the class board shows
-///               classmates but never your marks. Your own session and
-///               marks stay on the device only.
+/// the ucp.animezone.me server. Acceptance is REQUIRED — the app shares
+/// the same policy gate as the extension, so the class board is
+/// guaranteed to have every classmate on it (name/photo can still be
+/// hidden afterwards). Nothing leaves the device until this button is
+/// pressed.
 class ConsentScreen extends StatelessWidget {
   final Future<void> Function() onAccept;
-  final Future<void> Function() onDecline;
-  const ConsentScreen({super.key, required this.onAccept, required this.onDecline});
+  const ConsentScreen({super.key, required this.onAccept});
 
   @override
   Widget build(BuildContext context) {
@@ -81,35 +72,18 @@ class ConsentScreen extends StatelessWidget {
           _note(c),
           const SizedBox(height: 18),
           ClayButton(
-            label: 'Publish to my class',
+            label: 'Agree & continue',
             colors: c,
             height: 54,
             fontSize: 16,
             onPressed: onAccept,
           ),
           const SizedBox(height: 10),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onDecline,
-            child: Container(
-              height: 50,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: c.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: c.dustSoft.withValues(alpha: 0.6)),
-              ),
-              child: Text(
-                'Continue without sharing',
-                style: body(c, size: 15, weight: FontWeight.w800,
-                    color: c.tealInk),
-              ),
-            ),
-          ),
           const SizedBox(height: 14),
           Text(
-            'You can change this later in Profile → Privacy & security. '
-            'Details: the privacy policy on the app backend, and Profile → Help.',
+            'Your name and photo can be hidden anytime in '
+            'Profile → Privacy & security. Details: the privacy policy '
+            'on the app backend, and Profile → Help.',
             style: body(c, size: 11,
                 color: c.tealInk.withValues(alpha: 0.5)),
           ),
@@ -166,8 +140,9 @@ class ConsentScreen extends StatelessWidget {
         border: Border.all(color: c.board.withValues(alpha: 0.3)),
       ),
       child: Text(
-        'Private keeps the boards fully usable — you just will not appear '
-        'on them, and nothing of your marks ever leaves this device.',
+        'Publishing is required for the class boards to work — your '
+        'name and photo can still be hidden anytime. You can ask for '
+        'your data to be deleted within 7 days.',
         style: body(c, size: 12, color: c.tealInk.withValues(alpha: 0.8)),
       ),
     );

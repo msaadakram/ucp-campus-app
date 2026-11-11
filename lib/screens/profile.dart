@@ -63,6 +63,8 @@ class ProfileScreen extends StatefulWidget {
   final LeaderboardService? service;
   /// Device consent choice for publishing marks/timetable/session-jar
   /// to the server ('accepted' | 'declined' | null = never asked).
+  /// Kept for display purposes; switching it off happens only through
+  /// data deletion (acceptance is required, like the extension).
   final String? publishConsent;
   /// Flips the consent choice (called by the toggle below).
   final Future<void> Function(String value)? onConsentChanged;
@@ -438,19 +440,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     SettingRow(icon: Icons.text_fields_outlined, tone: c.board, label: 'Larger text', sub: 'Easier reading', trailing: AppToggle(value: widget.prefs.big, onChanged: (v) => _set(ProfilePrefs(theme: widget.prefs.theme, palette: widget.prefs.palette, big: v, motion: widget.prefs.motion)), colors: c)),
                     SettingRow(icon: Icons.auto_awesome_outlined, tone: c.dust, label: 'Animations', sub: 'Smooth screen transitions', trailing: AppToggle(value: widget.prefs.motion, onChanged: (v) => _set(ProfilePrefs(theme: widget.prefs.theme, palette: widget.prefs.palette, big: widget.prefs.big, motion: v)), colors: c)),
                     if ((widget.studentId ?? '').trim().isNotEmpty)
+                      // Acceptance is required for the class boards —
+                      // publishing cannot be switched off from the app
+                      // (ask for your data to be deleted instead).
                       SettingRow(
                         icon: Icons.share_outlined,
                         tone: c.clay,
                         label: 'Share my marks & timetable',
-                        sub: widget.publishConsent == 'accepted'
-                            ? 'Classmates see you on the boards'
-                            : 'Private — boards never list you',
-                        trailing: AppToggle(
-                          value: widget.publishConsent == 'accepted',
-                          onChanged: (v) => widget.onConsentChanged?.call(
-                              v ? 'accepted' : 'declined'),
-                          colors: c,
-                        ),
+                        sub: 'Required — classmates see you on the boards',
+                        trailing: const Icon(Icons.lock_outline_rounded,
+                            size: 18, color: Color(0xFF8C98A4)),
                       ),
                     if ((widget.studentId ?? '').trim().isNotEmpty) ...[
                       SettingRow(

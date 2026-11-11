@@ -1631,11 +1631,11 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         oauthEmail == null &&
         _consentLoaded &&
         _consent == null) {
-      // NEVER publish before the student decides — nothing leaves the
-      // device until one of the two consent buttons is pressed.
+      // NEVER publish before the student agrees — nothing leaves the
+      // device until Agree & continue is pressed. Acceptance is required
+      // (the app shares the extension's forced policy gate).
       screen = ConsentScreen(
         onAccept: () => _setConsent('accepted'),
-        onDecline: () => _setConsent('declined'),
       );
     } else if (course != null || pc0 != null) {
       if (pc0 != null && pc0.infoUrl.isNotEmpty) {
