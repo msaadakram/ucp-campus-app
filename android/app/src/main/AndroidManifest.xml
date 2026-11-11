@@ -11,6 +11,8 @@
          declaration for features the app does not have. -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"
         tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"
+        tools:node="remove" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"
         tools:node="remove" />
     <!-- Required for Microsoft OAuth, Horizon portal and API calls -->
