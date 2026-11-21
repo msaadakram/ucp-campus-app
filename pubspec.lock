@@ -256,6 +256,22 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  gma_mediation_meta:
+    dependency: "direct main"
+    description:
+      name: gma_mediation_meta
+      sha256: "1fe5ef088a0c7767db3d2b008d353f1001a5ddf0f3211260caaa663193ad9664"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.7.2"
+  gma_mediation_unity:
+    dependency: "direct main"
+    description:
+      name: gma_mediation_unity
+      sha256: "583da31011adaab5b0f80c9edc46a51bd9e04cff9ae3015322847d5799652b35"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.12.0"
   google_fonts:
     dependency: "direct main"
     description:
@@ -264,6 +280,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.3.3"
+  google_mobile_ads:
+    dependency: "direct main"
+    description:
+      name: google_mobile_ads
+      sha256: "439e018d73b47565d1cf21410e893a8f46d5fb95110c41c266a6fb78449d7106"
+      url: "https://pub.dev"
+    source: hosted
+    version: "9.2.0"
   hooks:
     dependency: transitive
     description:

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'ads/admob_service.dart';
 import 'auth/odoo_api.dart';
 import 'auth/microsoft_oauth.dart';
 import 'auth/dashboard_parser.dart';
@@ -508,10 +509,31 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
         _consent = (v == 'accepted' || v == 'declined') ? v : null;
         _consentLoaded = true;
       });
+      // A returning student already agreed on this device: the ad SDK may
+      // start (and a returning student may get one app open ad).
+      if (v == 'accepted') _initAds(coldStart: true);
     } catch (_) {
       if (!mounted) return;
       setState(() => _consentLoaded = true);
     }
+  }
+
+  /// Turns the ad SDK on — but only AFTER the student accepted the app
+  /// policy (the app promises "nothing leaves the device until you agree")
+  /// and never in widget tests (no platform channels there).
+  void _initAds({bool coldStart = false}) {
+    if (widget.skipLogin || widget.authHooks != null) return;
+    unawaited(
+      AdMobService.instance.initialize().then((_) {
+        if (!mounted || !AdMobService.instance.ready) return;
+        if (!coldStart) return;
+        // App open ad: a few seconds after launch, so the student sees
+        // the app first (never on top of the login/consent screens).
+        Future.delayed(const Duration(seconds: 6), () {
+          if (mounted) unawaited(AdMobService.instance.showAppOpen());
+        });
+      }),
+    );
   }
 
   Future<void> _setConsent(String value) async {
@@ -519,6 +541,8 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     if (!mounted) return;
     setState(() => _consent = value);
     if (value == 'accepted') {
+      // Ads may start now that the student agreed to the policy.
+      _initAds();
       // Publish what we can now: timetable + own marks + session jar.
       unawaited(_syncMsAuthUpload());
       unawaited(_runCommunitySync());
@@ -593,12 +617,16 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     // through _restoreSession instead).
     if (widget.skipLogin) return;
     if (state == AppLifecycleState.resumed) {
+      // Ads: an app open ad may follow when the student was away for a
+      // while (never on a quick app switch).
+      AdMobService.instance.onResumed();
       if (authed) {
         _monitor?.start();
         OfflineMonitor.instance.refresh();
         _checkSessionNow();
       }
     } else {
+      AdMobService.instance.onPaused();
       _monitor?.stop();
     }
   }
@@ -1539,7 +1567,21 @@ class _CampusAppState extends State<CampusApp> with WidgetsBindingObserver {
     unawaited(_monitor!.checkNow());
   }
 
-  void go(String t) => setState(() { tab = t; course = null; courseLive = false; portalCourse = null; _hubInitialTab = 'news'; menu = false; });
+  void go(String t) {
+    setState(() {
+      tab = t;
+      course = null;
+      courseLive = false;
+      portalCourse = null;
+      _hubInitialTab = 'news';
+      menu = false;
+    });
+    // Ads: an interstitial at the natural break between sections (the
+    // first move stays ad-free, cooldowns apply).
+    if (AdsConfig.interstitialOnSectionChange && t != 'profile') {
+      unawaited(AdMobService.instance.showInterstitial());
+    }
+  }
 
   /// The watchdog proved the portal session dead and silent renewal failed:
   /// show the "someone logged in elsewhere?" popup instead of silently

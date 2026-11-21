@@ -53,6 +53,8 @@ class ConsentScreen extends StatelessWidget {
                   'Your timetable (day, time, teacher, room, section) so the board matches your actual class.'),
               _bullet(c, Icons.lock_outline,
                   'Your session keeps you signed in across the app and the extension — one latest encrypted jar per student, auto-expires after 90 days.'),
+              _bullet(c, Icons.campaign_outlined,
+                  'Ads: the app shows ads (banner, native, app open, interstitial and optional rewarded). Ad partners may use device data to serve them — never your marks, timetable or portal session.'),
             ],
           ),
           const SizedBox(height: 14),

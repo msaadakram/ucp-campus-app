@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../ads/ad_widgets.dart';
+import '../ads/admob_service.dart';
 import '../auth/dashboard_parser.dart';
 import '../auth/student_portal.dart';
 import '../data/seed.dart';
@@ -1075,6 +1077,9 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             );
           }),
+          // Ads: native advanced card at the end of the Home feed (the
+          // template ships its own Ad label + AdChoices badge).
+          if (AdsConfig.nativeOnHome) const AdNativeCard(),
           const SizedBox(height: 96),
         ],
       ),

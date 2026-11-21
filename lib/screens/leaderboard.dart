@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../ads/ad_widgets.dart';
+import '../ads/admob_service.dart';
 import '../leaderboard/leaderboard_service.dart';
 import '../leaderboard/sync.dart';
 import '../auth/portal_dates.dart';
@@ -205,6 +207,84 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       return;
     }
     _loadCourses();
+    // Ads: every leaderboard view offers the rewarded ad. The offer is
+    // optional by design (Google's rewarded-ad policy: skipping must never
+    // impede normal use), the ad only starts after the student taps
+    // "Watch ad".
+    if (AdsConfig.rewardedOnLeaderboard) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _offerRewarded();
+      });
+    }
+  }
+
+  /// The rewarded offer: watch a short ad to re-sync the class right now.
+  Future<void> _offerRewarded() async {
+    if (!mounted) return;
+    final granted = await showRewardedOffer(
+      context,
+      title: 'Boost this board',
+      rewardText:
+          'Watch a short ad to re-sync your class marks instantly — no '
+          'waiting for the portal sign-in.',
+      onReward: _rewardResync,
+    );
+    if (!granted) return;
+  }
+
+  /// What the rewarded ad pays out: a forced class re-sync (portal sign-in
+  /// check -> timetable -> this subject's grade page -> board refresh).
+  Future<void> _rewardResync() async {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Re-syncing your class…')),
+    );
+    await _runClassSync(force: true);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Class re-synced — marks are up to date.')),
+    );
+  }
+
+  /// Persistent rewarded offer, directly under the course picker.
+  Widget _rewardedChip(AppColors c) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _offerRewarded,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: c.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: c.teal.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.ondemand_video_outlined, size: 16, color: c.teal),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                'Watch an ad — instant class re-sync',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: body(
+                  c,
+                  size: 12,
+                  weight: FontWeight.w700,
+                  color: c.tealInk,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 18,
+              color: c.tealInk.withValues(alpha: 0.35),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _loadCourses() async {
@@ -737,6 +817,11 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
             )
           else ...[
             _courseBar(c),
+            if (AdsConfig.rewardedOnLeaderboard &&
+                AdMobService.instance.ready) ...[
+              const SizedBox(height: 8),
+              _rewardedChip(c),
+            ],
             if (_fromPortal) ...[
               const SizedBox(height: 8),
               _infoCard(
@@ -848,6 +933,12 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
                     ),
                   ),
                 ),
+              // Ads: native advanced under the ranks + a banner at the
+              // very end of the board (never on top of the ranks).
+              if (AdsConfig.leaderboardAds) ...[
+                const AdNativeCard(),
+                const AdBanner(),
+              ],
               const SizedBox(height: 96),
             ],
           ],
