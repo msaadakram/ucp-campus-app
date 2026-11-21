@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
@@ -198,6 +199,21 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
 
   LeaderboardService? get _svc => widget.service;
 
+  /// True while the board is blurred behind the "watch the ad" gate.
+  /// [AdsConfig.gateLeaderboardOnReward] makes every fresh board view
+  /// start gated; the user unlocks by watching the rewarded ad.
+  bool _adWatched = false;
+  bool _gateBusy = false;
+
+  bool get _gateActive =>
+      AdsConfig.gateLeaderboardOnReward &&
+      AdMobService.instance.ready &&
+      !_adWatched;
+
+  /// Testing seam: simulates a completed ad, un-gating the board.
+  @visibleForTesting
+  void markAdWatchedForTesting() => setState(() => _adWatched = true);
+
   @override
   void initState() {
     super.initState();
@@ -206,14 +222,35 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
       return;
     }
     _loadCourses();
-    // Ads: every leaderboard view offers the rewarded ad. The offer is
-    // optional by design (Google's rewarded-ad policy: skipping must never
-    // impede normal use), the ad only starts after the student taps
-    // "Watch ad".
-    if (AdsConfig.rewardedOnLeaderboard) {
+    // Ads: every leaderboard view offers the rewarded ad. While the
+    // reward gate is on (leaderboard blurred), the watch button comes
+    // from the gate overlay; while off, offer the sheet as before.
+    if (AdsConfig.rewardedOnLeaderboard && !_gateActive) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _offerRewarded();
       });
+    }
+  }
+
+  /// Starts the reward gate: the student watches the ad, then the board
+  /// unlocks. If no ad fills, we still unlock (the pass-through hatch)
+  /// so the board stays reachable.
+  Future<void> _watchLeaderboardAd() async {
+    if (_gateBusy) return;
+    setState(() => _gateBusy = true);
+    final granted =
+        await AdMobService.instance.showRewarded(onReward: () {});
+    if (!mounted) return;
+    setState(() {
+      _gateBusy = false;
+      _adWatched = true;
+    });
+    if (!granted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No ad available — opening the board anyway.'),
+        ),
+      );
     }
   }
 
@@ -646,7 +683,7 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
   Widget build(BuildContext context) {
     final c = AppScope.colorsOf(context);
     if (_svc == null && widget.fallback != null) return widget.fallback!;
-    return UHead(
+    final board = UHead(
       height: 168,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -817,7 +854,8 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
           else ...[
             _courseBar(c),
             if (AdsConfig.rewardedOnLeaderboard &&
-                AdMobService.instance.ready) ...[
+                AdMobService.instance.ready &&
+                !_gateActive) ...[
               const SizedBox(height: 8),
               _rewardedChip(c),
             ],
@@ -943,6 +981,99 @@ class _LiveLeaderboardScreenState extends State<LiveLeaderboardScreen> {
           ],
         ],
       ),
+    );
+    return _gateActive ? _gateOverlay(c, board) : board;
+  }
+
+  /// The leaderboard-blurred gate: soft-blur backdrop over the board and
+  /// a centered card: "Watch the ad to unlock your class" + the primary
+  /// watch button. The board itself is inert while gated.
+  Widget _gateOverlay(AppColors c, Widget board) {
+    return Stack(
+      fit: StackFit.passthrough,
+      clipBehavior: Clip.hardEdge,
+      children: [
+        AbsorbPointer(absorbing: true, child: board),
+        BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            color: Colors.black.withValues(alpha: 0.28),
+          ),
+        ),
+        Center(
+          child: Container(
+            width: 320,
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
+            decoration: BoxDecoration(
+              color: c.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: c.teal.withValues(alpha: 0.2)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 18,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.ondemand_video_outlined,
+                  color: c.teal,
+                  size: 30,
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Class unlock',
+                  style: display(c, size: 22, color: c.tealInk),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Watch a short ad to unlock your class — real class ranks, '
+                  'never blocks anything else.',
+                  textAlign: TextAlign.center,
+                  style: body(c, size: 13, color: c.tealInk.withValues(alpha: 0.8)),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton.tonal(
+                    onPressed: _gateBusy ? null : _watchLeaderboardAd,
+                    child: _gateBusy
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            'Watch the ad',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'No ad available? You can still view the board.',
+                  textAlign: TextAlign.center,
+                  style: body(
+                    c,
+                    size: 11,
+                    color: c.tealInk.withValues(alpha: 0.45),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 

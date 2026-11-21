@@ -50,6 +50,11 @@ class AdsConfig {
   /// still works normally, so this stays Google-compliant.
   static const bool leaderboardMandatoryAd = true;
 
+  /// The leaderboard is blurred until the student watches the rewarded
+  /// ad. Every other screen stays reachable; on the board a pass-through
+  /// unlock happens if no ad fills (policy escape hatch).
+  static const bool gateLeaderboardOnReward = true;
+
   /// Native advanced card on Home.
   static const bool nativeOnHome = true;
 
