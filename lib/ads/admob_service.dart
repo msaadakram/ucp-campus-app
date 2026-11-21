@@ -387,19 +387,37 @@ class AdMobService {
     if (ready) _loadRewarded();
   }
 
+  /// Waits up to [timeout] for a rewarded ad to be preloaded, retrying
+  /// the load every 400 ms. Returns the ad, or null if none arrived in
+  /// time — a brand-new app's first unit usually takes a few seconds.
+  Future<RewardedAd?> awaitRewarded(
+      {Duration timeout = const Duration(seconds: 12)}) async {
+    if (!ready) return null;
+    final end = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(end)) {
+      if (_rewarded != null) return _rewarded;
+      _loadRewarded();
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+    }
+    return _rewarded;
+  }
+
   /// Shows a rewarded ad. [onReward] runs ONLY when the student actually
   /// finished the ad (Google: the promised reward must be delivered).
+  ///
+  /// Waits for the ad to load (retrying briefly) before showing it, so a
+  /// cold unit doesn’t surface as a silent “no ad”.
   ///
   /// Returns true when the reward was delivered. A missing ad (no fill) or
   /// a failure returns false — the caller keeps the app fully usable.
   Future<bool> showRewarded({required void Function() onReward}) async {
     if (!ready) return false;
     if (_fullScreenBusy) return false;
-    if (_rewarded == null) {
+    final ad = await awaitRewarded();
+    if (ad == null) {
       _loadRewarded();
       return false;
     }
-    final ad = _rewarded!;
     _rewarded = null;
     _fullScreenBusy = true;
     _lastFullScreenAt = DateTime.now();
