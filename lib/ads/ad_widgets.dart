@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import '../theme/palette.dart';
 import '../widgets/common.dart';
 import 'admob_service.dart';
+
+export 'admob_service.dart';
 
 /// A screen-width adaptive banner.
 ///
@@ -28,16 +32,35 @@ class _AdBannerState extends State<AdBanner> {
   AdSize? _loadedSize;
   bool _requested = false;
 
+  bool _detached = false;
+  VoidCallback? _readySub;
+  Timer? _retryTimer;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_requested) return;
-    _requested = true;
-    _load();
+    final ads = AdMobService.instance;
+    if (ads.ready) {
+      _requested = true;
+      _load();
+    } else {
+      // The SDK initializes after the policy gate — banners that show up
+      // in the meanwhile wait for it instead of silently never loading.
+      _readySub = () {
+        if (_detached || _requested || !ads.readyNotifier.value) return;
+        _requested = true;
+        _load();
+      };
+      ads.readyNotifier.addListener(_readySub!);
+    }
   }
 
+  static const Duration _retryDelay = Duration(seconds: 8);
+
   Future<void> _load() async {
-    if (!AdMobService.instance.ready) return;
+    final ads = AdMobService.instance;
+    if (_ad != null || !ads.ready) return;
     try {
       final width = MediaQuery.of(context).size.width.truncate();
       final size = await AdSize.getLargeAnchoredAdaptiveBannerAdSize(width);
@@ -58,6 +81,7 @@ class _AdBannerState extends State<AdBanner> {
           onAdFailedToLoad: (failedAd, error) {
             debugPrint('AdMob: banner no fill (${error.code})');
             failedAd.dispose();
+            _retryAfter(_load);
           },
         ),
       );
@@ -72,8 +96,22 @@ class _AdBannerState extends State<AdBanner> {
     }
   }
 
+  /// A no-fill banner retries briefly so a broken/offline window self
+  /// heals instead of staying dark forever.
+  void _retryAfter(Future<void> Function() fn) {
+    _retryTimer = Timer(_retryDelay, () {
+      _retryTimer = null;
+      fn();
+    });
+  }
+
   @override
   void dispose() {
+    _retryTimer?.cancel();
+    _detached = true;
+    if (_readySub != null) {
+      AdMobService.instance.readyNotifier.removeListener(_readySub!);
+    }
     _ad?.dispose();
     _ad = null;
     super.dispose();
@@ -140,17 +178,35 @@ class AdNativeCard extends StatefulWidget {
 class _AdNativeCardState extends State<AdNativeCard> {
   NativeAd? _ad;
   bool _requested = false;
+  bool _detached = false;
+  VoidCallback? _readySub;
+  Timer? _retryTimer;
+
+  static const Duration _retryDelay = Duration(seconds: 8);
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_requested) return;
-    _requested = true;
-    _load();
+    final ads = AdMobService.instance;
+    if (ads.ready) {
+      _requested = true;
+      _load();
+    } else {
+      // Cards that mount before the SDK is ready wait for it, then load —
+      // no "I'm open now, and the ad will show up later" gap.
+      _readySub = () {
+        if (_detached || _requested || !ads.readyNotifier.value) return;
+        _requested = true;
+        _load();
+      };
+      ads.readyNotifier.addListener(_readySub!);
+    }
   }
 
   Future<void> _load() async {
-    if (!AdMobService.instance.ready) return;
+    final ads = AdMobService.instance;
+    if (_ad != null || !ads.ready) return;
     try {
       late final NativeAd ad;
       ad = NativeAd(
@@ -195,6 +251,10 @@ class _AdNativeCardState extends State<AdNativeCard> {
           onAdFailedToLoad: (failedAd, error) {
             debugPrint('AdMob: native no fill (${error.code})');
             failedAd.dispose();
+            _retryTimer = Timer(_retryDelay, () {
+              _retryTimer = null;
+              _load();
+            });
           },
         ),
       );
@@ -211,6 +271,11 @@ class _AdNativeCardState extends State<AdNativeCard> {
 
   @override
   void dispose() {
+    _retryTimer?.cancel();
+    _detached = true;
+    if (_readySub != null) {
+      AdMobService.instance.readyNotifier.removeListener(_readySub!);
+    }
     _ad?.dispose();
     _ad = null;
     super.dispose();
@@ -238,11 +303,29 @@ class _AdNativeCardState extends State<AdNativeCard> {
   }
 }
 
+/// One standard section of ads at the end of a page: a native advanced
+/// card plus an adaptive banner. Both render nothing until a fill arrives,
+/// so a missing fill never leaves an empty grey box.
+class AdSection extends StatelessWidget {
+  const AdSection({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!AdsConfig.otherPagesAds) return const SizedBox.shrink();
+    return const Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [AdNativeCard(), AdBanner()],
+    );
+  }
+}
+
 /// Bottom sheet offering a rewarded ad.
 ///
-/// Policy-safe by construction: the ad is only served after the student
-/// explicitly taps "Watch ad", the reward is described before the ad, and
-/// "No thanks" is always one tap away — skipping never blocks anything.
+/// Mandatory on the leaderboard (see [AdsConfig.leaderboardMandatoryAd]):
+/// the sheet cannot be dismissed — the student MUST finish with an
+/// explicit choice — but "No thanks, continue" always works, so the app
+/// itself is never gated. Google allows this pattern; forcing "Watch
+/// ad" or blocking the screen behind it is not.
 Future<bool> showRewardedOffer(
   BuildContext context, {
   required String title,
@@ -255,6 +338,8 @@ Future<bool> showRewardedOffer(
   final result = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
+    isDismissible: false, // must end on an explicit choice
+    enableDrag: false,
     backgroundColor: Colors.transparent,
     builder: (ctx) => _RewardedOfferSheet(
       title: title,

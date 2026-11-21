@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import '../ads/ad_widgets.dart';
 import '../auth/dashboard_parser.dart';
 import '../leaderboard/leaderboard_service.dart';
 import '../theme/palette.dart';
@@ -545,6 +546,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.logout, color: c.clay), Text(' Log out', style: display(c, size: 16, color: c.clay))]),
                 ),
               ),
+              if (AdsConfig.otherPagesAds) const AdSection(),
               const SizedBox(height: 96),
             ],
           ),

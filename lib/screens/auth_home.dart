@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../ads/ad_widgets.dart';
-import '../ads/admob_service.dart';
 import '../auth/dashboard_parser.dart';
 import '../auth/student_portal.dart';
 import '../data/seed.dart';
@@ -1077,9 +1076,11 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             );
           }),
-          // Ads: native advanced card at the end of the Home feed (the
-          // template ships its own Ad label + AdChoices badge).
+          // Ads: native advanced card + adaptive banner at the end of
+          // the Home feed (the native card ships its own Ad label +
+          // AdChoices badge; no fill never leaves a grey box).
           if (AdsConfig.nativeOnHome) const AdNativeCard(),
+          if (AdsConfig.bannerOnHome) const AdBanner(),
           const SizedBox(height: 96),
         ],
       ),

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../ads/ad_widgets.dart';
 import '../teachers/teacher_models.dart';
 import '../teachers/teacher_service.dart';
 import '../theme/palette.dart';
@@ -365,6 +366,8 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 child: _showMoreCard(c),
               ),
             ),
+          if (AdsConfig.otherPagesAds)
+            const SliverToBoxAdapter(child: AdSection()),
           const SliverToBoxAdapter(child: SizedBox(height: 96)),
         ],
       ),
@@ -1291,6 +1294,8 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 itemBuilder: (ctx, i) => _reviewTile(c, sortedReviews[i]),
               ),
             ),
+          if (AdsConfig.otherPagesAds)
+            const SliverToBoxAdapter(child: AdSection()),
           const SliverToBoxAdapter(child: SizedBox(height: 96)),
         ],
       ),

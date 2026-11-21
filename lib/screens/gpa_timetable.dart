@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../ads/ad_widgets.dart';
 import '../auth/odoo_api.dart';
 import '../auth/offline.dart';
 import '../auth/page_cache.dart';
@@ -2502,6 +2503,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
               ],
               const SizedBox(height: 24),
               _datesheetCard(c),
+              if (AdsConfig.otherPagesAds) const AdSection(),
               const SizedBox(height: 96),
             ],
           ),

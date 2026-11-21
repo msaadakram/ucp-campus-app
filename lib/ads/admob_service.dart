@@ -45,12 +45,21 @@ class AdsConfig {
   /// a banner under the ranks and a native card above it.
   static const bool leaderboardAds = true;
 
+  /// The offer sheet shown on every leaderboard view is mandatory
+  /// (non-dismissible, requires an explicit choice) — every other page
+  /// still works normally, so this stays Google-compliant.
+  static const bool leaderboardMandatoryAd = true;
+
   /// Native advanced card on Home.
   static const bool nativeOnHome = true;
 
-  /// Banner on Home as well as the leaderboard. Off by default: the
-  /// leaderboard is the requested banner placement.
-  static const bool bannerOnHome = false;
+  /// Banner on Home and on other pages (Attendance, Results, Fee, GPA,
+  /// Teachers, Community).
+  static const bool bannerOnHome = true;
+
+  /// One standard section of ads at the end of other pages: native card +
+  /// adaptive banner.
+  static const bool otherPagesAds = true;
 
   /// Rewarded offer sheet on every leaderboard view.
   static const bool rewardedOnLeaderboard = true;
@@ -76,6 +85,36 @@ class AdMobService {
   /// True once the SDK initialized successfully. False in widget tests (no
   /// platform channels) and on any initialization failure.
   bool ready = false;
+
+  /// Notifies ready listeners whenever initialization succeeds or fails.
+  final ValueNotifier<bool> readyNotifier = ValueNotifier(false);
+
+  final _readyWaiters = <Completer<void>>[];
+
+  /// Resolves once the SDK is ready (or immediately when it is).
+  ///
+  /// [timeout] bounds how long callers wait: after that we give up and
+  /// return the best known state, so a hanging SDK can never wedge the UI.
+  Future<bool> whenReady({Duration timeout = const Duration(seconds: 15)}) async {
+    if (ready) return true;
+    final w = Completer<void>();
+    _readyWaiters.add(w);
+    try {
+      await w.future.timeout(timeout);
+      return true;
+    } catch (_) {
+      return ready;
+    }
+  }
+
+  void _notifyReady(bool ok) {
+    if (readyNotifier.value == ok && _readyWaiters.isEmpty) return;
+    readyNotifier.value = ok;
+    for (final w in _readyWaiters) {
+      if (!w.isCompleted) w.complete();
+    }
+    _readyWaiters.clear();
+  }
 
   bool _initializing = false;
   AppOpenAd? _appOpen;
@@ -115,12 +154,14 @@ class AdMobService {
       await _collectConsent();
       await MobileAds.instance.initialize();
       ready = true;
+      _notifyReady(true);
       _loadAppOpen();
       _loadRewarded();
       _loadInterstitial();
     } catch (e) {
       debugPrint('AdMob: initialization failed ($e) — ads stay off.');
       ready = false;
+      _notifyReady(false);
     } finally {
       _initializing = false;
     }

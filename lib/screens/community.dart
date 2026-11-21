@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import '../ads/ad_widgets.dart';
 import '../auth/offline.dart';
 import '../community/community_service.dart';
 import '../data/seed.dart';
@@ -493,6 +494,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 ),
               ),
             ),
+          if (AdsConfig.otherPagesAds) const AdSection(),
           const SizedBox(height: 96),
         ],
       ),
